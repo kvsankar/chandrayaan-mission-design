@@ -2,8 +2,6 @@
 
 An interactive 3D visualization of Chandrayaan-3's orbital mechanics, demonstrating the relationship between Earth's equatorial plane, the Moon's orbit, and the spacecraft's highly elliptical transfer orbit.
 
-![Orbit Visualization](Screenshot%202025-11-14%20174755.png)
-
 ## Features
 
 ### Three Operating Modes
@@ -34,9 +32,10 @@ An interactive 3D visualization of Chandrayaan-3's orbital mechanics, demonstrat
 #### Game Mode
 - **Playback mode** for viewing planned missions
 - Real lunar ephemeris displays actual Moon position
-- All controls visible but disabled (read-only)
+- All controls visible but disabled (read-only), including lunar and chandrayaan parameters
 - Timeline animation with playback controls
 - Spacecraft visualized based on saved launch event
+- Capture detection with toast notification when spacecraft reaches Moon
 
 ### Timeline System
 
@@ -91,19 +90,40 @@ An interactive 3D visualization of Chandrayaan-3's orbital mechanics, demonstrat
 #### Visibility Toggles
 - Equator, Axes
 - Lunar orbit plane, nodes, Moon
-- Chandrayaan orbit plane, path, nodes
+- Chandrayaan orbit plane, path, spacecraft, nodes
 - RAAN and AOP angle visualizations
 
 #### Orbital Parameters (Context-Sensitive)
 - **Lunar**: Inclination, RAAN, Moon RA (manual in Explore, computed in Plan/Game)
 - **Chandrayaan**: Inclination, RAAN, AOP (ω), Perigee, Apogee, True Anomaly
-- **Read-Only Displays**: Orbital period, Moon RA, Craft RA
+- **Read-Only Displays**:
+  - Orbital period, Moon RA, Craft RA
+  - Moon distance from Earth (center-to-center, km)
+  - Craft distance from Earth (center-to-center, km)
+  - Craft distance to Moon (center-to-center, km)
 
 #### Actions Panel (Plan Mode)
 - **Add Launch**: Create new launch event with lil-gui interface
 - **Launch Event Card**: Edit launch parameters
+  - Launch date/time and Moon intercept date/time
+  - Orbital parameters (inclination, RAAN, AOP, perigee, apogee)
+  - Capture distance threshold (50-400,000 km)
 - **Save**: Commit draft changes
 - **Delete**: Remove launch event
+- **Default Values**:
+  - Launch: July 30, 2023 at 9:36 PM
+  - Intercept: August 5, 2023 at 4:56 PM
+  - RAAN: 5°, Apogee: 370,000 km
+  - Capture threshold: 5,000 km
+
+### Capture Detection (Game Mode)
+
+- Monitors distance between spacecraft and Moon center
+- Triggers capture notification when distance ≤ threshold
+- Configurable capture distance in launch event (default: 5,000 km)
+- Toast notification appears at top-right when captured
+- Spacecraft hidden after capture
+- Capture resets when scrubbing timeline before capture time
 
 ### Real Lunar Ephemeris
 

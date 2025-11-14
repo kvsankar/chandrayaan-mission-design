@@ -135,12 +135,45 @@ Pie sectors are offset slightly above their reference planes:
 - `yOffset = 0.1` in vertex creation
 - Prevents flickering with equatorial/orbital planes
 
+## Distance Calculations
+
+All distance measurements use **center-to-center distances** and are calculated in **kilometers**.
+
+### Coordinate System Consistency
+
+**Critical**: All positions must be in the same coordinate system for accurate distance calculations.
+
+- **Moon position from ephemeris**: Converted from celestial coords to Three.js coords before caching
+  - Celestial (x, y, z) → Three.js (x, z, -y)
+- **Craft position**: Calculated directly in Three.js coords using orbital rotations
+- **Distance cache**: `realPositionsCache` stores both positions in Three.js coords (km)
+
+### Distance Types
+
+1. **Moon-Earth distance**: `√(moonPos.x² + moonPos.y² + moonPos.z²)` km
+2. **Craft-Earth distance**: `√(craftPos.x² + craftPos.y² + craftPos.z²)` km
+3. **Craft-Moon distance**: `√((cx-mx)² + (cy-my)² + (cz-mz)²)` km
+
+### Visual vs. Distance Scales
+
+- **Visual positions**: Scaled by `SCALE_FACTOR = 100/384400` for display
+- **Distance calculations**: Use unscaled positions in kilometers
+- **Real mode Moon**: Visual position uses actual varying distance from ephemeris
+- **Gamed mode Moon**: Visual position fixed at `SPHERE_RADIUS` (100 units)
+
+### Constants
+
+- `EARTH_RADIUS = 6371` km
+- `MOON_RADIUS = 1737` km
+- `LUNAR_ORBIT_DISTANCE = 384400` km (average)
+
 ## Important Constraints
 
 1. **RA vs RAAN**: Moon's Right Ascension (RA) is absolute in space and doesn't change when lunar RAAN changes
-2. **Fixed Apogee**: Chandrayaan orbit always reaches lunar orbit distance (384,400 km) at apogee
+2. **Adjustable Apogee**: Chandrayaan apogee is adjustable (default ~378,029 km altitude ≈ lunar distance)
 3. **Counter-clockwise**: All rotations follow right-hand rule (counter-clockwise when viewed from above/north)
 4. **Node Positions**: Calculated by rotating (±R, 0, 0) in orbital plane by inclination and RAAN
+5. **Center-to-center distances**: All distance thresholds (capture, etc.) measure from object centers
 
 ## GUI Controls
 
