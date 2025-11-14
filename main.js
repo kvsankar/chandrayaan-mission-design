@@ -10,13 +10,13 @@ let lunarAscendingNode, lunarDescendingNode;
 let chandrayaanAscendingNode, chandrayaanDescendingNode;
 let chandrayaanOrbitCircle3D, chandrayaan;
 let moon;
-let xAxis, ariesMarker;
+let xAxis, yAxis, zAxis, ariesMarker;
 
 // Parameters
 const params = {
     // Visibility toggles
     showEquator: true,
-    showXAxis: true,
+    showAxes: true,
     showLunarOrbitPlane: true,
     showLunarNodes: true,
     showMoon: true,
@@ -78,6 +78,8 @@ function init() {
 
     // Create coordinate system
     createXAxis();
+    createYAxis();
+    createZAxis();
     createAriesMarker();
 
     // Create great circles
@@ -122,21 +124,59 @@ function createCelestialSphere() {
 }
 
 function createXAxis() {
-    // Create X-axis line (pointing to First Point of Aries)
+    // Create X-axis line (pointing to First Point of Aries, RA = 0°)
     const points = [
         new THREE.Vector3(0, 0, 0),
         new THREE.Vector3(SPHERE_RADIUS * 1.2, 0, 0)
     ];
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
     const material = new THREE.LineDashedMaterial({
-        color: 0xff0000,
+        color: 0xff0000, // Red
         linewidth: 1,
         dashSize: 3,
         gapSize: 2
     });
     xAxis = new THREE.Line(geometry, material);
-    xAxis.computeLineDistances(); // Required for dashed lines
+    xAxis.computeLineDistances();
     scene.add(xAxis);
+}
+
+function createYAxis() {
+    // Create Y-axis line (RA = 90° on equatorial plane)
+    // In Three.js coords: -Z direction gives us RA = 90°
+    const points = [
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0, 0, -SPHERE_RADIUS * 1.2)
+    ];
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineDashedMaterial({
+        color: 0x00ff00, // Green
+        linewidth: 1,
+        dashSize: 3,
+        gapSize: 2
+    });
+    yAxis = new THREE.Line(geometry, material);
+    yAxis.computeLineDistances();
+    scene.add(yAxis);
+}
+
+function createZAxis() {
+    // Create Z-axis line (perpendicular to equatorial plane, pointing to north pole)
+    // In Three.js coords: +Y direction gives us north pole
+    const points = [
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0, SPHERE_RADIUS * 1.2, 0)
+    ];
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineDashedMaterial({
+        color: 0x0000ff, // Blue
+        linewidth: 1,
+        dashSize: 3,
+        gapSize: 2
+    });
+    zAxis = new THREE.Line(geometry, material);
+    zAxis.computeLineDistances();
+    scene.add(zAxis);
 }
 
 function createAriesMarker() {
@@ -446,8 +486,10 @@ function setupGUI() {
     visibilityFolder.add(params, 'showEquator').name('Show Equator').onChange(value => {
         equatorCircle.visible = value;
     });
-    visibilityFolder.add(params, 'showXAxis').name('Show X-Axis (♈︎)').onChange(value => {
+    visibilityFolder.add(params, 'showAxes').name('Show Axes').onChange(value => {
         xAxis.visible = value;
+        yAxis.visible = value;
+        zAxis.visible = value;
         ariesMarker.visible = value;
     });
 
