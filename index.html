@@ -8,9 +8,36 @@
 </head>
 <body>
     <div id="container"></div>
-    <div id="info-panel">
-        <h3>Orbital Elements</h3>
-        <div id="orbital-elements"></div>
+
+    <div id="legend-panel">
+        <h3 onclick="toggleLegend()" style="cursor: pointer;">Legend <span id="legend-toggle">▼</span></h3>
+        <div id="legend-content">
+            <div class="legend-section">
+                <strong>Axes:</strong>
+                <span class="legend-item"><span class="legend-color" style="background-color: #ff0000;"></span> X-Axis (♈︎ RA=0°)</span>
+                <span class="legend-item"><span class="legend-color" style="background-color: #00ff00;"></span> Y-Axis (RA=90°)</span>
+                <span class="legend-item"><span class="legend-color" style="background-color: #0000ff;"></span> Z-Axis (North Pole)</span>
+            </div>
+            <div class="legend-section">
+                <strong>Reference:</strong>
+                <span class="legend-item"><span class="legend-color" style="background-color: #ffffff;"></span> Equator</span>
+            </div>
+            <div class="legend-section">
+                <strong>Lunar Orbit:</strong>
+                <span class="legend-item"><span class="legend-color" style="background-color: #ff00ff;"></span> Orbital Plane</span>
+                <span class="legend-item"><span class="legend-color" style="background-color: #00ffff;"></span> Ascending Node</span>
+                <span class="legend-item"><span class="legend-color" style="background-color: #ff8800;"></span> Descending Node</span>
+                <span class="legend-item"><span class="legend-color" style="background-color: #aaaaaa;"></span> Moon</span>
+            </div>
+            <div class="legend-section">
+                <strong>Chandrayaan Orbit:</strong>
+                <span class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span> Orbital Plane</span>
+                <span class="legend-item"><span class="legend-color" style="background-color: #ffa500;"></span> Orbit Path</span>
+                <span class="legend-item"><span class="legend-color" style="background-color: #88ff88;"></span> Ascending Node</span>
+                <span class="legend-item"><span class="legend-color" style="background-color: #ff88ff;"></span> Descending Node</span>
+                <span class="legend-item"><span class="legend-color" style="background-color: #ffffff;"></span> Spacecraft</span>
+            </div>
+        </div>
     </div>
 
     <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
@@ -25,5 +52,18 @@
     </script>
 
     <script type="module" src="main.js"></script>
+    <script>
+        function toggleLegend() {
+            const content = document.getElementById('legend-content');
+            const toggle = document.getElementById('legend-toggle');
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                toggle.textContent = '▼';
+            } else {
+                content.style.display = 'none';
+                toggle.textContent = '▶';
+            }
+        }
+    </script>
 </body>
 </html>

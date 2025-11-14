@@ -39,6 +39,24 @@ const params = {
 const SPHERE_RADIUS = 100;
 const SCALE_FACTOR = SPHERE_RADIUS / 384400; // Scale lunar distance to fit scene
 
+// Color scheme
+const COLORS = {
+    xAxis: 0xff0000,           // Red
+    yAxis: 0x00ff00,           // Green
+    zAxis: 0x0000ff,           // Blue
+    ariesMarker: 0xff0000,     // Red
+    equator: 0xffffff,         // White
+    lunarOrbitPlane: 0xff00ff, // Magenta
+    lunarAscending: 0x00ffff,  // Cyan
+    lunarDescending: 0xff8800, // Orange
+    moon: 0xaaaaaa,            // Gray
+    chandrayaanPlane: 0xffff00,     // Yellow
+    chandrayaanOrbit: 0xffa500,     // Gold/Amber
+    chandrayaanAscending: 0x88ff88, // Light Green
+    chandrayaanDescending: 0xff88ff,// Pink
+    chandrayaan: 0xffffff      // White
+};
+
 function init() {
     // Scene
     scene = new THREE.Scene();
@@ -131,7 +149,7 @@ function createXAxis() {
     ];
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
     const material = new THREE.LineDashedMaterial({
-        color: 0xff0000, // Red
+        color: COLORS.xAxis,
         linewidth: 1,
         dashSize: 3,
         gapSize: 2
@@ -150,7 +168,7 @@ function createYAxis() {
     ];
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
     const material = new THREE.LineDashedMaterial({
-        color: 0x00ff00, // Green
+        color: COLORS.yAxis,
         linewidth: 1,
         dashSize: 3,
         gapSize: 2
@@ -169,7 +187,7 @@ function createZAxis() {
     ];
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
     const material = new THREE.LineDashedMaterial({
-        color: 0x0000ff, // Blue
+        color: COLORS.zAxis,
         linewidth: 1,
         dashSize: 3,
         gapSize: 2
@@ -182,7 +200,7 @@ function createZAxis() {
 function createAriesMarker() {
     // Create marker at First Point of Aries (0° RA on equator)
     const geometry = new THREE.SphereGeometry(1, 16, 16);
-    const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const material = new THREE.MeshBasicMaterial({ color: COLORS.ariesMarker });
     ariesMarker = new THREE.Mesh(geometry, material);
     ariesMarker.position.set(SPHERE_RADIUS, 0, 0);
     scene.add(ariesMarker);
@@ -219,14 +237,14 @@ function createGreatCircle(radius, color, inclination = 0, raan = 0) {
 }
 
 function createEquator() {
-    equatorCircle = createGreatCircle(SPHERE_RADIUS, 0x00ff00);
+    equatorCircle = createGreatCircle(SPHERE_RADIUS, COLORS.equator);
     scene.add(equatorCircle);
 }
 
 function createLunarOrbitCircle() {
     lunarOrbitCircle = createGreatCircle(
         SPHERE_RADIUS,
-        0xff00ff,
+        COLORS.lunarOrbitPlane,
         params.lunarInclination,
         params.lunarNodes
     );
@@ -236,7 +254,7 @@ function createLunarOrbitCircle() {
 function createChandrayaanOrbitCircle() {
     chandrayaanOrbitCircle = createGreatCircle(
         SPHERE_RADIUS,
-        0xffff00,
+        COLORS.chandrayaanPlane,
         params.chandrayaanInclination,
         params.chandrayaanNodes
     );
@@ -247,13 +265,13 @@ function createLunarNodes() {
     // Nodes are where the lunar orbit intersects the equatorial plane
     const nodeGeometry = new THREE.SphereGeometry(1, 16, 16);
 
-    // Ascending node (cyan)
-    const lunarAscendingMaterial = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+    // Ascending node
+    const lunarAscendingMaterial = new THREE.MeshBasicMaterial({ color: COLORS.lunarAscending });
     lunarAscendingNode = new THREE.Mesh(nodeGeometry, lunarAscendingMaterial);
     scene.add(lunarAscendingNode);
 
-    // Descending node (red)
-    const lunarDescendingMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    // Descending node
+    const lunarDescendingMaterial = new THREE.MeshBasicMaterial({ color: COLORS.lunarDescending });
     lunarDescendingNode = new THREE.Mesh(nodeGeometry, lunarDescendingMaterial);
     scene.add(lunarDescendingNode);
 
@@ -264,13 +282,13 @@ function createChandrayaanNodes() {
     // Nodes are where Chandrayaan orbit intersects the equatorial plane
     const nodeGeometry = new THREE.SphereGeometry(1, 16, 16);
 
-    // Ascending node (light blue)
-    const chandrayaanAscendingMaterial = new THREE.MeshBasicMaterial({ color: 0x88ffff });
+    // Ascending node
+    const chandrayaanAscendingMaterial = new THREE.MeshBasicMaterial({ color: COLORS.chandrayaanAscending });
     chandrayaanAscendingNode = new THREE.Mesh(nodeGeometry, chandrayaanAscendingMaterial);
     scene.add(chandrayaanAscendingNode);
 
-    // Descending node (orange)
-    const chandrayaanDescendingMaterial = new THREE.MeshBasicMaterial({ color: 0xff8800 });
+    // Descending node
+    const chandrayaanDescendingMaterial = new THREE.MeshBasicMaterial({ color: COLORS.chandrayaanDescending });
     chandrayaanDescendingNode = new THREE.Mesh(nodeGeometry, chandrayaanDescendingMaterial);
     scene.add(chandrayaanDescendingNode);
 
@@ -319,7 +337,7 @@ function updateChandrayaanNodePositions() {
 function createMoon() {
     // Create Moon on a circular orbit (orbit path not rendered, just the Moon)
     const moonGeometry = new THREE.SphereGeometry(3, 32, 32);
-    const moonMaterial = new THREE.MeshPhongMaterial({ color: 0xaaaaaa });
+    const moonMaterial = new THREE.MeshPhongMaterial({ color: COLORS.moon });
     moon = new THREE.Mesh(moonGeometry, moonMaterial);
 
     scene.add(moon);
@@ -360,7 +378,7 @@ function updateLunarOrbitCircle() {
     scene.remove(lunarOrbitCircle);
     lunarOrbitCircle = createGreatCircle(
         SPHERE_RADIUS,
-        0xff00ff,
+        COLORS.lunarOrbitPlane,
         params.lunarInclination,
         params.lunarNodes
     );
@@ -372,7 +390,7 @@ function updateChandrayaanOrbitCircle() {
     scene.remove(chandrayaanOrbitCircle);
     chandrayaanOrbitCircle = createGreatCircle(
         SPHERE_RADIUS,
-        0xffff00,
+        COLORS.chandrayaanPlane,
         params.chandrayaanInclination,
         params.chandrayaanNodes
     );
@@ -395,7 +413,7 @@ function createChandrayaanOrbit() {
 
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
     const material = new THREE.LineBasicMaterial({
-        color: 0xffaa00,
+        color: COLORS.chandrayaanOrbit,
         linewidth: 2
     });
     chandrayaanOrbitCircle3D = new THREE.Line(geometry, material);
@@ -404,7 +422,7 @@ function createChandrayaanOrbit() {
 
     // Create Chandrayaan spacecraft
     const spacecraftGeometry = new THREE.SphereGeometry(2, 16, 16);
-    const spacecraftMaterial = new THREE.MeshPhongMaterial({ color: 0xffffff });
+    const spacecraftMaterial = new THREE.MeshPhongMaterial({ color: COLORS.chandrayaan });
     chandrayaan = new THREE.Mesh(spacecraftGeometry, spacecraftMaterial);
 
     // Position Chandrayaan at periapsis (in direction of omega)
@@ -447,7 +465,7 @@ function updateChandrayaanOrbit() {
 
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
     const material = new THREE.LineBasicMaterial({
-        color: 0xffaa00,
+        color: COLORS.chandrayaanOrbit,
         linewidth: 2
     });
     chandrayaanOrbitCircle3D = new THREE.Line(geometry, material);
@@ -464,18 +482,7 @@ function updateChandrayaanOrbit() {
 }
 
 function updateOrbitalElements() {
-    const elements = document.getElementById('orbital-elements');
-    elements.innerHTML = `
-        <strong>Lunar Orbit:</strong><br>
-        Inclination: ${params.lunarInclination.toFixed(2)}°<br>
-        Nodes (RAAN): ${params.lunarNodes.toFixed(2)}°<br>
-        Moon RA: ${params.moonRA.toFixed(2)}°<br>
-        <br>
-        <strong>Chandrayaan Orbit:</strong><br>
-        Inclination: ${params.chandrayaanInclination.toFixed(2)}°<br>
-        Nodes (RAAN): ${params.chandrayaanNodes.toFixed(2)}°<br>
-        ω (Arg. Periapsis): ${params.chandrayaanOmega.toFixed(2)}°
-    `;
+    // Info panel removed - orbital elements now shown in GUI controls
 }
 
 function setupGUI() {
@@ -521,7 +528,7 @@ function setupGUI() {
 
     // Lunar orbit folder
     const lunarFolder = gui.addFolder('Lunar Orbit Parameters');
-    lunarFolder.add(params, 'lunarInclination', 18, 28, 0.1).name('Inclination (°)').onChange(() => {
+    lunarFolder.add(params, 'lunarInclination', 18.3, 28.6, 0.1).name('Inclination (°)').onChange(() => {
         updateLunarOrbitCircle();
         updateLunarNodePositions();
         updateMoonPosition();

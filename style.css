@@ -16,26 +16,57 @@ body {
     height: 100vh;
 }
 
-#info-panel {
+#legend-panel {
     position: absolute;
     top: 10px;
     left: 10px;
-    background: rgba(0, 0, 0, 0.7);
-    padding: 15px;
-    border-radius: 5px;
-    min-width: 250px;
-    font-size: 14px;
-    pointer-events: none;
+    background: rgba(0, 0, 0, 0.8);
+    padding: 8px;
+    border-radius: 4px;
+    width: 180px;
+    font-size: 10px;
+    pointer-events: auto;
+    z-index: 999;
 }
 
-#info-panel h3 {
-    margin-bottom: 10px;
+#legend-panel h3 {
+    margin: 0 0 4px 0;
     border-bottom: 1px solid #666;
-    padding-bottom: 5px;
+    padding-bottom: 2px;
+    user-select: none;
+    font-size: 12px;
 }
 
-#orbital-elements {
-    line-height: 1.6;
+#legend-content {
+    line-height: 1.1;
+}
+
+.legend-section {
+    margin-bottom: 6px;
+}
+
+.legend-section strong {
+    color: #aaa;
+    font-size: 10px;
+    display: block;
+    margin-bottom: 2px;
+}
+
+.legend-item {
+    display: block;
+    margin: 0;
+    padding: 1px 0;
+    font-size: 10px;
+}
+
+.legend-color {
+    display: inline-block;
+    width: 14px;
+    height: 8px;
+    margin-right: 5px;
+    border: 1px solid #555;
+    border-radius: 2px;
+    flex-shrink: 0;
 }
 
 .lil-gui {
@@ -45,9 +76,18 @@ body {
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
-    #info-panel {
-        font-size: 12px;
-        min-width: 200px;
-        padding: 10px;
+    #legend-panel {
+        width: 160px;
+        font-size: 9px;
+        padding: 6px;
+    }
+
+    .legend-color {
+        width: 12px;
+        height: 7px;
+    }
+
+    .legend-item {
+        font-size: 9px;
     }
 }
