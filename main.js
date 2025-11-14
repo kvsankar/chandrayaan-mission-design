@@ -539,6 +539,7 @@ function createRAANLines() {
         linewidth: 2
     });
     raanLine1 = new THREE.Line(geometry1, material1);
+    raanLine1.visible = params.showRAANAngle;
     scene.add(raanLine1);
 
     // Line 2: From origin to ascending node
@@ -557,6 +558,7 @@ function createRAANLines() {
         linewidth: 2
     });
     raanLine2 = new THREE.Line(geometry2, material2);
+    raanLine2.visible = params.showRAANAngle;
     scene.add(raanLine2);
 
     // Arc: Connect endpoints of the two lines
@@ -576,6 +578,7 @@ function createRAANLines() {
         linewidth: 2
     });
     raanArc = new THREE.Line(arcGeometry, arcMaterial);
+    raanArc.visible = params.showRAANAngle;
     scene.add(raanArc);
 
     // Filled pie sector with hatching
@@ -616,10 +619,12 @@ function createRAANLines() {
 
     raanPie = new THREE.Mesh(pieGeometry, pieMaterial);
     raanPie.renderOrder = 10; // Render on top of celestial sphere
+    raanPie.visible = params.showRAANAngle;
     scene.add(raanPie);
 
     // Create text label for RAAN
     createRAAnLabel(raan, lineLength);
+    raanLabel.visible = params.showRAANAngle;
 }
 
 function createRAAnLabel(raan, radius) {
@@ -788,6 +793,7 @@ function createAOPLines() {
     });
     aopLine1 = new THREE.Line(geometry1, material1);
     aopLine1.computeLineDistances();
+    aopLine1.visible = params.showAOPAngle;
     scene.add(aopLine1);
 
     // Line 2: From origin to periapsis
@@ -810,6 +816,7 @@ function createAOPLines() {
     });
     aopLine2 = new THREE.Line(geometry2, material2);
     aopLine2.computeLineDistances();
+    aopLine2.visible = params.showAOPAngle;
     scene.add(aopLine2);
 
     // Arc: Connect endpoints along the orbital plane
@@ -832,6 +839,7 @@ function createAOPLines() {
         linewidth: 2
     });
     aopArc = new THREE.Line(arcGeometry, arcMaterial);
+    aopArc.visible = params.showAOPAngle;
     scene.add(aopArc);
 
     // Filled pie sector
@@ -875,10 +883,12 @@ function createAOPLines() {
 
     aopPie = new THREE.Mesh(pieGeometry, pieMaterial);
     aopPie.renderOrder = 10;
+    aopPie.visible = params.showAOPAngle;
     scene.add(aopPie);
 
     // Create text label for AOP
     createAOPLabel(omega, inc, raan, lineLength);
+    aopLabel.visible = params.showAOPAngle;
 }
 
 function createAOPLabel(omega, inc, raan, radius) {
