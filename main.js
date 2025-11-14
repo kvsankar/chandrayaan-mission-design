@@ -17,6 +17,9 @@ let aopLine1, aopLine2, aopArc, aopPie, aopLabel; // AOP angle visualization
 
 // Parameters
 const params = {
+    // Global mode
+    appMode: 'Explore', // 'Explore' or 'Game'
+
     // Visibility toggles
     showEquator: true,
     showAxes: true,
@@ -41,8 +44,10 @@ const params = {
     chandrayaanInclination: 30, // degrees
     chandrayaanNodes: 0, // RAAN - Right Ascension of Ascending Node
     chandrayaanOmega: 45, // Argument of periapsis (degrees)
-    chandrayaanPerigeeAlt: 180, // Perigee altitude in km (apogee fixed at lunar orbit distance)
+    chandrayaanPerigeeAlt: 180, // Perigee altitude in km
+    chandrayaanApogeeAlt: 378029, // Apogee altitude in km (default: 384400 - 6371 = lunar orbit distance altitude)
     chandrayaanTrueAnomaly: 0, // True anomaly (position along orbit, degrees)
+    chandrayaanPeriod: '--', // Orbital period (display only)
 };
 
 // Timeline state
@@ -54,13 +59,27 @@ let timelineState = {
     daysElapsed: 0
 };
 
+// Launch event state
+let launchEvent = {
+    exists: false,
+    date: null,
+    inclination: 21.5,
+    raan: 0,
+    omega: 178,
+    perigeeAlt: 180,
+    apogeeAlt: 384400
+};
+
 // GUI controller references (for enabling/disabling)
 let lunarControllers = {};
+let chandrayaanControllers = {};
+let lunarFolder, chandrayaanFolder, moonModeController;
 
 const SPHERE_RADIUS = 100;
 const LUNAR_ORBIT_DISTANCE = 384400; // Lunar orbit distance in km
 const SCALE_FACTOR = SPHERE_RADIUS / LUNAR_ORBIT_DISTANCE; // Scale lunar distance to fit scene
 const EARTH_RADIUS = 6371; // Earth radius in km
+const EARTH_MU = 398600.4418; // Earth's gravitational parameter (km^3/s^2)
 
 // Helper function to calculate Chandrayaan orbit eccentricity
 function calculateChandrayaanEccentricity() {
@@ -68,6 +87,127 @@ function calculateChandrayaanEccentricity() {
     const apogeeDistance = LUNAR_ORBIT_DISTANCE;
     const e = (apogeeDistance - perigeeDistance) / (apogeeDistance + perigeeDistance);
     return e;
+}
+
+// Calculate orbital period from perigee and apogee altitudes
+function calculateOrbitalPeriod(perigeeAlt, apogeeAlt) {
+    const rp = EARTH_RADIUS + perigeeAlt; // Perigee distance from Earth center (km)
+    const ra = EARTH_RADIUS + apogeeAlt;  // Apogee distance from Earth center (km)
+    const a = (rp + ra) / 2; // Semi-major axis (km)
+    const T = 2 * Math.PI * Math.sqrt(Math.pow(a, 3) / EARTH_MU); // Period in seconds
+    return T;
+}
+
+// Format period as human-readable string
+function formatPeriod(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+
+    if (hours > 24) {
+        const days = Math.floor(hours / 24);
+        const remainingHours = hours % 24;
+        return `${days}d ${remainingHours}h ${minutes}m`;
+    } else if (hours > 0) {
+        return `${hours}h ${minutes}m ${secs}s`;
+    } else {
+        return `${minutes}m ${secs}s`;
+    }
+}
+
+// Solve Kepler's equation to get true anomaly from time since periapsis
+function getTrueAnomalyFromTime(timeSinceLaunch, perigeeAlt, apogeeAlt) {
+    const rp = EARTH_RADIUS + perigeeAlt;
+    const ra = EARTH_RADIUS + apogeeAlt;
+    const a = (rp + ra) / 2; // Semi-major axis
+    const e = (ra - rp) / (ra + rp); // Eccentricity
+
+    const n = Math.sqrt(EARTH_MU / Math.pow(a, 3)); // Mean motion (rad/s)
+    const M = n * timeSinceLaunch; // Mean anomaly (radians)
+
+    // Solve Kepler's equation: M = E - e*sin(E) for eccentric anomaly E
+    // Using Newton-Raphson iteration
+    let E = M; // Initial guess
+    for (let i = 0; i < 10; i++) {
+        E = E - (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+    }
+
+    // Convert eccentric anomaly to true anomaly
+    const trueAnomaly = 2 * Math.atan2(
+        Math.sqrt(1 + e) * Math.sin(E / 2),
+        Math.sqrt(1 - e) * Math.cos(E / 2)
+    );
+
+    // Convert to degrees and normalize to 0-360
+    let trueAnomalyDeg = trueAnomaly * 180 / Math.PI;
+    if (trueAnomalyDeg < 0) trueAnomalyDeg += 360;
+
+    return trueAnomalyDeg;
+}
+
+// Cache for getChandrayaanParams to avoid redundant calculations per frame
+let cachedOrbitalParams = null;
+let lastParamsCacheFrame = -1;
+let currentAnimationFrame = 0;
+
+// Invalidate the orbital params cache (call when parameters change manually)
+function invalidateOrbitalParamsCache() {
+    cachedOrbitalParams = null;
+    lastParamsCacheFrame = -1;
+}
+
+// Get current chandrayaan orbital parameters (manual or from launch event)
+function getChandrayaanParams() {
+    // Return cached result if already calculated this frame
+    if (currentAnimationFrame === lastParamsCacheFrame && cachedOrbitalParams !== null) {
+        return cachedOrbitalParams;
+    }
+
+    // Calculate new parameters
+    let result;
+
+    // If a launch event exists, always use launch parameters for the orbit
+    // This prevents the orbit from jumping when crossing the launch date
+    if (launchEvent.exists) {
+        const isLaunched = timelineState.currentDate >= launchEvent.date;
+
+        let trueAnomaly;
+        if (isLaunched) {
+            // After launch: calculate true anomaly from time since launch
+            const timeSinceLaunch = (timelineState.currentDate.getTime() - launchEvent.date.getTime()) / 1000;
+            trueAnomaly = getTrueAnomalyFromTime(timeSinceLaunch, launchEvent.perigeeAlt, launchEvent.apogeeAlt);
+        } else {
+            // Before launch: freeze at perigee (true anomaly = 0)
+            trueAnomaly = 0;
+        }
+
+        result = {
+            inclination: launchEvent.inclination,
+            raan: launchEvent.raan,
+            omega: launchEvent.omega,
+            perigeeAlt: launchEvent.perigeeAlt,
+            apogeeAlt: launchEvent.apogeeAlt,
+            trueAnomaly: trueAnomaly,
+            isLaunched: isLaunched
+        };
+    } else {
+        // No launch event: use manual parameters
+        result = {
+            inclination: params.chandrayaanInclination,
+            raan: params.chandrayaanNodes,
+            omega: params.chandrayaanOmega,
+            perigeeAlt: params.chandrayaanPerigeeAlt,
+            apogeeAlt: params.chandrayaanApogeeAlt,
+            trueAnomaly: params.chandrayaanTrueAnomaly,
+            isLaunched: false
+        };
+    }
+
+    // Cache the result
+    cachedOrbitalParams = result;
+    lastParamsCacheFrame = currentAnimationFrame;
+
+    return result;
 }
 
 // Calculate Moon's orbital elements from position and velocity vectors
@@ -254,6 +394,9 @@ function init() {
     // Setup timeline
     setupTimeline();
 
+    // Setup launch popup
+    setupLaunchPopup();
+
     // Update orbital elements display
     updateOrbitalElements();
 
@@ -337,10 +480,32 @@ function createZAxis() {
 
 function createAriesMarker() {
     // Create marker at First Point of Aries (0° RA on equator)
-    const geometry = new THREE.SphereGeometry(1, 16, 16);
-    const material = new THREE.MeshBasicMaterial({ color: COLORS.ariesMarker });
-    ariesMarker = new THREE.Mesh(geometry, material);
-    ariesMarker.position.set(SPHERE_RADIUS, 0, 0);
+    // Use Aries symbol ♈ as a sprite instead of a sphere
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.width = 128;
+    canvas.height = 128;
+
+    // Clear canvas to transparent
+    context.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw Aries symbol in red
+    context.fillStyle = '#ff0000';
+    context.font = 'Bold 80px Arial';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText('♈', canvas.width / 2, canvas.height / 2);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const spriteMaterial = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true // Enable transparency
+    });
+    ariesMarker = new THREE.Sprite(spriteMaterial);
+    ariesMarker.scale.set(8, 8, 1); // Make it visible
+
+    // Position at the tip of the X axis
+    ariesMarker.position.set(SPHERE_RADIUS * 1.2, 0, 0);
     scene.add(ariesMarker);
 }
 
@@ -576,20 +741,25 @@ function createChandrayaanOrbit() {
 }
 
 function updateChandrayaanOrbit() {
-    // Recreate Chandrayaan orbit with current parameters
+    // Recreate Chandrayaan orbit with current parameters (manual or launch)
     scene.remove(chandrayaanOrbitCircle3D);
 
+    // Get current parameters (manual or from launch event)
+    const orbitalParams = getChandrayaanParams();
+
     // Calculate orbital parameters
-    const e = calculateChandrayaanEccentricity();
-    const perigeeDistance = (EARTH_RADIUS + params.chandrayaanPerigeeAlt) * SCALE_FACTOR;
+    const rp = EARTH_RADIUS + orbitalParams.perigeeAlt;
+    const ra = EARTH_RADIUS + orbitalParams.apogeeAlt;
+    const e = (ra - rp) / (ra + rp);
+    const perigeeDistance = rp * SCALE_FACTOR;
     const a = perigeeDistance / (1 - e); // Semi-major axis
 
-    const segments = 128;
+    const segments = 512;
     const points = [];
 
-    const omega = THREE.MathUtils.degToRad(params.chandrayaanOmega);
-    const inc = THREE.MathUtils.degToRad(params.chandrayaanInclination);
-    const raan = THREE.MathUtils.degToRad(params.chandrayaanNodes);
+    const omega = THREE.MathUtils.degToRad(orbitalParams.omega);
+    const inc = THREE.MathUtils.degToRad(orbitalParams.inclination);
+    const raan = THREE.MathUtils.degToRad(orbitalParams.raan);
 
     // Create elliptical orbit in XZ plane using polar form
     for (let i = 0; i <= segments; i++) {
@@ -619,7 +789,7 @@ function updateChandrayaanOrbit() {
     scene.add(chandrayaanOrbitCircle3D);
 
     // Update Chandrayaan position based on true anomaly
-    const nu = THREE.MathUtils.degToRad(params.chandrayaanTrueAnomaly);
+    const nu = THREE.MathUtils.degToRad(orbitalParams.trueAnomaly);
     const r = a * (1 - e * e) / (1 + e * Math.cos(nu));
     const spacecraftPos = new THREE.Vector3(
         r * Math.cos(nu),
@@ -633,6 +803,17 @@ function updateChandrayaanOrbit() {
     spacecraftPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
 
     chandrayaan.position.copy(spacecraftPos);
+
+    // Update spacecraft appearance based on launch status
+    if (launchEvent.exists && !orbitalParams.isLaunched) {
+        // Launch exists but not reached yet - grey and frozen at perigee
+        chandrayaan.material.color.setHex(0x888888);
+        chandrayaan.material.emissive.setHex(0x000000);
+    } else {
+        // No launch event (manual mode) OR launched - white and active
+        chandrayaan.material.color.setHex(COLORS.chandrayaan);
+        chandrayaan.material.emissive.setHex(0x222222);
+    }
 }
 
 function updateOrbitalElements() {
@@ -1190,8 +1371,123 @@ function updateMoonFromRealPosition() {
     updateOrbitalElements();
 }
 
+function switchAppMode(mode) {
+    const timelinePanel = document.getElementById('timeline-panel');
+    const addLaunchBtn = document.getElementById('add-launch-btn');
+
+    if (mode === 'Explore') {
+        // Explore mode: Show all manual controls, hide timeline, force Gamed Moon mode
+        lunarFolder.show();
+        chandrayaanFolder.show();
+
+        // Force Moon to Gamed mode
+        params.moonMode = 'Gamed';
+
+        // Enable all lunar controls
+        lunarControllers.inclination.enable();
+        lunarControllers.nodes.enable();
+        lunarControllers.moonRA.enable();
+
+        // Enable all chandrayaan controls
+        chandrayaanControllers.inclination.enable();
+        chandrayaanControllers.nodes.enable();
+        chandrayaanControllers.omega.enable();
+        chandrayaanControllers.perigeeAlt.enable();
+        chandrayaanControllers.apogeeAlt.enable();
+        chandrayaanControllers.trueAnomaly.enable();
+
+        // Hide timeline panel
+        timelinePanel.style.display = 'none';
+
+        // Update period display
+        updateChandrayaanPeriodDisplay();
+
+    } else if (mode === 'Game') {
+        // Game mode: Show controls but disabled, show timeline, force Real Moon mode
+        lunarFolder.show();
+        chandrayaanFolder.show();
+
+        // Force Moon to Real mode
+        params.moonMode = 'Real';
+
+        // Disable lunar controls (show but grayed out)
+        lunarControllers.inclination.disable();
+        lunarControllers.nodes.disable();
+        lunarControllers.moonRA.disable();
+
+        // Disable all chandrayaan controls (show but grayed out)
+        chandrayaanControllers.inclination.disable();
+        chandrayaanControllers.nodes.disable();
+        chandrayaanControllers.omega.disable();
+        chandrayaanControllers.perigeeAlt.disable();
+        chandrayaanControllers.apogeeAlt.disable();
+        chandrayaanControllers.trueAnomaly.disable();
+
+        // Show timeline panel
+        timelinePanel.style.display = 'block';
+        timelinePanel.classList.remove('disabled');
+
+        // Update moon position from current date when switching to Game mode
+        updateMoonFromRealPosition();
+
+        // Sync GUI controls with launch event if it exists
+        syncGUIWithLaunchEvent();
+
+        // Update period display
+        updateChandrayaanPeriodDisplay();
+    }
+}
+
+// Update Chandrayaan orbital period display
+function updateChandrayaanPeriodDisplay() {
+    const orbitalParams = getChandrayaanParams();
+    const periodSeconds = calculateOrbitalPeriod(orbitalParams.perigeeAlt, orbitalParams.apogeeAlt);
+    params.chandrayaanPeriod = formatPeriod(periodSeconds);
+
+    if (chandrayaanControllers.period) {
+        chandrayaanControllers.period.updateDisplay();
+    }
+}
+
+// Sync GUI controls with launch event parameters in Game mode
+function syncGUIWithLaunchEvent() {
+    if (params.appMode !== 'Game') return;
+
+    const orbitalParams = getChandrayaanParams();
+
+    // Check if period-affecting parameters changed
+    const perigeeChanged = params.chandrayaanPerigeeAlt !== orbitalParams.perigeeAlt;
+    const apogeeChanged = params.chandrayaanApogeeAlt !== orbitalParams.apogeeAlt;
+
+    // Update params without triggering onChange events
+    params.chandrayaanInclination = orbitalParams.inclination;
+    params.chandrayaanNodes = orbitalParams.raan;
+    params.chandrayaanOmega = orbitalParams.omega;
+    params.chandrayaanPerigeeAlt = orbitalParams.perigeeAlt;
+    params.chandrayaanApogeeAlt = orbitalParams.apogeeAlt;
+    params.chandrayaanTrueAnomaly = orbitalParams.trueAnomaly;
+
+    // Update GUI display
+    chandrayaanControllers.inclination.updateDisplay();
+    chandrayaanControllers.nodes.updateDisplay();
+    chandrayaanControllers.omega.updateDisplay();
+    chandrayaanControllers.perigeeAlt.updateDisplay();
+    chandrayaanControllers.apogeeAlt.updateDisplay();
+    chandrayaanControllers.trueAnomaly.updateDisplay();
+
+    // Only update period display if perigee or apogee changed
+    if (perigeeChanged || apogeeChanged) {
+        updateChandrayaanPeriodDisplay();
+    }
+}
+
 function setupGUI() {
     const gui = new GUI();
+
+    // App Mode selector at the very top
+    gui.add(params, 'appMode', ['Explore', 'Game']).name('Mode').onChange(value => {
+        switchAppMode(value);
+    });
 
     // Visibility folder
     const visibilityFolder = gui.addFolder('Visibility');
@@ -1246,30 +1542,7 @@ function setupGUI() {
     visibilityFolder.open();
 
     // Lunar orbit folder
-    const lunarFolder = gui.addFolder('Lunar Orbit Parameters');
-
-    // Moon mode toggle
-    lunarFolder.add(params, 'moonMode', ['Gamed', 'Real']).name('Moon Mode').onChange(value => {
-        const isGamed = (value === 'Gamed');
-        const timelinePanel = document.getElementById('timeline-panel');
-
-        // Enable/disable manual controls based on mode
-        if (isGamed) {
-            // Gamed mode: enable manual controls, disable timeline
-            lunarControllers.inclination.enable();
-            lunarControllers.nodes.enable();
-            lunarControllers.moonRA.enable();
-            timelinePanel.classList.add('disabled');
-        } else {
-            // Real mode: disable manual controls, enable timeline
-            lunarControllers.inclination.disable();
-            lunarControllers.nodes.disable();
-            lunarControllers.moonRA.disable();
-            timelinePanel.classList.remove('disabled');
-            // Update moon position from current date when switching to Real mode
-            updateMoonFromRealPosition();
-        }
-    });
+    lunarFolder = gui.addFolder('Lunar Orbit Parameters');
 
     // Store controller references for enable/disable
     lunarControllers.inclination = lunarFolder.add(params, 'lunarInclination', 18.3, 28.6, 0.1).name('Inclination (°)').onChange(() => {
@@ -1291,15 +1564,15 @@ function setupGUI() {
     lunarFolder.open();
 
     // Chandrayaan orbit folder
-    const chandrayaanFolder = gui.addFolder('Chandrayaan Orbit Parameters');
-    chandrayaanFolder.add(params, 'chandrayaanInclination', 0, 90, 0.1).name('Inclination (°)').onChange(() => {
+    chandrayaanFolder = gui.addFolder('Chandrayaan Orbit Parameters');
+    chandrayaanControllers.inclination = chandrayaanFolder.add(params, 'chandrayaanInclination', 0, 90, 0.1).name('Inclination (°)').onChange(() => {
         updateChandrayaanOrbitCircle();
         updateChandrayaanOrbit();
         updateChandrayaanNodePositions();
         updateAOPLines();
         updateOrbitalElements();
     });
-    chandrayaanFolder.add(params, 'chandrayaanNodes', 0, 360, 1).name('Nodes (RAAN) (°)').onChange(() => {
+    chandrayaanControllers.nodes = chandrayaanFolder.add(params, 'chandrayaanNodes', 0, 360, 1).name('Nodes (RAAN) (°)').onChange(() => {
         updateChandrayaanOrbitCircle();
         updateChandrayaanOrbit();
         updateChandrayaanNodePositions();
@@ -1307,20 +1580,33 @@ function setupGUI() {
         updateAOPLines();
         updateOrbitalElements();
     });
-    chandrayaanFolder.add(params, 'chandrayaanOmega', 0, 360, 1).name('ω (Arg. Periapsis) (°)').onChange(() => {
+    chandrayaanControllers.omega = chandrayaanFolder.add(params, 'chandrayaanOmega', 0, 360, 1).name('ω (Arg. Periapsis) (°)').onChange(() => {
         updateChandrayaanOrbit();
         updateAOPLines();
         updateOrbitalElements();
     });
-    chandrayaanFolder.add(params, 'chandrayaanPerigeeAlt', 180, 10000, 10).name('Perigee Altitude (km)').onChange(() => {
+    chandrayaanControllers.perigeeAlt = chandrayaanFolder.add(params, 'chandrayaanPerigeeAlt', 180, 600000, 100).name('Perigee Altitude (km)').onChange(() => {
+        updateChandrayaanOrbit();
+        updateOrbitalElements();
+        updateChandrayaanPeriodDisplay();
+    });
+    chandrayaanControllers.apogeeAlt = chandrayaanFolder.add(params, 'chandrayaanApogeeAlt', 180, 600000, 100).name('Apogee Altitude (km)').onChange(() => {
+        updateChandrayaanOrbit();
+        updateOrbitalElements();
+        updateChandrayaanPeriodDisplay();
+    });
+    chandrayaanControllers.trueAnomaly = chandrayaanFolder.add(params, 'chandrayaanTrueAnomaly', 0, 360, 1).name('True Anomaly (°)').onChange(() => {
         updateChandrayaanOrbit();
         updateOrbitalElements();
     });
-    chandrayaanFolder.add(params, 'chandrayaanTrueAnomaly', 0, 360, 1).name('True Anomaly (°)').onChange(() => {
-        updateChandrayaanOrbit();
-        updateOrbitalElements();
-    });
+    chandrayaanControllers.period = chandrayaanFolder.add(params, 'chandrayaanPeriod').name('Orbital Period').disable();
     chandrayaanFolder.open();
+
+    // Initialize period display
+    updateChandrayaanPeriodDisplay();
+
+    // Initialize app mode
+    switchAppMode(params.appMode);
 }
 
 function setupTimeline() {
@@ -1375,6 +1661,7 @@ function setupTimeline() {
             timelineState.startDate.getTime() + timelineState.daysElapsed * 24 * 60 * 60 * 1000
         );
         updateCurrentDateDisplay();
+        updateCountdownTimer();
 
         if (params.moonMode === 'Real') {
             updateMoonFromRealPosition();
@@ -1404,7 +1691,376 @@ function setupTimeline() {
     // Playback speed
     playbackSpeedSelect.addEventListener('change', (e) => {
         timelineState.speed = parseFloat(e.target.value);
+        updateSpeedButtons();
     });
+
+    // Speed control buttons
+    const speedDownBtn = document.getElementById('speed-down-btn');
+    const speedUpBtn = document.getElementById('speed-up-btn');
+
+    const speedOptions = [
+        { value: 0.000011574, label: 'Realtime' },
+        { value: 0.000694, label: '1 min/sec' },
+        { value: 0.006944, label: '10 min/sec' },
+        { value: 0.020833, label: '30 min/sec' },
+        { value: 0.041667, label: '1 hr/sec' },
+        { value: 0.125, label: '3 hr/sec' },
+        { value: 0.25, label: '6 hr/sec' },
+        { value: 0.5, label: '12 hr/sec' },
+        { value: 1, label: '1 day/sec' },
+        { value: 2, label: '2 days/sec' },
+        { value: 5, label: '5 days/sec' }
+    ];
+
+    function updateSpeedButtons() {
+        const currentValue = parseFloat(playbackSpeedSelect.value);
+        const currentIndex = speedOptions.findIndex(opt => Math.abs(opt.value - currentValue) < 0.0001);
+
+        // Update down button
+        if (currentIndex > 0) {
+            speedDownBtn.disabled = false;
+            speedDownBtn.textContent = `◄ ${speedOptions[currentIndex - 1].label}`;
+        } else {
+            speedDownBtn.disabled = true;
+            speedDownBtn.textContent = '◄';
+        }
+
+        // Update up button
+        if (currentIndex < speedOptions.length - 1) {
+            speedUpBtn.disabled = false;
+            speedUpBtn.textContent = `${speedOptions[currentIndex + 1].label} ►`;
+        } else {
+            speedUpBtn.disabled = true;
+            speedUpBtn.textContent = '►';
+        }
+    }
+
+    speedDownBtn.addEventListener('click', () => {
+        const currentValue = parseFloat(playbackSpeedSelect.value);
+        const currentIndex = speedOptions.findIndex(opt => Math.abs(opt.value - currentValue) < 0.0001);
+        if (currentIndex > 0) {
+            playbackSpeedSelect.value = speedOptions[currentIndex - 1].value;
+            timelineState.speed = speedOptions[currentIndex - 1].value;
+            updateSpeedButtons();
+        }
+    });
+
+    speedUpBtn.addEventListener('click', () => {
+        const currentValue = parseFloat(playbackSpeedSelect.value);
+        const currentIndex = speedOptions.findIndex(opt => Math.abs(opt.value - currentValue) < 0.0001);
+        if (currentIndex < speedOptions.length - 1) {
+            playbackSpeedSelect.value = speedOptions[currentIndex + 1].value;
+            timelineState.speed = speedOptions[currentIndex + 1].value;
+            updateSpeedButtons();
+        }
+    });
+
+    // Initialize button states
+    updateSpeedButtons();
+}
+
+function setupLaunchPopup() {
+    const addLaunchBtn = document.getElementById('add-launch-btn');
+    const launchPopup = document.getElementById('launch-popup');
+    const closeLaunchBtn = document.getElementById('close-launch-popup');
+    const saveLaunchBtn = document.getElementById('save-launch-btn');
+    const deleteLaunchBtn = document.getElementById('delete-launch-btn');
+    const launchMarker = document.getElementById('launch-marker');
+
+    const launchDateInput = document.getElementById('launch-date');
+    const launchInclinationSelect = document.getElementById('launch-inclination');
+    const launchOmegaSelect = document.getElementById('launch-omega');
+    const launchRAANInput = document.getElementById('launch-raan');
+    const launchPerigeeInput = document.getElementById('launch-perigee');
+    const launchApogeeInput = document.getElementById('launch-apogee');
+    const launchPeriodDisplay = document.getElementById('launch-period-display');
+
+    // Update AOP options based on inclination
+    function updateAOPOptions() {
+        const inc = parseFloat(launchInclinationSelect.value);
+        launchOmegaSelect.innerHTML = '';
+
+        if (inc === 21.5) {
+            launchOmegaSelect.innerHTML = '<option value="178">178°</option>';
+        } else if (inc === 41.8) {
+            launchOmegaSelect.innerHTML = '<option value="198">198°</option><option value="203">203°</option>';
+        }
+    }
+
+    launchInclinationSelect.addEventListener('change', updateAOPOptions);
+
+    // Update period display
+    function updatePeriodDisplay() {
+        const perigee = parseFloat(launchPerigeeInput.value);
+        const apogee = parseFloat(launchApogeeInput.value);
+        const period = calculateOrbitalPeriod(perigee, apogee);
+        launchPeriodDisplay.textContent = formatPeriod(period);
+    }
+
+    launchPerigeeInput.addEventListener('input', updatePeriodDisplay);
+    launchApogeeInput.addEventListener('input', updatePeriodDisplay);
+
+    // Open popup
+    addLaunchBtn.addEventListener('click', () => {
+        if (launchEvent.exists) {
+            // Edit existing launch
+            addLaunchBtn.textContent = '✏️ Edit Launch';
+            const localDateString = new Date(launchEvent.date.getTime() - launchEvent.date.getTimezoneOffset() * 60000)
+                .toISOString().slice(0, 16);
+            launchDateInput.value = localDateString;
+            launchInclinationSelect.value = launchEvent.inclination;
+            updateAOPOptions();
+            launchOmegaSelect.value = launchEvent.omega;
+            launchRAANInput.value = launchEvent.raan;
+            launchPerigeeInput.value = launchEvent.perigeeAlt;
+            launchApogeeInput.value = launchEvent.apogeeAlt;
+            deleteLaunchBtn.style.display = 'block';
+        } else {
+            // New launch - default to current timeline date
+            addLaunchBtn.textContent = '🚀 Add Launch';
+            const localDateString = new Date(timelineState.currentDate.getTime() - timelineState.currentDate.getTimezoneOffset() * 60000)
+                .toISOString().slice(0, 16);
+            launchDateInput.value = localDateString;
+            launchInclinationSelect.value = '21.5';
+            updateAOPOptions();
+            launchRAANInput.value = '0';
+            launchPerigeeInput.value = '180';
+            launchApogeeInput.value = '384400';
+            deleteLaunchBtn.style.display = 'none';
+        }
+
+        updatePeriodDisplay();
+        launchPopup.style.display = 'flex';
+    });
+
+    // Close popup
+    function closePopup() {
+        launchPopup.style.display = 'none';
+    }
+
+    closeLaunchBtn.addEventListener('click', closePopup);
+    launchPopup.addEventListener('click', (e) => {
+        if (e.target === launchPopup) closePopup();
+    });
+
+    // Save launch
+    saveLaunchBtn.addEventListener('click', () => {
+        launchEvent.exists = true;
+        launchEvent.date = new Date(launchDateInput.value);
+        launchEvent.inclination = parseFloat(launchInclinationSelect.value);
+        launchEvent.omega = parseFloat(launchOmegaSelect.value);
+        launchEvent.raan = parseFloat(launchRAANInput.value);
+        launchEvent.perigeeAlt = parseFloat(launchPerigeeInput.value);
+        launchEvent.apogeeAlt = parseFloat(launchApogeeInput.value);
+
+        // Invalidate cache since launch parameters changed
+        invalidateOrbitalParamsCache();
+
+        // Update button text
+        addLaunchBtn.textContent = '✏️ Edit Launch';
+
+        // Update launch marker position
+        updateLaunchMarker();
+
+        // Update countdown timer
+        updateCountdownTimer();
+
+        // Sync GUI controls with launch event in Game mode
+        syncGUIWithLaunchEvent();
+
+        // Update period display
+        updateChandrayaanPeriodDisplay();
+
+        closePopup();
+    });
+
+    // Delete launch
+    deleteLaunchBtn.addEventListener('click', () => {
+        launchEvent.exists = false;
+        launchEvent.date = null;
+        launchMarker.style.display = 'none';
+        addLaunchBtn.textContent = '🚀 Add Launch';
+
+        // Invalidate cache since reverting to manual parameters
+        invalidateOrbitalParamsCache();
+
+        // Hide countdown timer
+        updateCountdownTimer();
+
+        // Sync GUI controls with manual parameters in Game mode
+        syncGUIWithLaunchEvent();
+
+        // Update orbit to show manual parameters
+        updateChandrayaanOrbit();
+
+        // Update period display
+        updateChandrayaanPeriodDisplay();
+
+        closePopup();
+    });
+
+    // Update launch marker position on timeline
+    function updateLaunchMarker() {
+        if (!launchEvent.exists) {
+            launchMarker.style.display = 'none';
+            return;
+        }
+
+        // Calculate days from start
+        const daysFromStart = (launchEvent.date.getTime() - timelineState.startDate.getTime()) / (24 * 60 * 60 * 1000);
+
+        // Clamp to [0, 90] range to handle small timing differences
+        const clampedDays = Math.max(0, Math.min(90, daysFromStart));
+
+        // Hide if significantly outside window (more than 1 day before or after)
+        if (daysFromStart < -1 || daysFromStart > 91) {
+            launchMarker.style.display = 'none';
+            return;
+        }
+
+        // Show marker at relative position (0-100%)
+        const percentage = (clampedDays / 90) * 100;
+        launchMarker.style.display = 'block';
+        launchMarker.style.left = `${percentage}%`;
+    }
+
+    // Drag launch marker
+    let isDraggingMarker = false;
+
+    launchMarker.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        isDraggingMarker = true;
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isDraggingMarker) return;
+
+        // Use timeline-wrapper rect since marker is positioned relative to it
+        const wrapper = document.getElementById('timeline-wrapper');
+        const wrapperRect = wrapper.getBoundingClientRect();
+        const x = e.clientX - wrapperRect.left;
+        const percentage = Math.max(0, Math.min(1, x / wrapperRect.width));
+        const days = percentage * 90;
+
+        // Update launch date
+        launchEvent.date = new Date(timelineState.startDate.getTime() + days * 24 * 60 * 60 * 1000);
+
+        // Directly set marker position during drag (no recalculation)
+        launchMarker.style.left = `${percentage * 100}%`;
+
+        // If we dragged past current timeline position, stop animation
+        if (timelineState.daysElapsed >= days) {
+            timelineState.isPlaying = false;
+            document.getElementById('play-pause-btn').textContent = '▶ Play';
+        }
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (isDraggingMarker) {
+            isDraggingMarker = false;
+            // Recalculate position after drag ends to ensure consistency
+            updateLaunchMarker();
+        }
+    });
+
+    // Update marker when timeline start date changes
+    const startDateInput = document.getElementById('start-date');
+    const originalStartDateHandler = startDateInput.onchange;
+    startDateInput.addEventListener('change', () => {
+        updateLaunchMarker();
+    });
+
+    // Click on marker to edit
+    launchMarker.addEventListener('click', (e) => {
+        if (!isDraggingMarker) {
+            e.stopPropagation();
+            addLaunchBtn.click();
+        }
+    });
+}
+
+function updateCountdownTimer() {
+    const countdownEl = document.getElementById('countdown-timer');
+
+    if (!launchEvent.exists) {
+        countdownEl.style.display = 'none';
+        return;
+    }
+
+    countdownEl.style.display = 'block';
+
+    // Calculate time difference in seconds
+    const diffMs = timelineState.currentDate.getTime() - launchEvent.date.getTime();
+    const diffSec = Math.abs(diffMs / 1000);
+
+    const hours = Math.floor(diffSec / 3600);
+    const minutes = Math.floor((diffSec % 3600) / 60);
+    const seconds = Math.floor(diffSec % 60);
+
+    const sign = diffMs < 0 ? '-' : '+';
+    const formattedTime = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+    countdownEl.textContent = `T${sign}${formattedTime}`;
+}
+
+// Update marker sizes based on camera distance (zoom-aware rendering)
+function updateMarkerSizes() {
+    const baseDistance = 150; // Reference distance (initial camera position)
+    const baseScale = 1.0; // Original size at base distance
+
+    // Node markers: cap scale to prevent huge spheres when zoomed in
+    const nodeMarkers = [
+        lunarAscendingNode,
+        lunarDescendingNode,
+        chandrayaanAscendingNode,
+        chandrayaanDescendingNode
+    ];
+
+    nodeMarkers.forEach(node => {
+        if (!node) return;
+
+        const distance = camera.position.distanceTo(node.position);
+
+        // Scale proportional to distance (farther = bigger to stay visible)
+        let scale = (distance / baseDistance) * baseScale;
+
+        // Cap the scale: min 0.3x (when very close), max 1.5x (when far)
+        // This prevents tiny dots when far AND huge spheres when close
+        const minScale = 0.3;
+        const maxScale = 1.5;
+        scale = Math.max(minScale, Math.min(maxScale, scale));
+
+        node.scale.setScalar(scale);
+    });
+
+    // Aries marker (sprite): same caps as nodes
+    if (ariesMarker) {
+        const distance = camera.position.distanceTo(ariesMarker.position);
+        let scale = (distance / baseDistance) * baseScale;
+
+        const minScale = 0.3;
+        const maxScale = 1.5;
+        scale = Math.max(minScale, Math.min(maxScale, scale));
+
+        // Sprites use uniform scale on X and Y (Z is always 1)
+        const baseSize = 8; // Original scale from creation
+        ariesMarker.scale.set(baseSize * scale, baseSize * scale, 1);
+    }
+
+    // Spacecraft: slightly larger caps
+    if (chandrayaan) {
+        const distance = camera.position.distanceTo(chandrayaan.position);
+
+        let scale = (distance / baseDistance) * baseScale;
+
+        // Cap: min 0.5x, max 2.0x (allow slightly larger than nodes)
+        const minScale = 0.5;
+        const maxScale = 2.0;
+        scale = Math.max(minScale, Math.min(maxScale, scale));
+
+        chandrayaan.scale.setScalar(scale);
+    }
 }
 
 function onWindowResize() {
@@ -1417,6 +2073,9 @@ let lastFrameTime = Date.now();
 
 function animate() {
     requestAnimationFrame(animate);
+
+    // Increment frame counter to invalidate getChandrayaanParams() cache
+    currentAnimationFrame++;
 
     // Handle timeline animation
     if (timelineState.isPlaying) {
@@ -1453,13 +2112,26 @@ function animate() {
             minute: '2-digit'
         });
 
+        // Update countdown timer if launch exists
+        updateCountdownTimer();
+
         // Update moon position if in Real mode
         if (params.moonMode === 'Real') {
             updateMoonFromRealPosition();
         }
+
+        // Update chandrayaan orbit if launched
+        if (launchEvent.exists) {
+            updateChandrayaanOrbit();
+            // Sync GUI controls with current orbital state in Game mode
+            syncGUIWithLaunchEvent();
+        }
     } else {
         lastFrameTime = Date.now();
     }
+
+    // Update marker sizes based on zoom level
+    updateMarkerSizes();
 
     controls.update();
     renderer.render(scene, camera);
