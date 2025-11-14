@@ -11,6 +11,8 @@ let chandrayaanAscendingNode, chandrayaanDescendingNode;
 let chandrayaanOrbitCircle3D, chandrayaan;
 let moon;
 let xAxis, yAxis, zAxis, ariesMarker;
+let raanLine1, raanLine2, raanArc, raanPie, raanLabel; // RAAN angle visualization
+let aopLine1, aopLine2, aopArc, aopPie, aopLabel; // AOP angle visualization
 
 // Parameters
 const params = {
@@ -23,6 +25,8 @@ const params = {
     showChandrayaanOrbitPlane: true,
     showChandrayaanOrbit: true,
     showChandrayaanNodes: true,
+    showRAANAngle: false,
+    showAOPAngle: false,
 
     // Lunar orbit parameters (plane only, with Moon on circular orbit)
     lunarInclination: 23.44, // degrees (relative to equator)
@@ -32,7 +36,7 @@ const params = {
     // Chandrayaan orbit parameters (elliptical)
     chandrayaanInclination: 30, // degrees
     chandrayaanNodes: 0, // RAAN - Right Ascension of Ascending Node
-    chandrayaanOmega: 0, // Argument of periapsis (degrees)
+    chandrayaanOmega: 45, // Argument of periapsis (degrees)
     chandrayaanPerigeeAlt: 180, // Perigee altitude in km (apogee fixed at lunar orbit distance)
     chandrayaanTrueAnomaly: 0, // True anomaly (position along orbit, degrees)
 };
@@ -126,6 +130,12 @@ function init() {
     // Create Chandrayaan circular orbit and spacecraft
     createChandrayaanOrbit();
 
+    // Create RAAN angle visualization
+    createRAANLines();
+
+    // Create AOP angle visualization
+    createAOPLines();
+
     // Setup GUI
     setupGUI();
 
@@ -146,9 +156,11 @@ function createCelestialSphere() {
         transparent: true,
         opacity: 0.3,
         side: THREE.DoubleSide,
-        wireframe: false
+        wireframe: false,
+        depthWrite: false
     });
     celestialSphere = new THREE.Mesh(geometry, material);
+    celestialSphere.renderOrder = 0; // Render before other transparent objects
     scene.add(celestialSphere);
 }
 
@@ -512,6 +524,526 @@ function updateOrbitalElements() {
     // Info panel removed - orbital elements now shown in GUI controls
 }
 
+function createRAANLines() {
+    const lineLength = SPHERE_RADIUS; // Extend to celestial sphere
+    const edgeColor = 0xcccccc; // Light grey for all edges
+
+    // Line 1: From origin to First Point of Aries (along X-axis)
+    const points1 = [
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(lineLength, 0, 0)
+    ];
+    const geometry1 = new THREE.BufferGeometry().setFromPoints(points1);
+    const material1 = new THREE.LineBasicMaterial({
+        color: edgeColor,
+        linewidth: 2
+    });
+    raanLine1 = new THREE.Line(geometry1, material1);
+    scene.add(raanLine1);
+
+    // Line 2: From origin to ascending node
+    const raan = THREE.MathUtils.degToRad(params.chandrayaanNodes);
+    const points2 = [
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(
+            lineLength * Math.cos(raan),
+            0,
+            -lineLength * Math.sin(raan) // Negative for counter-clockwise
+        )
+    ];
+    const geometry2 = new THREE.BufferGeometry().setFromPoints(points2);
+    const material2 = new THREE.LineBasicMaterial({
+        color: edgeColor,
+        linewidth: 2
+    });
+    raanLine2 = new THREE.Line(geometry2, material2);
+    scene.add(raanLine2);
+
+    // Arc: Connect endpoints of the two lines
+    const arcPoints = [];
+    const segments = 64;
+    for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * raan; // From 0 to raan
+        arcPoints.push(new THREE.Vector3(
+            lineLength * Math.cos(angle),
+            0,
+            -lineLength * Math.sin(angle) // Negative for counter-clockwise
+        ));
+    }
+    const arcGeometry = new THREE.BufferGeometry().setFromPoints(arcPoints);
+    const arcMaterial = new THREE.LineBasicMaterial({
+        color: edgeColor,
+        linewidth: 2
+    });
+    raanArc = new THREE.Line(arcGeometry, arcMaterial);
+    scene.add(raanArc);
+
+    // Filled pie sector with hatching
+    const vertices = [];
+    const indices = [];
+    const yOffset = 0.1; // Slight offset above equatorial plane to avoid z-fighting
+
+    // Center vertex
+    vertices.push(0, yOffset, 0);
+
+    // Edge vertices along the arc
+    for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * raan;
+        vertices.push(
+            lineLength * Math.cos(angle),
+            yOffset,
+            -lineLength * Math.sin(angle)
+        );
+    }
+
+    // Create triangles from center to arc (reversed winding for outward facing)
+    for (let i = 1; i <= segments; i++) {
+        indices.push(0, i + 1, i);
+    }
+
+    const pieGeometry = new THREE.BufferGeometry();
+    pieGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    pieGeometry.setIndex(indices);
+    pieGeometry.computeVertexNormals();
+
+    const pieMaterial = new THREE.MeshBasicMaterial({
+        color: 0xf0f0f0, // Very light grey/off-white
+        transparent: true,
+        opacity: 0.25,
+        side: THREE.DoubleSide,
+        depthWrite: false
+    });
+
+    raanPie = new THREE.Mesh(pieGeometry, pieMaterial);
+    raanPie.renderOrder = 10; // Render on top of celestial sphere
+    scene.add(raanPie);
+
+    // Create text label for RAAN
+    createRAAnLabel(raan, lineLength);
+}
+
+function createRAAnLabel(raan, radius) {
+    // Create canvas for text
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.width = 256;
+    canvas.height = 64;
+
+    context.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    context.font = 'Bold 40px Arial';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText('RAAN', canvas.width / 2, canvas.height / 2);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+    raanLabel = new THREE.Sprite(spriteMaterial);
+
+    // Position at midpoint of arc
+    const midAngle = raan / 2;
+    raanLabel.position.set(
+        radius * Math.cos(midAngle),
+        5, // Slightly above the plane
+        -radius * Math.sin(midAngle)
+    );
+    raanLabel.scale.set(10, 2.5, 1); // Scale the sprite
+
+    scene.add(raanLabel);
+}
+
+function updateRAANLines() {
+    // Remove old lines, arc, pie, and label
+    scene.remove(raanLine1);
+    scene.remove(raanLine2);
+    scene.remove(raanArc);
+    scene.remove(raanPie);
+    scene.remove(raanLabel);
+
+    const lineLength = SPHERE_RADIUS; // Extend to celestial sphere
+    const edgeColor = 0xcccccc; // Light grey for all edges
+
+    // Line 1: From origin to First Point of Aries (always along X-axis, doesn't change)
+    const points1 = [
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(lineLength, 0, 0)
+    ];
+    const geometry1 = new THREE.BufferGeometry().setFromPoints(points1);
+    const material1 = new THREE.LineBasicMaterial({
+        color: edgeColor,
+        linewidth: 2
+    });
+    raanLine1 = new THREE.Line(geometry1, material1);
+    raanLine1.visible = params.showRAANAngle;
+    scene.add(raanLine1);
+
+    // Line 2: From origin to ascending node (updates with RAAN)
+    const raan = THREE.MathUtils.degToRad(params.chandrayaanNodes);
+    const points2 = [
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(
+            lineLength * Math.cos(raan),
+            0,
+            -lineLength * Math.sin(raan)
+        )
+    ];
+    const geometry2 = new THREE.BufferGeometry().setFromPoints(points2);
+    const material2 = new THREE.LineBasicMaterial({
+        color: edgeColor,
+        linewidth: 2
+    });
+    raanLine2 = new THREE.Line(geometry2, material2);
+    raanLine2.visible = params.showRAANAngle;
+    scene.add(raanLine2);
+
+    // Arc: Connect endpoints of the two lines
+    const arcPoints = [];
+    const segments = 64;
+    for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * raan; // From 0 to raan
+        arcPoints.push(new THREE.Vector3(
+            lineLength * Math.cos(angle),
+            0,
+            -lineLength * Math.sin(angle)
+        ));
+    }
+    const arcGeometry = new THREE.BufferGeometry().setFromPoints(arcPoints);
+    const arcMaterial = new THREE.LineBasicMaterial({
+        color: edgeColor,
+        linewidth: 2
+    });
+    raanArc = new THREE.Line(arcGeometry, arcMaterial);
+    raanArc.visible = params.showRAANAngle;
+    scene.add(raanArc);
+
+    // Filled pie sector with hatching
+    const vertices = [];
+    const indices = [];
+    const yOffset = 0.1; // Slight offset above equatorial plane to avoid z-fighting
+
+    // Center vertex
+    vertices.push(0, yOffset, 0);
+
+    // Edge vertices along the arc
+    for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * raan;
+        vertices.push(
+            lineLength * Math.cos(angle),
+            yOffset,
+            -lineLength * Math.sin(angle)
+        );
+    }
+
+    // Create triangles from center to arc (reversed winding for outward facing)
+    for (let i = 1; i <= segments; i++) {
+        indices.push(0, i + 1, i);
+    }
+
+    const pieGeometry = new THREE.BufferGeometry();
+    pieGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    pieGeometry.setIndex(indices);
+    pieGeometry.computeVertexNormals();
+
+    const pieMaterial = new THREE.MeshBasicMaterial({
+        color: 0xf0f0f0, // Very light grey/off-white
+        transparent: true,
+        opacity: 0.25,
+        side: THREE.DoubleSide,
+        depthWrite: false
+    });
+
+    raanPie = new THREE.Mesh(pieGeometry, pieMaterial);
+    raanPie.renderOrder = 10; // Render on top of celestial sphere
+    raanPie.visible = params.showRAANAngle;
+    scene.add(raanPie);
+
+    // Create text label for RAAN
+    createRAAnLabel(raan, lineLength);
+    raanLabel.visible = params.showRAANAngle;
+}
+
+function createAOPLines() {
+    const lineLength = SPHERE_RADIUS; // Extend to celestial sphere
+    const edgeColor = 0xcccccc; // Light grey for all edges
+
+    const omega = THREE.MathUtils.degToRad(params.chandrayaanOmega);
+    const inc = THREE.MathUtils.degToRad(params.chandrayaanInclination);
+    const raan = THREE.MathUtils.degToRad(params.chandrayaanNodes);
+
+    // Line 1: From origin to ascending node (on orbital plane)
+    // Ascending node is at angle 0 in the orbital plane
+    let nodeDir = new THREE.Vector3(lineLength, 0, 0);
+    nodeDir.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+    nodeDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+
+    const points1 = [
+        new THREE.Vector3(0, 0, 0),
+        nodeDir
+    ];
+    const geometry1 = new THREE.BufferGeometry().setFromPoints(points1);
+    const material1 = new THREE.LineDashedMaterial({
+        color: edgeColor,
+        linewidth: 2,
+        dashSize: 3,
+        gapSize: 2
+    });
+    aopLine1 = new THREE.Line(geometry1, material1);
+    aopLine1.computeLineDistances();
+    scene.add(aopLine1);
+
+    // Line 2: From origin to periapsis
+    // Periapsis is at angle omega in the orbital plane
+    let periapsisDir = new THREE.Vector3(lineLength, 0, 0);
+    periapsisDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), omega); // Rotate by omega first
+    periapsisDir.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+    periapsisDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+
+    const points2 = [
+        new THREE.Vector3(0, 0, 0),
+        periapsisDir
+    ];
+    const geometry2 = new THREE.BufferGeometry().setFromPoints(points2);
+    const material2 = new THREE.LineDashedMaterial({
+        color: edgeColor,
+        linewidth: 2,
+        dashSize: 3,
+        gapSize: 2
+    });
+    aopLine2 = new THREE.Line(geometry2, material2);
+    aopLine2.computeLineDistances();
+    scene.add(aopLine2);
+
+    // Arc: Connect endpoints along the orbital plane
+    const arcPoints = [];
+    const segments = 64;
+    for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * omega; // From 0 to omega
+        let point = new THREE.Vector3(
+            lineLength * Math.cos(angle),
+            0,
+            -lineLength * Math.sin(angle)
+        );
+        point.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+        point.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+        arcPoints.push(point);
+    }
+    const arcGeometry = new THREE.BufferGeometry().setFromPoints(arcPoints);
+    const arcMaterial = new THREE.LineBasicMaterial({
+        color: edgeColor,
+        linewidth: 2
+    });
+    aopArc = new THREE.Line(arcGeometry, arcMaterial);
+    scene.add(aopArc);
+
+    // Filled pie sector
+    const vertices = [];
+    const indices = [];
+    const yOffset = 0.1;
+
+    // Center vertex
+    vertices.push(0, yOffset, 0);
+
+    // Edge vertices along the arc
+    for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * omega;
+        let point = new THREE.Vector3(
+            lineLength * Math.cos(angle),
+            yOffset,
+            -lineLength * Math.sin(angle)
+        );
+        point.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+        point.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+        vertices.push(point.x, point.y, point.z);
+    }
+
+    // Create triangles from center to arc (reversed winding for outward facing)
+    for (let i = 1; i <= segments; i++) {
+        indices.push(0, i + 1, i);
+    }
+
+    const pieGeometry = new THREE.BufferGeometry();
+    pieGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    pieGeometry.setIndex(indices);
+    pieGeometry.computeVertexNormals();
+
+    const pieMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffe0e0, // Very light pink/rose
+        transparent: true,
+        opacity: 0.25,
+        side: THREE.DoubleSide,
+        depthWrite: false
+    });
+
+    aopPie = new THREE.Mesh(pieGeometry, pieMaterial);
+    aopPie.renderOrder = 10;
+    scene.add(aopPie);
+
+    // Create text label for AOP
+    createAOPLabel(omega, inc, raan, lineLength);
+}
+
+function createAOPLabel(omega, inc, raan, radius) {
+    // Create canvas for text
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.width = 256;
+    canvas.height = 64;
+
+    context.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    context.font = 'Bold 40px Arial';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText('AOP', canvas.width / 2, canvas.height / 2);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+    aopLabel = new THREE.Sprite(spriteMaterial);
+
+    // Position at midpoint of arc in orbital plane
+    const midAngle = omega / 2;
+    let labelPos = new THREE.Vector3(
+        radius * Math.cos(midAngle),
+        5,
+        -radius * Math.sin(midAngle)
+    );
+    labelPos.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+    labelPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+
+    aopLabel.position.copy(labelPos);
+    aopLabel.scale.set(10, 2.5, 1);
+
+    scene.add(aopLabel);
+}
+
+function updateAOPLines() {
+    // Remove old elements
+    scene.remove(aopLine1);
+    scene.remove(aopLine2);
+    scene.remove(aopArc);
+    scene.remove(aopPie);
+    scene.remove(aopLabel);
+
+    const lineLength = SPHERE_RADIUS;
+    const edgeColor = 0xcccccc;
+
+    const omega = THREE.MathUtils.degToRad(params.chandrayaanOmega);
+    const inc = THREE.MathUtils.degToRad(params.chandrayaanInclination);
+    const raan = THREE.MathUtils.degToRad(params.chandrayaanNodes);
+
+    // Line 1: From origin to ascending node
+    let nodeDir = new THREE.Vector3(lineLength, 0, 0);
+    nodeDir.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+    nodeDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+
+    const points1 = [
+        new THREE.Vector3(0, 0, 0),
+        nodeDir
+    ];
+    const geometry1 = new THREE.BufferGeometry().setFromPoints(points1);
+    const material1 = new THREE.LineDashedMaterial({
+        color: edgeColor,
+        linewidth: 2,
+        dashSize: 3,
+        gapSize: 2
+    });
+    aopLine1 = new THREE.Line(geometry1, material1);
+    aopLine1.computeLineDistances();
+    aopLine1.visible = params.showAOPAngle;
+    scene.add(aopLine1);
+
+    // Line 2: From origin to periapsis
+    let periapsisDir = new THREE.Vector3(lineLength, 0, 0);
+    periapsisDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), omega);
+    periapsisDir.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+    periapsisDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+
+    const points2 = [
+        new THREE.Vector3(0, 0, 0),
+        periapsisDir
+    ];
+    const geometry2 = new THREE.BufferGeometry().setFromPoints(points2);
+    const material2 = new THREE.LineDashedMaterial({
+        color: edgeColor,
+        linewidth: 2,
+        dashSize: 3,
+        gapSize: 2
+    });
+    aopLine2 = new THREE.Line(geometry2, material2);
+    aopLine2.computeLineDistances();
+    aopLine2.visible = params.showAOPAngle;
+    scene.add(aopLine2);
+
+    // Arc along orbital plane
+    const arcPoints = [];
+    const segments = 64;
+    for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * omega;
+        let point = new THREE.Vector3(
+            lineLength * Math.cos(angle),
+            0,
+            -lineLength * Math.sin(angle)
+        );
+        point.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+        point.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+        arcPoints.push(point);
+    }
+    const arcGeometry = new THREE.BufferGeometry().setFromPoints(arcPoints);
+    const arcMaterial = new THREE.LineBasicMaterial({
+        color: edgeColor,
+        linewidth: 2
+    });
+    aopArc = new THREE.Line(arcGeometry, arcMaterial);
+    aopArc.visible = params.showAOPAngle;
+    scene.add(aopArc);
+
+    // Filled pie sector
+    const vertices = [];
+    const indices = [];
+    const yOffset = 0.1;
+
+    // Center vertex
+    vertices.push(0, yOffset, 0);
+
+    // Edge vertices along the arc
+    for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * omega;
+        let point = new THREE.Vector3(
+            lineLength * Math.cos(angle),
+            yOffset,
+            -lineLength * Math.sin(angle)
+        );
+        point.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+        point.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+        vertices.push(point.x, point.y, point.z);
+    }
+
+    // Create triangles
+    for (let i = 1; i <= segments; i++) {
+        indices.push(0, i + 1, i);
+    }
+
+    const pieGeometry = new THREE.BufferGeometry();
+    pieGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    pieGeometry.setIndex(indices);
+    pieGeometry.computeVertexNormals();
+
+    const pieMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffe0e0, // Very light pink/rose
+        transparent: true,
+        opacity: 0.25,
+        side: THREE.DoubleSide,
+        depthWrite: false
+    });
+
+    aopPie = new THREE.Mesh(pieGeometry, pieMaterial);
+    aopPie.renderOrder = 10;
+    aopPie.visible = params.showAOPAngle;
+    scene.add(aopPie);
+
+    // Create label
+    createAOPLabel(omega, inc, raan, lineLength);
+    aopLabel.visible = params.showAOPAngle;
+}
+
 function setupGUI() {
     const gui = new GUI();
 
@@ -551,6 +1083,20 @@ function setupGUI() {
         chandrayaanAscendingNode.visible = value;
         chandrayaanDescendingNode.visible = value;
     });
+    chandrayaanVisFolder.add(params, 'showRAANAngle').name('Show RAAN Angle').onChange(value => {
+        raanLine1.visible = value;
+        raanLine2.visible = value;
+        raanArc.visible = value;
+        raanPie.visible = value;
+        raanLabel.visible = value;
+    });
+    chandrayaanVisFolder.add(params, 'showAOPAngle').name('Show AOP Angle').onChange(value => {
+        aopLine1.visible = value;
+        aopLine2.visible = value;
+        aopArc.visible = value;
+        aopPie.visible = value;
+        aopLabel.visible = value;
+    });
     visibilityFolder.open();
 
     // Lunar orbit folder
@@ -579,16 +1125,20 @@ function setupGUI() {
         updateChandrayaanOrbitCircle();
         updateChandrayaanOrbit();
         updateChandrayaanNodePositions();
+        updateAOPLines();
         updateOrbitalElements();
     });
     chandrayaanFolder.add(params, 'chandrayaanNodes', 0, 360, 1).name('Nodes (RAAN) (°)').onChange(() => {
         updateChandrayaanOrbitCircle();
         updateChandrayaanOrbit();
         updateChandrayaanNodePositions();
+        updateRAANLines();
+        updateAOPLines();
         updateOrbitalElements();
     });
     chandrayaanFolder.add(params, 'chandrayaanOmega', 0, 360, 1).name('ω (Arg. Periapsis) (°)').onChange(() => {
         updateChandrayaanOrbit();
+        updateAOPLines();
         updateOrbitalElements();
     });
     chandrayaanFolder.add(params, 'chandrayaanPerigeeAlt', 180, 10000, 10).name('Perigee Altitude (km)').onChange(() => {
