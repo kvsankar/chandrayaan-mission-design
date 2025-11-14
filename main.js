@@ -29,15 +29,26 @@ const params = {
     lunarNodes: 0, // RAAN - Right Ascension of Ascending Node
     moonRA: 0, // Moon's Right Ascension from First Point of Aries (degrees)
 
-    // Chandrayaan orbit parameters (circular)
+    // Chandrayaan orbit parameters (elliptical)
     chandrayaanInclination: 30, // degrees
     chandrayaanNodes: 0, // RAAN - Right Ascension of Ascending Node
     chandrayaanOmega: 0, // Argument of periapsis (degrees)
-    chandrayaanRadius: 6371 + 400, // Earth radius + 400km altitude (scaled)
+    chandrayaanPerigeeAlt: 180, // Perigee altitude in km (apogee fixed at lunar orbit distance)
+    chandrayaanTrueAnomaly: 0, // True anomaly (position along orbit, degrees)
 };
 
 const SPHERE_RADIUS = 100;
-const SCALE_FACTOR = SPHERE_RADIUS / 384400; // Scale lunar distance to fit scene
+const LUNAR_ORBIT_DISTANCE = 384400; // Lunar orbit distance in km
+const SCALE_FACTOR = SPHERE_RADIUS / LUNAR_ORBIT_DISTANCE; // Scale lunar distance to fit scene
+const EARTH_RADIUS = 6371; // Earth radius in km
+
+// Helper function to calculate Chandrayaan orbit eccentricity
+function calculateChandrayaanEccentricity() {
+    const perigeeDistance = EARTH_RADIUS + params.chandrayaanPerigeeAlt;
+    const apogeeDistance = LUNAR_ORBIT_DISTANCE;
+    const e = (apogeeDistance - perigeeDistance) / (apogeeDistance + perigeeDistance);
+    return e;
+}
 
 // Color scheme
 const COLORS = {
@@ -399,15 +410,21 @@ function updateChandrayaanOrbitCircle() {
 }
 
 function createChandrayaanOrbit() {
-    // Create a circular orbit for Chandrayaan
-    const radius = params.chandrayaanRadius * SCALE_FACTOR;
+    // Create an elliptical orbit for Chandrayaan
+    // Calculate orbital parameters
+    const e = calculateChandrayaanEccentricity();
+    const perigeeDistance = (EARTH_RADIUS + params.chandrayaanPerigeeAlt) * SCALE_FACTOR;
+    const a = perigeeDistance / (1 - e); // Semi-major axis
+
     const segments = 128;
     const points = [];
 
+    // Create ellipse using polar form: r(θ) = a(1-e²)/(1+e*cos(θ))
     for (let i = 0; i <= segments; i++) {
         const theta = (i / segments) * Math.PI * 2;
-        const x = radius * Math.cos(theta);
-        const z = -radius * Math.sin(theta); // Negative for counter-clockwise from above
+        const r = a * (1 - e * e) / (1 + e * Math.cos(theta));
+        const x = r * Math.cos(theta);
+        const z = -r * Math.sin(theta); // Negative for counter-clockwise from above
         points.push(new THREE.Vector3(x, 0, z));
     }
 
@@ -425,12 +442,9 @@ function createChandrayaanOrbit() {
     const spacecraftMaterial = new THREE.MeshPhongMaterial({ color: COLORS.chandrayaan });
     chandrayaan = new THREE.Mesh(spacecraftGeometry, spacecraftMaterial);
 
-    // Position Chandrayaan at periapsis (in direction of omega)
-    chandrayaan.position.set(radius, 0, 0);
-
     scene.add(chandrayaan);
 
-    // Apply orbital rotations (after spacecraft is created)
+    // Apply orbital rotations and position spacecraft
     updateChandrayaanOrbit();
 }
 
@@ -438,7 +452,11 @@ function updateChandrayaanOrbit() {
     // Recreate Chandrayaan orbit with current parameters
     scene.remove(chandrayaanOrbitCircle3D);
 
-    const radius = params.chandrayaanRadius * SCALE_FACTOR;
+    // Calculate orbital parameters
+    const e = calculateChandrayaanEccentricity();
+    const perigeeDistance = (EARTH_RADIUS + params.chandrayaanPerigeeAlt) * SCALE_FACTOR;
+    const a = perigeeDistance / (1 - e); // Semi-major axis
+
     const segments = 128;
     const points = [];
 
@@ -446,16 +464,17 @@ function updateChandrayaanOrbit() {
     const inc = THREE.MathUtils.degToRad(params.chandrayaanInclination);
     const raan = THREE.MathUtils.degToRad(params.chandrayaanNodes);
 
-    // Create circular orbit in XZ plane (counter-clockwise from above)
+    // Create elliptical orbit in XZ plane using polar form
     for (let i = 0; i <= segments; i++) {
         const theta = (i / segments) * Math.PI * 2;
+        const r = a * (1 - e * e) / (1 + e * Math.cos(theta));
         const point = new THREE.Vector3(
-            radius * Math.cos(theta),
+            r * Math.cos(theta),
             0,
-            -radius * Math.sin(theta)  // Negative for counter-clockwise viewing from above
+            -r * Math.sin(theta)  // Negative for counter-clockwise viewing from above
         );
 
-        // Apply rotations: omega, then inclination, then RAAN
+        // Apply rotations: omega (argument of periapsis), then inclination, then RAAN
         point.applyAxisAngle(new THREE.Vector3(0, 1, 0), omega);
         point.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
         point.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
@@ -472,8 +491,16 @@ function updateChandrayaanOrbit() {
     chandrayaanOrbitCircle3D.visible = params.showChandrayaanOrbit;
     scene.add(chandrayaanOrbitCircle3D);
 
-    // Update Chandrayaan position (at periapsis direction, omega = 0 in orbital plane)
-    const spacecraftPos = new THREE.Vector3(radius, 0, 0);
+    // Update Chandrayaan position based on true anomaly
+    const nu = THREE.MathUtils.degToRad(params.chandrayaanTrueAnomaly);
+    const r = a * (1 - e * e) / (1 + e * Math.cos(nu));
+    const spacecraftPos = new THREE.Vector3(
+        r * Math.cos(nu),
+        0,
+        -r * Math.sin(nu)
+    );
+
+    // Apply same rotations as orbit
     spacecraftPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), omega);
     spacecraftPos.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
     spacecraftPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
@@ -561,6 +588,14 @@ function setupGUI() {
         updateOrbitalElements();
     });
     chandrayaanFolder.add(params, 'chandrayaanOmega', 0, 360, 1).name('ω (Arg. Periapsis) (°)').onChange(() => {
+        updateChandrayaanOrbit();
+        updateOrbitalElements();
+    });
+    chandrayaanFolder.add(params, 'chandrayaanPerigeeAlt', 180, 10000, 10).name('Perigee Altitude (km)').onChange(() => {
+        updateChandrayaanOrbit();
+        updateOrbitalElements();
+    });
+    chandrayaanFolder.add(params, 'chandrayaanTrueAnomaly', 0, 360, 1).name('True Anomaly (°)').onChange(() => {
         updateChandrayaanOrbit();
         updateOrbitalElements();
     });
