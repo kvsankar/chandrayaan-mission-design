@@ -1,5 +1,6 @@
 # Screenshots and images
 *.png
+!chandrayaan-mission-design.png
 *.jpg
 *.jpeg
 *.gif
