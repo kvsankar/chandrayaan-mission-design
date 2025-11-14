@@ -2,6 +2,8 @@
 
 An interactive 3D visualization of Chandrayaan-3's orbital mechanics, demonstrating the relationship between Earth's equatorial plane, the Moon's orbit, and the spacecraft's highly elliptical transfer orbit.
 
+**🚀 [Live Demo](https://kvsankar.github.io/chandrayaan-mission-design/)**
+
 ![Chandrayaan-3 Orbit Visualization](chandrayaan-mission-design.png)
 
 ## Human Note
