@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GUI } from 'https://cdn.jsdelivr.net/npm/lil-gui@0.18/+esm';
+import * as Astronomy from 'astronomy-engine';
 
 // Three.js scene setup
 let scene, camera, renderer, controls;
@@ -28,6 +29,9 @@ const params = {
     showRAANAngle: false,
     showAOPAngle: false,
 
+    // Moon mode
+    moonMode: 'Gamed', // 'Real' or 'Gamed'
+
     // Lunar orbit parameters (plane only, with Moon on circular orbit)
     lunarInclination: 23.44, // degrees (relative to equator)
     lunarNodes: 0, // RAAN - Right Ascension of Ascending Node
@@ -41,6 +45,18 @@ const params = {
     chandrayaanTrueAnomaly: 0, // True anomaly (position along orbit, degrees)
 };
 
+// Timeline state
+let timelineState = {
+    startDate: new Date(),
+    currentDate: new Date(),
+    isPlaying: false,
+    speed: 0.25, // days per second (default: 6 hr/sec)
+    daysElapsed: 0
+};
+
+// GUI controller references (for enabling/disabling)
+let lunarControllers = {};
+
 const SPHERE_RADIUS = 100;
 const LUNAR_ORBIT_DISTANCE = 384400; // Lunar orbit distance in km
 const SCALE_FACTOR = SPHERE_RADIUS / LUNAR_ORBIT_DISTANCE; // Scale lunar distance to fit scene
@@ -52,6 +68,102 @@ function calculateChandrayaanEccentricity() {
     const apogeeDistance = LUNAR_ORBIT_DISTANCE;
     const e = (apogeeDistance - perigeeDistance) / (apogeeDistance + perigeeDistance);
     return e;
+}
+
+// Calculate Moon's orbital elements from position and velocity vectors
+function calculateOrbitalElements(posVector, velVector) {
+    // Convert to standard units (km and km/s)
+    const AU_TO_KM = 149597870.7;
+    const DAYS_TO_SEC = 86400.0;
+
+    const r = {
+        x: posVector.x * AU_TO_KM,
+        y: posVector.y * AU_TO_KM,
+        z: posVector.z * AU_TO_KM
+    };
+
+    const v = {
+        x: velVector.dx * AU_TO_KM / DAYS_TO_SEC,
+        y: velVector.dy * AU_TO_KM / DAYS_TO_SEC,
+        z: velVector.dz * AU_TO_KM / DAYS_TO_SEC
+    };
+
+    // Angular momentum vector h = r × v
+    const h = {
+        x: r.y * v.z - r.z * v.y,
+        y: r.z * v.x - r.x * v.z,
+        z: r.x * v.y - r.y * v.x
+    };
+
+    const hMag = Math.sqrt(h.x * h.x + h.y * h.y + h.z * h.z);
+
+    // Inclination (angle between h and z-axis)
+    const inclination = Math.acos(h.z / hMag) * 180 / Math.PI;
+
+    // Node vector n = k × h (where k is unit z-vector)
+    const n = {
+        x: -h.y,
+        y: h.x,
+        z: 0
+    };
+
+    const nMag = Math.sqrt(n.x * n.x + n.y * n.y);
+
+    // RAAN (Right Ascension of Ascending Node)
+    let raan = 0;
+    if (nMag > 1e-10) {
+        raan = Math.acos(n.x / nMag) * 180 / Math.PI;
+        if (n.y < 0) raan = 360 - raan;
+    }
+
+    return {
+        inclination: inclination,
+        raan: raan
+    };
+}
+
+// Calculate real Moon position using astronomy library
+function calculateRealMoonPosition(date) {
+    // Get geocentric position AND velocity of Moon using GeoMoonState
+    const state = Astronomy.GeoMoonState(date);
+
+    // Position vector
+    const geoVector = {
+        x: state.x,
+        y: state.y,
+        z: state.z,
+        t: state.t
+    };
+
+    // Velocity vector (already provided by GeoMoonState!)
+    const velVector = {
+        dx: state.vx,
+        dy: state.vy,
+        dz: state.vz
+    };
+
+    // Convert position vector to equatorial coordinates
+    const equatorial = Astronomy.EquatorFromVector(geoVector);
+
+    // Right Ascension in degrees (0-360)
+    const ra = equatorial.ra * 15; // Convert hours to degrees
+
+    // Declination in degrees
+    const dec = equatorial.dec;
+
+    // Distance in km
+    const distanceKm = equatorial.dist * 149597870.7; // AU to km
+
+    // Calculate orbital elements from position and velocity
+    const elements = calculateOrbitalElements(geoVector, velVector);
+
+    return {
+        ra: ra % 360,
+        dec: dec,
+        distance: distanceKm,
+        inclination: elements.inclination,
+        raan: elements.raan
+    };
 }
 
 // Color scheme
@@ -138,6 +250,9 @@ function init() {
 
     // Setup GUI
     setupGUI();
+
+    // Setup timeline
+    setupTimeline();
 
     // Update orbital elements display
     updateOrbitalElements();
@@ -1054,6 +1169,27 @@ function updateAOPLines() {
     aopLabel.visible = params.showAOPAngle;
 }
 
+// Update Moon position from real ephemeris
+function updateMoonFromRealPosition() {
+    const moonData = calculateRealMoonPosition(timelineState.currentDate);
+
+    // Update parameters with real values
+    params.moonRA = moonData.ra;
+    params.lunarInclination = moonData.inclination;
+    params.lunarNodes = moonData.raan;
+
+    // Update GUI display
+    if (lunarControllers.moonRA) lunarControllers.moonRA.updateDisplay();
+    if (lunarControllers.inclination) lunarControllers.inclination.updateDisplay();
+    if (lunarControllers.nodes) lunarControllers.nodes.updateDisplay();
+
+    // Update visual representation
+    updateLunarOrbitCircle();
+    updateLunarNodePositions();
+    updateMoonPosition();
+    updateOrbitalElements();
+}
+
 function setupGUI() {
     const gui = new GUI();
 
@@ -1111,19 +1247,44 @@ function setupGUI() {
 
     // Lunar orbit folder
     const lunarFolder = gui.addFolder('Lunar Orbit Parameters');
-    lunarFolder.add(params, 'lunarInclination', 18.3, 28.6, 0.1).name('Inclination (°)').onChange(() => {
+
+    // Moon mode toggle
+    lunarFolder.add(params, 'moonMode', ['Gamed', 'Real']).name('Moon Mode').onChange(value => {
+        const isGamed = (value === 'Gamed');
+        const timelinePanel = document.getElementById('timeline-panel');
+
+        // Enable/disable manual controls based on mode
+        if (isGamed) {
+            // Gamed mode: enable manual controls, disable timeline
+            lunarControllers.inclination.enable();
+            lunarControllers.nodes.enable();
+            lunarControllers.moonRA.enable();
+            timelinePanel.classList.add('disabled');
+        } else {
+            // Real mode: disable manual controls, enable timeline
+            lunarControllers.inclination.disable();
+            lunarControllers.nodes.disable();
+            lunarControllers.moonRA.disable();
+            timelinePanel.classList.remove('disabled');
+            // Update moon position from current date when switching to Real mode
+            updateMoonFromRealPosition();
+        }
+    });
+
+    // Store controller references for enable/disable
+    lunarControllers.inclination = lunarFolder.add(params, 'lunarInclination', 18.3, 28.6, 0.1).name('Inclination (°)').onChange(() => {
         updateLunarOrbitCircle();
         updateLunarNodePositions();
         updateMoonPosition();
         updateOrbitalElements();
     });
-    lunarFolder.add(params, 'lunarNodes', 0, 360, 1).name('Nodes (RAAN) (°)').onChange(() => {
+    lunarControllers.nodes = lunarFolder.add(params, 'lunarNodes', 0, 360, 1).name('Nodes (RAAN) (°)').onChange(() => {
         updateLunarOrbitCircle();
         updateLunarNodePositions();
         updateMoonPosition();
         updateOrbitalElements();
     });
-    lunarFolder.add(params, 'moonRA', 0, 360, 1).name('Moon RA (°)').onChange(() => {
+    lunarControllers.moonRA = lunarFolder.add(params, 'moonRA', 0, 360, 1).name('Moon RA (°)').onChange(() => {
         updateMoonPosition();
         updateOrbitalElements();
     });
@@ -1162,14 +1323,144 @@ function setupGUI() {
     chandrayaanFolder.open();
 }
 
+function setupTimeline() {
+    const startDateInput = document.getElementById('start-date');
+    const timelineSlider = document.getElementById('timeline-slider');
+    const currentDateSpan = document.getElementById('current-date');
+    const playPauseBtn = document.getElementById('play-pause-btn');
+    const resetBtn = document.getElementById('reset-btn');
+    const playbackSpeedSelect = document.getElementById('playback-speed');
+
+    // Initialize start date to now
+    const now = new Date();
+    timelineState.startDate = now;
+    timelineState.currentDate = new Date(now);
+
+    // Set datetime-local input value
+    const localDateString = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+        .toISOString()
+        .slice(0, 16);
+    startDateInput.value = localDateString;
+
+    // Update current date display
+    function updateCurrentDateDisplay() {
+        currentDateSpan.textContent = timelineState.currentDate.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+    updateCurrentDateDisplay();
+
+    // Start date change handler
+    startDateInput.addEventListener('change', (e) => {
+        timelineState.startDate = new Date(e.target.value);
+        timelineState.daysElapsed = parseFloat(timelineSlider.value);
+        timelineState.currentDate = new Date(
+            timelineState.startDate.getTime() + timelineState.daysElapsed * 24 * 60 * 60 * 1000
+        );
+        updateCurrentDateDisplay();
+
+        if (params.moonMode === 'Real') {
+            updateMoonFromRealPosition();
+        }
+    });
+
+    // Timeline slider handler
+    timelineSlider.addEventListener('input', (e) => {
+        timelineState.daysElapsed = parseFloat(e.target.value);
+        timelineState.currentDate = new Date(
+            timelineState.startDate.getTime() + timelineState.daysElapsed * 24 * 60 * 60 * 1000
+        );
+        updateCurrentDateDisplay();
+
+        if (params.moonMode === 'Real') {
+            updateMoonFromRealPosition();
+        }
+    });
+
+    // Play/Pause button
+    playPauseBtn.addEventListener('click', () => {
+        timelineState.isPlaying = !timelineState.isPlaying;
+        playPauseBtn.textContent = timelineState.isPlaying ? '⏸ Pause' : '▶ Play';
+    });
+
+    // Reset button
+    resetBtn.addEventListener('click', () => {
+        timelineState.isPlaying = false;
+        timelineState.daysElapsed = 0;
+        timelineSlider.value = 0;
+        timelineState.currentDate = new Date(timelineState.startDate);
+        updateCurrentDateDisplay();
+        playPauseBtn.textContent = '▶ Play';
+
+        if (params.moonMode === 'Real') {
+            updateMoonFromRealPosition();
+        }
+    });
+
+    // Playback speed
+    playbackSpeedSelect.addEventListener('change', (e) => {
+        timelineState.speed = parseFloat(e.target.value);
+    });
+}
+
 function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
+let lastFrameTime = Date.now();
+
 function animate() {
     requestAnimationFrame(animate);
+
+    // Handle timeline animation
+    if (timelineState.isPlaying) {
+        const now = Date.now();
+        const deltaTime = (now - lastFrameTime) / 1000; // seconds
+        lastFrameTime = now;
+
+        // Update days elapsed based on playback speed
+        const daysIncrement = timelineState.speed * deltaTime;
+        timelineState.daysElapsed += daysIncrement;
+
+        // Clamp to 90 days max
+        if (timelineState.daysElapsed >= 90) {
+            timelineState.daysElapsed = 90;
+            timelineState.isPlaying = false;
+            document.getElementById('play-pause-btn').textContent = '▶ Play';
+        }
+
+        // Update current date
+        timelineState.currentDate = new Date(
+            timelineState.startDate.getTime() + timelineState.daysElapsed * 24 * 60 * 60 * 1000
+        );
+
+        // Update slider and display
+        const slider = document.getElementById('timeline-slider');
+        slider.value = timelineState.daysElapsed;
+
+        const currentDateSpan = document.getElementById('current-date');
+        currentDateSpan.textContent = timelineState.currentDate.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+
+        // Update moon position if in Real mode
+        if (params.moonMode === 'Real') {
+            updateMoonFromRealPosition();
+        }
+    } else {
+        lastFrameTime = Date.now();
+    }
+
     controls.update();
     renderer.render(scene, camera);
 }

@@ -46,10 +46,44 @@
     {
         "imports": {
             "three": "https://unpkg.com/three@0.152.2/build/three.module.js",
-            "three/addons/": "https://unpkg.com/three@0.152.2/examples/jsm/"
+            "three/addons/": "https://unpkg.com/three@0.152.2/examples/jsm/",
+            "astronomy-engine": "https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/+esm"
         }
     }
     </script>
+
+    <div id="timeline-panel" class="disabled">
+        <div id="timeline-mode-message">Switch to Real mode to use timeline</div>
+        <div id="timeline-controls">
+            <div class="timeline-row">
+                <label for="start-date">Start Date/Time:</label>
+                <input type="datetime-local" id="start-date" />
+            </div>
+            <div class="timeline-row">
+                <label for="timeline-slider">Timeline:</label>
+                <input type="range" id="timeline-slider" min="0" max="90" value="0" step="0.1" />
+                <span id="current-date"></span>
+            </div>
+            <div class="timeline-row">
+                <button id="play-pause-btn">▶ Play</button>
+                <button id="reset-btn">↺ Reset</button>
+                <label for="playback-speed">Speed:</label>
+                <select id="playback-speed">
+                    <option value="5">5 days/sec</option>
+                    <option value="2">2 days/sec</option>
+                    <option value="1">1 day/sec</option>
+                    <option value="0.5">12 hr/sec</option>
+                    <option value="0.25" selected>6 hr/sec</option>
+                    <option value="0.125">3 hr/sec</option>
+                    <option value="0.041667">1 hr/sec</option>
+                    <option value="0.020833">30 min/sec</option>
+                    <option value="0.006944">10 min/sec</option>
+                    <option value="0.000694">1 min/sec</option>
+                    <option value="0.000011574">Realtime</option>
+                </select>
+            </div>
+        </div>
+    </div>
 
     <script type="module" src="main.js"></script>
     <script>

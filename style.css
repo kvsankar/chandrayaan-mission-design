@@ -74,6 +74,130 @@ body {
     --width: 300px;
 }
 
+#timeline-panel {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    padding: 12px 20px;
+    border-radius: 8px;
+    z-index: 999;
+    min-width: 600px;
+}
+
+#timeline-panel.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+#timeline-mode-message {
+    position: absolute;
+    top: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255, 165, 0, 0.9);
+    color: #000;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 11px;
+    white-space: nowrap;
+    display: none;
+    z-index: 1000;
+}
+
+#timeline-panel.disabled:hover #timeline-mode-message {
+    display: block;
+}
+
+#timeline-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.timeline-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+}
+
+.timeline-row label {
+    min-width: 110px;
+    color: #ccc;
+}
+
+#start-date {
+    flex: 1;
+    padding: 4px 8px;
+    background: #222;
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: #fff;
+    font-size: 11px;
+}
+
+#timeline-slider {
+    flex: 1;
+    height: 6px;
+    background: #333;
+    border-radius: 3px;
+    outline: none;
+    -webkit-appearance: none;
+}
+
+#timeline-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: #4CAF50;
+    cursor: pointer;
+    border-radius: 50%;
+}
+
+#timeline-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: #4CAF50;
+    cursor: pointer;
+    border-radius: 50%;
+    border: none;
+}
+
+#current-date {
+    color: #4CAF50;
+    font-weight: bold;
+    min-width: 150px;
+    font-size: 11px;
+}
+
+#play-pause-btn, #reset-btn {
+    padding: 6px 12px;
+    background: #333;
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: #fff;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.2s;
+}
+
+#play-pause-btn:hover, #reset-btn:hover {
+    background: #444;
+}
+
+#playback-speed {
+    padding: 4px 8px;
+    background: #222;
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: #fff;
+    font-size: 11px;
+    cursor: pointer;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
     #legend-panel {
@@ -89,5 +213,20 @@ body {
 
     .legend-item {
         font-size: 9px;
+    }
+
+    #timeline-panel {
+        min-width: 90%;
+        padding: 8px 12px;
+    }
+
+    .timeline-row {
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+
+    .timeline-row label {
+        min-width: 80px;
+        font-size: 10px;
     }
 }
