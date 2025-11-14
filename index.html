@@ -9,6 +9,21 @@
 <body>
     <div id="container"></div>
 
+    <!-- Mode Tabs -->
+    <div id="mode-tabs">
+        <button class="mode-tab active" data-mode="Explore">Explore</button>
+        <button class="mode-tab" data-mode="Plan">Plan</button>
+        <button class="mode-tab" data-mode="Game">Game</button>
+    </div>
+
+    <!-- Actions Panel -->
+    <div id="actions-panel">
+        <button id="add-launch-action-btn" class="action-add-btn">+ Add Launch</button>
+        <div id="launch-event-container" style="display: none;">
+            <!-- Launch event GUI will be mounted here -->
+        </div>
+    </div>
+
     <div id="legend-panel">
         <h3 onclick="toggleLegend()" style="cursor: pointer;">Legend <span id="legend-toggle">▼</span></h3>
         <div id="legend-content">
@@ -52,74 +67,46 @@
     }
     </script>
 
-    <div id="launch-popup" style="display: none;">
-        <div id="launch-popup-content">
-            <h3>Launch Parameters</h3>
-            <button id="close-launch-popup" class="close-btn">✕</button>
-
-            <div class="launch-param-row">
-                <label for="launch-date">Launch Date/Time:</label>
-                <input type="datetime-local" id="launch-date" />
-            </div>
-
-            <div class="launch-param-row">
-                <label for="launch-inclination">Inclination:</label>
-                <select id="launch-inclination">
-                    <option value="21.5">21.5°</option>
-                    <option value="41.8">41.8°</option>
-                </select>
-            </div>
-
-            <div class="launch-param-row">
-                <label for="launch-omega">Argument of Periapsis (ω):</label>
-                <select id="launch-omega">
-                    <option value="178">178°</option>
-                </select>
-            </div>
-
-            <div class="launch-param-row">
-                <label for="launch-raan">RAAN (Ω):</label>
-                <input type="number" id="launch-raan" min="0" max="360" step="0.1" value="0" />
-                <span>°</span>
-            </div>
-
-            <div class="launch-param-row">
-                <label for="launch-perigee">Perigee Altitude:</label>
-                <input type="number" id="launch-perigee" min="180" max="600000" step="10" value="180" />
-                <span>km</span>
-            </div>
-
-            <div class="launch-param-row">
-                <label for="launch-apogee">Apogee Altitude:</label>
-                <input type="number" id="launch-apogee" min="180" max="600000" step="100" value="384400" />
-                <span>km</span>
-            </div>
-
-            <div class="launch-param-row">
-                <label>Orbital Period:</label>
-                <span id="launch-period-display">--</span>
-            </div>
-
-            <div class="launch-buttons">
-                <button id="save-launch-btn" class="primary-btn">Save Launch</button>
-                <button id="delete-launch-btn" class="danger-btn" style="display: none;">Delete Launch</button>
-            </div>
-        </div>
-    </div>
-
     <div id="timeline-panel" class="disabled">
         <div id="timeline-mode-message">Switch to Real mode to use timeline</div>
         <div id="timeline-controls">
-            <!-- Top row: Start time | Current time + countdown | Timeline slider -->
-            <div class="timeline-row timeline-row-top">
+            <!-- Row 1: Start date | Active timeline name | Current time (NO SLIDER) -->
+            <div class="timeline-row timeline-row-main">
                 <input type="datetime-local" id="start-date" title="Start Date/Time" />
+                <div id="active-timeline-indicator">View</div>
                 <div id="date-display-column">
                     <div id="current-date"></div>
                     <div id="countdown-timer" style="display: none;"></div>
                 </div>
-                <div id="timeline-wrapper">
-                    <input type="range" id="timeline-slider" min="0" max="90" value="0" step="0.1" />
-                    <div id="launch-marker" style="display: none;"></div>
+            </div>
+            <!-- Row 2: View timeline with main slider -->
+            <div class="timeline-row timeline-row-selector">
+                <span class="timeline-name">View</span>
+                <input type="checkbox" id="timeline-slider-active" name="active-slider" checked />
+                <div class="timeline-slider-wrapper">
+                    <div id="timeline-wrapper">
+                        <input type="range" id="timeline-slider" min="0" max="90" value="0" step="0.1" />
+                        <div id="launch-marker" style="display: none;"></div>
+                    </div>
+                    <span id="timeline-slider-display">Day 0.0</span>
+                </div>
+            </div>
+            <!-- Row 3: Launch timeline -->
+            <div class="timeline-row timeline-row-selector">
+                <span class="timeline-name">Launch</span>
+                <input type="checkbox" id="launch-slider-active" name="active-slider" />
+                <div class="timeline-slider-wrapper">
+                    <input type="range" id="launch-slider" min="0" max="90" value="0" step="0.1" />
+                    <span id="launch-slider-display">Day 0.0</span>
+                </div>
+            </div>
+            <!-- Row 4: Intercept timeline -->
+            <div class="timeline-row timeline-row-selector">
+                <span class="timeline-name">Intercept</span>
+                <input type="checkbox" id="intercept-slider-active" name="active-slider" />
+                <div class="timeline-slider-wrapper">
+                    <input type="range" id="intercept-slider" min="0" max="90" value="5" step="0.1" />
+                    <span id="intercept-slider-display">Day 5.0</span>
                 </div>
             </div>
             <!-- Bottom row: Buttons (center aligned) + Speed -->
@@ -127,7 +114,6 @@
                 <div id="timeline-buttons-group">
                     <button id="play-pause-btn">▶ Play</button>
                     <button id="reset-btn">↺ Reset</button>
-                    <button id="add-launch-btn">🚀 Add Launch</button>
                     <div id="speed-controls">
                         <button id="speed-down-btn" title="Decrease speed">◄</button>
                         <select id="playback-speed">
