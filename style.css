@@ -158,6 +158,7 @@ body {
 .lil-gui {
     z-index: 1000 !important;
     --width: 300px;
+    right: 10px !important;
 }
 
 /* Timeline Wrapper and Launch Marker */
@@ -498,5 +499,34 @@ body {
         flex-wrap: wrap;
         gap: 5px;
         font-size: 10px;
+    }
+}
+
+/* Capture Message - Toast Style */
+#capture-message {
+    position: fixed;
+    top: 60px;
+    right: 10px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    padding: 12px 20px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: bold;
+    box-shadow: 0 2px 12px rgba(102, 126, 234, 0.5);
+    z-index: 10000;
+    animation: slideInRight 0.4s ease-out;
+    text-align: left;
+    max-width: 280px;
+}
+
+@keyframes slideInRight {
+    from {
+        right: -300px;
+        opacity: 0;
+    }
+    to {
+        right: 10px;
+        opacity: 1;
     }
 }

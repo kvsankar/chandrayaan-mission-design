@@ -28,6 +28,7 @@ const params = {
     showMoon: true,
     showChandrayaanOrbitPlane: true,
     showChandrayaanOrbit: true,
+    showChandrayaan: true,
     showChandrayaanNodes: true,
     showRAANAngle: false,
     showAOPAngle: false,
@@ -40,6 +41,7 @@ const params = {
     lunarNodes: 0, // RAAN - Right Ascension of Ascending Node
     moonRA: 0, // Moon's Right Ascension from First Point of Aries (degrees) - for Gamed mode input
     moonRADisplay: '--', // Current Moon RA (display only)
+    moonDistanceDisplay: '--', // Moon distance from Earth (display only)
 
     // Chandrayaan orbit parameters (elliptical)
     chandrayaanInclination: 30, // degrees
@@ -50,7 +52,25 @@ const params = {
     chandrayaanTrueAnomaly: 0, // True anomaly (position along orbit, degrees)
     chandrayaanPeriod: '--', // Orbital period (display only)
     chandrayaanRADisplay: '--', // Current Chandrayaan RA (display only)
+    craftEarthDistance: '--', // Craft distance from Earth (display only)
+    craftMoonDistance: '--', // Distance from craft to Moon in km (display only)
 };
+
+// Capture state
+const captureState = {
+    isCaptured: false,
+    captureDate: null,
+    captureThreshold: 2000 // km (center-to-center distance)
+};
+
+// Real positions cache (for accurate distance calculations)
+const realPositionsCache = {
+    moonPositionKm: null, // { x, y, z } in km from Earth center
+    craftPositionKm: null // { x, y, z } in km from Earth center
+};
+
+// Update guard to prevent circular updates
+let isUpdatingFromCode = false;
 
 // Timeline state
 let timelineState = {
@@ -74,12 +94,13 @@ let launchEvent = {
     exists: false,
     date: null,
     inclination: 21.5,  // Constrained to 21.5° or 41.8°
-    raan: 0,
+    raan: 5,
     omega: 178,  // For inc=21.5°, omega must be 178°
     perigeeAlt: 180,
-    apogeeAlt: 378029,
+    apogeeAlt: 370000,
     trueAnomaly: 0,
-    moonInterceptDate: null
+    moonInterceptDate: null,
+    captureDistance: 5000  // km - threshold for Moon capture (center-to-center)
 };
 
 // Draft state for Plan mode
@@ -102,6 +123,7 @@ const SPHERE_RADIUS = 100;
 const LUNAR_ORBIT_DISTANCE = 384400; // Lunar orbit distance in km
 const SCALE_FACTOR = SPHERE_RADIUS / LUNAR_ORBIT_DISTANCE; // Scale lunar distance to fit scene
 const EARTH_RADIUS = 6371; // Earth radius in km
+const MOON_RADIUS = 1737; // Moon radius in km
 const EARTH_MU = 398600.4418; // Earth's gravitational parameter (km^3/s^2)
 
 // Camera configuration
@@ -136,7 +158,7 @@ const ARIES_MARKER_BASE_SIZE = 8;
 // Helper function to calculate Chandrayaan orbit eccentricity
 function calculateChandrayaanEccentricity() {
     const perigeeDistance = EARTH_RADIUS + params.chandrayaanPerigeeAlt;
-    const apogeeDistance = LUNAR_ORBIT_DISTANCE;
+    const apogeeDistance = EARTH_RADIUS + params.chandrayaanApogeeAlt;
     const e = (apogeeDistance - perigeeDistance) / (apogeeDistance + perigeeDistance);
     return e;
 }
@@ -208,6 +230,17 @@ function invalidateOrbitalParamsCache() {
     lastParamsCacheFrame = -1;
 }
 
+// Get the date to use for rendering - single source of truth
+// This pulls from the active timeline (View/Launch/Intercept)
+function getRenderDate() {
+    // If renderControl.renderDate is set, use it (updated by updateRenderDate())
+    if (renderControl.renderDate) {
+        return renderControl.renderDate;
+    }
+    // Fallback to timeline's current date
+    return timelineState.currentDate;
+}
+
 // Get current chandrayaan orbital parameters (manual or from launch event)
 function getChandrayaanParams() {
     // Return cached result if already calculated this frame
@@ -221,12 +254,14 @@ function getChandrayaanParams() {
     // If a launch event exists, always use launch parameters for the orbit
     // This prevents the orbit from jumping when crossing the launch date
     if (launchEvent.exists) {
-        const isLaunched = timelineState.currentDate >= launchEvent.date;
+        // Use render date (respects active timeline) instead of current date
+        const renderDate = getRenderDate();
+        const isLaunched = renderDate >= launchEvent.date;
 
         let trueAnomaly;
         if (isLaunched) {
             // After launch: calculate true anomaly from time since launch
-            const timeSinceLaunch = (timelineState.currentDate.getTime() - launchEvent.date.getTime()) / 1000;
+            const timeSinceLaunch = (renderDate.getTime() - launchEvent.date.getTime()) / 1000;
             trueAnomaly = getTrueAnomalyFromTime(timeSinceLaunch, launchEvent.perigeeAlt, launchEvent.apogeeAlt);
         } else {
             // Before launch: freeze at perigee (true anomaly = 0)
@@ -349,12 +384,29 @@ function calculateRealMoonPosition(date) {
     // Calculate orbital elements from position and velocity
     const elements = calculateOrbitalElements(geoVector, velVector);
 
+    // Convert position vector from AU to km (in celestial coordinates)
+    const celestialPosKm = {
+        x: state.x * 149597870.7, // AU to km
+        y: state.y * 149597870.7,
+        z: state.z * 149597870.7
+    };
+
+    // Convert from celestial to Three.js coordinate system for consistent distance calculations
+    // Celestial: +X = Aries, +Y = RA90°, +Z = North Pole
+    // Three.js: +X = Aries, +Y = North Pole, -Z = RA90°
+    const positionKm = {
+        x: celestialPosKm.x,      // Celestial X → Three.js X
+        y: celestialPosKm.z,      // Celestial Z → Three.js Y
+        z: -celestialPosKm.y      // Celestial Y → Three.js -Z
+    };
+
     return {
         ra: ra % 360,
         dec: dec,
         distance: distanceKm,
         inclination: elements.inclination,
-        raan: elements.raan
+        raan: elements.raan,
+        positionKm: positionKm // Actual 3D position in km (Three.js coordinates)
     };
 }
 
@@ -705,31 +757,43 @@ function createMoon() {
 }
 
 function updateMoonPosition() {
-    // Position Moon based on Right Ascension (measured from First Point of Aries)
-    // RA is absolute and doesn't change when RAAN changes
-    // RA increases counter-clockwise when viewed from above (from north pole)
+    // If real position is available (Real mode), use it for visual display
+    if (realPositionsCache.moonPositionKm && params.moonMode === 'Real') {
+        const moonPos = realPositionsCache.moonPositionKm;
 
-    const ra = THREE.MathUtils.degToRad(params.moonRA);
-    const inc = THREE.MathUtils.degToRad(params.lunarInclination);
-    const raan = THREE.MathUtils.degToRad(params.lunarNodes);
+        // Position is already in Three.js coordinates, just scale for display
+        moon.position.set(
+            moonPos.x * SCALE_FACTOR,
+            moonPos.y * SCALE_FACTOR,
+            moonPos.z * SCALE_FACTOR
+        );
+    } else {
+        // Gamed mode: Position Moon based on Right Ascension (measured from First Point of Aries)
+        // RA is absolute and doesn't change when RAAN changes
+        // RA increases counter-clockwise when viewed from above (from north pole)
 
-    // Calculate the angle within the orbital plane
-    // When RAAN changes, this angle changes to keep RA constant in space
-    const angleInOrbit = ra - raan;
+        const ra = THREE.MathUtils.degToRad(params.moonRA);
+        const inc = THREE.MathUtils.degToRad(params.lunarInclination);
+        const raan = THREE.MathUtils.degToRad(params.lunarNodes);
 
-    // Start with position in the unrotated orbital plane (XZ plane)
-    // Negative Z makes counter-clockwise rotation when viewed from above
-    const posInOrbit = new THREE.Vector3(
-        SPHERE_RADIUS * Math.cos(angleInOrbit),
-        0,
-        -SPHERE_RADIUS * Math.sin(angleInOrbit)
-    );
+        // Calculate the angle within the orbital plane
+        // When RAAN changes, this angle changes to keep RA constant in space
+        const angleInOrbit = ra - raan;
 
-    // Apply orbital rotations: inclination around X-axis, then RAAN around Y-axis
-    posInOrbit.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
-    posInOrbit.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+        // Start with position in the unrotated orbital plane (XZ plane)
+        // Negative Z makes counter-clockwise rotation when viewed from above
+        const posInOrbit = new THREE.Vector3(
+            SPHERE_RADIUS * Math.cos(angleInOrbit),
+            0,
+            -SPHERE_RADIUS * Math.sin(angleInOrbit)
+        );
 
-    moon.position.copy(posInOrbit);
+        // Apply orbital rotations: inclination around X-axis, then RAAN around Y-axis
+        posInOrbit.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+        posInOrbit.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+
+        moon.position.copy(posInOrbit);
+    }
 }
 
 function updateLunarOrbitCircle() {
@@ -863,19 +927,131 @@ function updateChandrayaanOrbit() {
 
     chandrayaan.position.copy(spacecraftPos);
 
-    // Update spacecraft appearance based on launch status
-    if (launchEvent.exists && !orbitalParams.isLaunched) {
+    // Calculate and store actual position in km for accurate distance calculations
+    const rpKm = EARTH_RADIUS + orbitalParams.perigeeAlt;
+    const raKm = EARTH_RADIUS + orbitalParams.apogeeAlt;
+    const aKm = (rpKm + raKm) / 2; // Semi-major axis in km
+    const rKm = aKm * (1 - e * e) / (1 + e * Math.cos(nu)); // Distance from Earth center in km
+
+    // Position in orbital plane (km)
+    const craftPosKm = new THREE.Vector3(
+        rKm * Math.cos(nu),
+        0,
+        -rKm * Math.sin(nu)
+    );
+
+    // Apply same rotations to get actual position in km
+    craftPosKm.applyAxisAngle(new THREE.Vector3(0, 1, 0), omega);
+    craftPosKm.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+    craftPosKm.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+
+    // Store in cache
+    realPositionsCache.craftPositionKm = {
+        x: craftPosKm.x,
+        y: craftPosKm.y,
+        z: craftPosKm.z
+    };
+
+    // Calculate and display craft's distance from Earth
+    const craftEarthDist = Math.sqrt(craftPosKm.x * craftPosKm.x + craftPosKm.y * craftPosKm.y + craftPosKm.z * craftPosKm.z);
+    params.craftEarthDistance = craftEarthDist.toFixed(1) + ' km';
+    if (chandrayaanControllers.craftEarthDistance) {
+        chandrayaanControllers.craftEarthDistance.updateDisplay();
+    }
+
+    // Update spacecraft appearance and visibility based on status
+    if (captureState.isCaptured && params.appMode === 'Game') {
+        // After capture - hide the spacecraft
+        chandrayaan.visible = false;
+    } else if (launchEvent.exists && !orbitalParams.isLaunched) {
         // Launch exists but not reached yet - grey and frozen at perigee
+        // Respect showChandrayaan visibility toggle
+        chandrayaan.visible = params.showChandrayaan;
         chandrayaan.material.color.setHex(0x888888);
         chandrayaan.material.emissive.setHex(0x000000);
     } else {
         // No launch event (manual mode) OR launched - white and active
+        // Respect showChandrayaan visibility toggle
+        chandrayaan.visible = params.showChandrayaan;
         chandrayaan.material.color.setHex(COLORS.chandrayaan);
         chandrayaan.material.emissive.setHex(0x222222);
     }
 
     // Update RA display
     updateChandrayaanRADisplay();
+
+    // Update craft-Moon distance and check for capture
+    updateCraftMoonDistance();
+}
+
+// Calculate and update distance between craft and Moon
+function updateCraftMoonDistance() {
+    let distanceKm;
+
+    // Use real positions if available (Game/Plan modes with ephemeris)
+    if (realPositionsCache.moonPositionKm && realPositionsCache.craftPositionKm) {
+        const moonPos = realPositionsCache.moonPositionKm;
+        const craftPos = realPositionsCache.craftPositionKm;
+
+        // Calculate actual 3D distance in km
+        const dx = craftPos.x - moonPos.x;
+        const dy = craftPos.y - moonPos.y;
+        const dz = craftPos.z - moonPos.z;
+        distanceKm = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    } else {
+        // Fallback to visualization-based distance (Explore mode)
+        const distance = chandrayaan.position.distanceTo(moon.position);
+        distanceKm = distance / SCALE_FACTOR;
+    }
+
+    // Update display
+    params.craftMoonDistance = distanceKm.toFixed(1) + ' km';
+
+    if (chandrayaanControllers.craftMoonDistance) {
+        chandrayaanControllers.craftMoonDistance.updateDisplay();
+    }
+
+    // Check for capture (only in Game mode with launch event)
+    if (params.appMode === 'Game' && launchEvent.exists) {
+        // If we've gone back in time before the capture, reset capture state
+        if (captureState.isCaptured && captureState.captureDate) {
+            const currentTime = getRenderDate();
+            if (currentTime < captureState.captureDate) {
+                resetCaptureState();
+            }
+        }
+
+        // Check for new capture using launch event's capture distance
+        const threshold = launchEvent.captureDistance || 2000; // Default to 2000 km if not set
+        if (!captureState.isCaptured && distanceKm <= threshold) {
+            captureState.isCaptured = true;
+            captureState.captureDate = new Date(getRenderDate());
+            showCaptureMessage();
+        }
+    }
+}
+
+// Show capture message when spacecraft is captured by Moon
+function showCaptureMessage() {
+    const messageEl = document.getElementById('capture-message');
+    if (messageEl) {
+        messageEl.style.display = 'block';
+    }
+}
+
+// Hide capture message
+function hideCaptureMessage() {
+    const messageEl = document.getElementById('capture-message');
+    if (messageEl) {
+        messageEl.style.display = 'none';
+    }
+}
+
+// Reset capture state
+function resetCaptureState() {
+    captureState.isCaptured = false;
+    captureState.captureDate = null;
+    hideCaptureMessage();
 }
 
 function updateOrbitalElements() {
@@ -1414,17 +1590,27 @@ function updateAOPLines() {
 
 // Update Moon position from real ephemeris
 function updateMoonFromRealPosition() {
-    const moonData = calculateRealMoonPosition(timelineState.currentDate);
+    // Pull from single source of truth (respects active timeline)
+    const moonData = calculateRealMoonPosition(getRenderDate());
 
     // Update parameters with real values
     params.moonRA = moonData.ra;
     params.lunarInclination = moonData.inclination;
     params.lunarNodes = moonData.raan;
 
+    // Store real Moon position in km for accurate distance calculations
+    realPositionsCache.moonPositionKm = moonData.positionKm;
+
+    // Calculate and display Moon's distance from Earth
+    const moonPos = realPositionsCache.moonPositionKm;
+    const moonDistance = Math.sqrt(moonPos.x * moonPos.x + moonPos.y * moonPos.y + moonPos.z * moonPos.z);
+    params.moonDistanceDisplay = moonDistance.toFixed(1) + ' km';
+
     // Update GUI display
     if (lunarControllers.moonRA) lunarControllers.moonRA.updateDisplay();
     if (lunarControllers.inclination) lunarControllers.inclination.updateDisplay();
     if (lunarControllers.nodes) lunarControllers.nodes.updateDisplay();
+    if (lunarControllers.moonDistanceDisplay) lunarControllers.moonDistanceDisplay.updateDisplay();
 
     // Update visual representation
     updateLunarOrbitCircle();
@@ -1439,6 +1625,9 @@ function updateMoonFromRealPosition() {
 function switchAppMode(mode) {
     const timelinePanel = document.getElementById('timeline-panel');
     const actionsPanel = document.getElementById('actions-panel');
+
+    // Reset capture state when switching modes
+    resetCaptureState();
 
     if (mode === 'Explore') {
         // Explore mode: Show all manual controls, hide timeline, force Gamed Moon mode, hide actions panel
@@ -1564,11 +1753,16 @@ function switchAppMode(mode) {
 
     } else if (mode === 'Game') {
         // Game mode: Show controls but disabled, show timeline, force Real Moon mode, show actions panel disabled
-        lunarFolder.hide();
+        lunarFolder.show();
         chandrayaanFolder.show();
 
         // Force Moon to Real mode
         params.moonMode = 'Real';
+
+        // Disable all lunar controls (read-only display)
+        lunarControllers.inclination.disable();
+        lunarControllers.nodes.disable();
+        lunarControllers.moonRA.disable();
 
         // Disable all chandrayaan controls (show but grayed out)
         chandrayaanControllers.inclination.disable();
@@ -1618,6 +1812,10 @@ function switchAppMode(mode) {
             activeIndicator.textContent = 'View';
         }
     }
+
+    // Update renderDate to reflect the active timeline for this mode
+    // This ensures getRenderDate() returns correct date after mode switch
+    updateRenderDate();
 }
 
 // Update Chandrayaan orbital period display
@@ -1782,6 +1980,9 @@ function setupGUI() {
     });
 
     const lunarVisFolder = visibilityFolder.addFolder('Lunar Orbit');
+    lunarVisFolder.add(params, 'showMoon').name('Show Moon').onChange(value => {
+        moon.visible = value;
+    });
     lunarVisFolder.add(params, 'showLunarOrbitPlane').name('Show Plane').onChange(value => {
         lunarOrbitCircle.visible = value;
     });
@@ -1789,17 +1990,16 @@ function setupGUI() {
         lunarAscendingNode.visible = value;
         lunarDescendingNode.visible = value;
     });
-    lunarVisFolder.add(params, 'showMoon').name('Show Moon').onChange(value => {
-        moon.visible = value;
-    });
 
     const chandrayaanVisFolder = visibilityFolder.addFolder('Chandrayaan Orbit');
+    chandrayaanVisFolder.add(params, 'showChandrayaan').name('Show Chandrayaan').onChange(value => {
+        chandrayaan.visible = value;
+    });
     chandrayaanVisFolder.add(params, 'showChandrayaanOrbitPlane').name('Show Plane').onChange(value => {
         chandrayaanOrbitCircle.visible = value;
     });
     chandrayaanVisFolder.add(params, 'showChandrayaanOrbit').name('Show Orbit').onChange(value => {
         chandrayaanOrbitCircle3D.visible = value;
-        chandrayaan.visible = value;
     });
     chandrayaanVisFolder.add(params, 'showChandrayaanNodes').name('Show Nodes').onChange(value => {
         chandrayaanAscendingNode.visible = value;
@@ -1843,6 +2043,7 @@ function setupGUI() {
         updateMoonRADisplay();
     });
     lunarControllers.moonRADisplay = lunarFolder.add(params, 'moonRADisplay').name('Moon RA (current)').disable();
+    lunarControllers.moonDistanceDisplay = lunarFolder.add(params, 'moonDistanceDisplay').name('Distance from Earth').disable();
     lunarFolder.open();
 
     // Chandrayaan orbit folder
@@ -1895,6 +2096,8 @@ function setupGUI() {
     });
     chandrayaanControllers.period = chandrayaanFolder.add(params, 'chandrayaanPeriod').name('Orbital Period').disable();
     chandrayaanControllers.raDisplay = chandrayaanFolder.add(params, 'chandrayaanRADisplay').name('Craft RA (current)').disable();
+    chandrayaanControllers.craftEarthDistance = chandrayaanFolder.add(params, 'craftEarthDistance').name('Distance from Earth').disable();
+    chandrayaanControllers.craftMoonDistance = chandrayaanFolder.add(params, 'craftMoonDistance').name('Distance to Moon').disable();
     chandrayaanFolder.open();
 
     // Initialize period display
@@ -1906,6 +2109,51 @@ function setupGUI() {
 
     // Initialize app mode
     switchAppMode(params.appMode);
+}
+
+// Update render date based on active timeline slider
+function updateRenderDate() {
+    let daysToUse;
+
+    if (renderControl.activeSlider === 'launch') {
+        daysToUse = renderControl.launchDays;
+    } else if (renderControl.activeSlider === 'intercept') {
+        daysToUse = renderControl.interceptDays;
+    } else {
+        daysToUse = timelineState.daysElapsed;
+    }
+
+    // Update renderDate - this is the single source of truth for rendering
+    renderControl.renderDate = new Date(
+        timelineState.startDate.getTime() + daysToUse * 24 * 60 * 60 * 1000
+    );
+
+    // Update current date display in first row to show the active timeline's date
+    const currentDateSpan = document.getElementById('current-date');
+    if (currentDateSpan) {
+        currentDateSpan.textContent = renderControl.renderDate.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+
+    // Update countdown timer to reflect active timeline's date
+    updateCountdownTimer();
+
+    // Update visualization - functions will pull from getRenderDate() automatically
+    if (params.moonMode === 'Real') {
+        updateMoonFromRealPosition();
+    }
+
+    if (launchEvent.exists) {
+        updateChandrayaanOrbit();
+        if (params.appMode === 'Game' || params.appMode === 'Plan') {
+            syncGUIWithLaunchEvent();
+        }
+    }
 }
 
 function setupTimeline() {
@@ -1944,11 +2192,9 @@ function setupTimeline() {
         timelineState.currentDate = new Date(
             timelineState.startDate.getTime() + timelineState.daysElapsed * 24 * 60 * 60 * 1000
         );
-        updateCurrentDateDisplay();
 
-        if (params.moonMode === 'Real') {
-            updateMoonFromRealPosition();
-        }
+        // Update renderDate and all visualization (single source of truth)
+        updateRenderDate();
 
         // Update launch marker position
         updateLaunchMarker();
@@ -1960,8 +2206,6 @@ function setupTimeline() {
         timelineState.currentDate = new Date(
             timelineState.startDate.getTime() + timelineState.daysElapsed * 24 * 60 * 60 * 1000
         );
-        updateCurrentDateDisplay();
-        updateCountdownTimer();
 
         // Update timeline slider display if it exists
         const timelineSliderDisplay = document.getElementById('timeline-slider-display');
@@ -1971,20 +2215,8 @@ function setupTimeline() {
 
         // Only update visualization if timeline slider is active for rendering
         if (renderControl.activeSlider === 'timeline') {
-            // Update Moon position in Real mode (both Game and Plan)
-            if (params.moonMode === 'Real') {
-                updateMoonFromRealPosition();
-            }
-
-            // Update Chandrayaan orbit position when launch event exists (both Game and Plan)
-            if (launchEvent.exists) {
-                updateChandrayaanOrbit();
-
-                // Sync GUI controls in Game mode
-                if (params.appMode === 'Game') {
-                    syncGUIWithLaunchEvent();
-                }
-            }
+            // Update renderDate and all visualization (single source of truth)
+            updateRenderDate();
         }
 
         // Update Moon intercept date in Plan mode (real-time preview while dragging)
@@ -2026,12 +2258,16 @@ function setupTimeline() {
         timelineState.daysElapsed = 0;
         timelineSlider.value = 0;
         timelineState.currentDate = new Date(timelineState.startDate);
-        updateCurrentDateDisplay();
         playPauseBtn.textContent = '▶ Play';
 
-        if (params.moonMode === 'Real') {
-            updateMoonFromRealPosition();
+        // Update timeline slider display
+        const timelineSliderDisplay = document.getElementById('timeline-slider-display');
+        if (timelineSliderDisplay) {
+            timelineSliderDisplay.textContent = 'Day 0.0';
         }
+
+        // Update renderDate and all visualization (single source of truth)
+        updateRenderDate();
     });
 
     // Playback speed
@@ -2126,62 +2362,17 @@ function setupRenderControlSliders() {
         if (timelineSliderDisplay) timelineSliderDisplay.textContent = `Day ${timelineState.daysElapsed.toFixed(1)}`;
     }
 
-    // Update render date based on active slider
-    function updateRenderDate() {
-        let daysToUse;
-
-        if (renderControl.activeSlider === 'launch') {
-            daysToUse = renderControl.launchDays;
-        } else if (renderControl.activeSlider === 'intercept') {
-            daysToUse = renderControl.interceptDays;
-        } else {
-            daysToUse = timelineState.daysElapsed;
-        }
-
-        renderControl.renderDate = new Date(
-            timelineState.startDate.getTime() + daysToUse * 24 * 60 * 60 * 1000
-        );
-
-        // Update current date display in first row to show the active timeline's date
-        const currentDateSpan = document.getElementById('current-date');
-        if (currentDateSpan) {
-            currentDateSpan.textContent = renderControl.renderDate.toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-        }
-
-        // Update countdown timer to reflect active timeline's date
-        updateCountdownTimer();
-
-        // Update visualization using renderDate
-        if (params.moonMode === 'Real') {
-            const originalDate = timelineState.currentDate;
-            timelineState.currentDate = renderControl.renderDate;
-            updateMoonFromRealPosition();
-            timelineState.currentDate = originalDate;
-        }
-
-        if (launchEvent.exists) {
-            const originalDate = timelineState.currentDate;
-            timelineState.currentDate = renderControl.renderDate;
-            updateChandrayaanOrbit();
-            if (params.appMode === 'Game' || params.appMode === 'Plan') {
-                syncGUIWithLaunchEvent();
-            }
-            timelineState.currentDate = originalDate;
-        }
-    }
-
     // Checkbox change handlers (radio button behavior)
     function handleCheckboxChange(selectedCheckbox, sliderType) {
         // Uncheck all others
         [timelineCheckbox, launchCheckbox, interceptCheckbox].forEach(cb => {
             if (cb !== selectedCheckbox) cb.checked = false;
         });
+
+        // Ensure the selected one is checked
+        if (!selectedCheckbox.checked) {
+            selectedCheckbox.checked = true;
+        }
 
         // Update active slider
         renderControl.activeSlider = sliderType;
@@ -2207,7 +2398,7 @@ function setupRenderControlSliders() {
             if (timelineCheckbox.checked) {
                 handleCheckboxChange(timelineCheckbox, 'timeline');
             } else {
-                // Prevent unchecking View - keep it checked
+                // If the user tries to uncheck it, re-check it, as one must be active.
                 timelineCheckbox.checked = true;
             }
         });
@@ -2218,8 +2409,7 @@ function setupRenderControlSliders() {
             if (launchCheckbox.checked) {
                 handleCheckboxChange(launchCheckbox, 'launch');
             } else {
-                // Unchecking Launch - fallback to View
-                timelineCheckbox.checked = true;
+                // If unchecked, fall back to the timeline checkbox
                 handleCheckboxChange(timelineCheckbox, 'timeline');
             }
         });
@@ -2230,8 +2420,7 @@ function setupRenderControlSliders() {
             if (interceptCheckbox.checked) {
                 handleCheckboxChange(interceptCheckbox, 'intercept');
             } else {
-                // Unchecking Intercept - fallback to View
-                timelineCheckbox.checked = true;
+                // If unchecked, fall back to the timeline checkbox
                 handleCheckboxChange(timelineCheckbox, 'timeline');
             }
         });
@@ -2244,6 +2433,8 @@ function setupRenderControlSliders() {
 
             // Update launch date in launchEvent
             if (launchEvent.exists) {
+                isUpdatingFromCode = true; // Set flag only when updating date
+
                 launchEvent.date = new Date(
                     timelineState.startDate.getTime() + renderControl.launchDays * 24 * 60 * 60 * 1000
                 );
@@ -2254,6 +2445,8 @@ function setupRenderControlSliders() {
                 if (launchEventGUIParams) {
                     launchEventGUIParams.launchDate = formatDateForDisplay(launchEvent.date);
                 }
+
+                isUpdatingFromCode = false; // Clear flag immediately after
             }
 
             updateSliderDisplays();
@@ -2271,6 +2464,8 @@ function setupRenderControlSliders() {
 
             // Update intercept date in launchEvent
             if (launchEvent.exists) {
+                isUpdatingFromCode = true; // Set flag only when updating date
+
                 launchEvent.moonInterceptDate = new Date(
                     timelineState.startDate.getTime() + renderControl.interceptDays * 24 * 60 * 60 * 1000
                 );
@@ -2280,6 +2475,8 @@ function setupRenderControlSliders() {
                 if (launchEventGUIParams) {
                     launchEventGUIParams.moonInterceptDate = formatDateForDisplay(launchEvent.moonInterceptDate);
                 }
+
+                isUpdatingFromCode = false; // Clear flag immediately after
             }
 
             updateSliderDisplays();
@@ -2292,10 +2489,17 @@ function setupRenderControlSliders() {
 
     // Initialize displays
     updateSliderDisplays();
+
+    // Initialize renderDate to match the current timeline state
+    // This ensures getRenderDate() returns correct date from the start
+    updateRenderDate();
 }
 
 function syncRenderControlSlidersWithLaunchEvent() {
     if (!launchEvent.exists) return;
+
+    // This function is called when updating from code (e.g., when switching modes)
+    // We're already protected by isUpdatingFromCode flag in the callers
 
     const launchSlider = document.getElementById('launch-slider');
     const interceptSlider = document.getElementById('intercept-slider');
@@ -2331,8 +2535,8 @@ function updateCountdownTimer() {
 
     countdownEl.style.display = 'block';
 
-    // Use render date (which accounts for active timeline) instead of timelineState.currentDate
-    const currentDate = renderControl.renderDate || timelineState.currentDate;
+    // Pull from single source of truth (respects active timeline)
+    const currentDate = getRenderDate();
 
     // Calculate time difference in seconds
     const diffMs = currentDate.getTime() - launchEvent.date.getTime();
@@ -2445,8 +2649,8 @@ function setupActionsPanel() {
         // Create launch event if it doesn't exist
         if (!launchEvent.exists) {
             launchEvent.exists = true;
-            launchEvent.date = timelineState.currentDate;
-            launchEvent.moonInterceptDate = new Date(timelineState.currentDate.getTime() + 5 * 24 * 60 * 60 * 1000);
+            launchEvent.date = new Date('2023-07-30T21:36:00');
+            launchEvent.moonInterceptDate = new Date('2023-08-05T16:56:00');
         }
 
         // Show card, hide button
@@ -2512,6 +2716,7 @@ function createLaunchEventGUI() {
         perigeeAlt: launchEvent.perigeeAlt,
         apogeeAlt: launchEvent.apogeeAlt,
         trueAnomaly: launchEvent.trueAnomaly || 0,
+        captureDistance: launchEvent.captureDistance || 2000,
         period: formatPeriod(calculateOrbitalPeriod(launchEvent.perigeeAlt, launchEvent.apogeeAlt)),
         save: () => saveLaunchEvent(),
         delete: () => deleteLaunchEvent()
@@ -2524,11 +2729,19 @@ function createLaunchEventGUI() {
     const launchDateController = launchEventGUI.add(guiParams, 'launchDate').name('Launch Date').listen();
     launchDateController.domElement.querySelector('input').type = 'datetime-local';
     launchDateController.domElement.querySelector('input').addEventListener('change', (e) => {
+        if (isUpdatingFromCode) return; // Prevent circular updates from slider
+
         launchEvent.date = new Date(e.target.value);
         guiParams.launchDate = e.target.value;
 
-        // Sync render control sliders
+        // Sync render control sliders (updates slider values)
         syncRenderControlSlidersWithLaunchEvent();
+
+        // Update launch marker position
+        updateLaunchMarker();
+
+        // Update visualization
+        updateRenderDate();
 
         markDirtyAndUpdate();
     });
@@ -2536,14 +2749,16 @@ function createLaunchEventGUI() {
     const interceptDateController = launchEventGUI.add(guiParams, 'moonInterceptDate').name('Moon Intercept').listen();
     interceptDateController.domElement.querySelector('input').type = 'datetime-local';
     interceptDateController.domElement.querySelector('input').addEventListener('change', (e) => {
+        if (isUpdatingFromCode) return; // Prevent circular updates from slider
+
         launchEvent.moonInterceptDate = new Date(e.target.value);
         guiParams.moonInterceptDate = e.target.value;
 
-        // Update timeline slider to match the new intercept date
-        updateTimelineSliderFromInterceptDate();
-
-        // Sync render control sliders
+        // Sync render control sliders (updates intercept slider value)
         syncRenderControlSlidersWithLaunchEvent();
+
+        // Update visualization
+        updateRenderDate();
 
         markDirtyAndUpdate();
     });
@@ -2570,7 +2785,7 @@ function createLaunchEventGUI() {
         markDirtyAndUpdate();
     });
 
-    launchEventGUI.add(guiParams, 'raan', 0, 360, 1).name('RAAN (Ω) (°)').onChange(value => {
+    launchEventGUI.add(guiParams, 'raan', 0, 360, 0.1).name('RAAN (Ω) (°)').onChange(value => {
         launchEvent.raan = value;
         markDirtyAndUpdate();
     });
@@ -2593,8 +2808,14 @@ function createLaunchEventGUI() {
         markDirtyAndUpdate();
     });
 
+    // True anomaly is disabled because at launch the craft is always at perigee (ν = 0°)
     launchEventGUI.add(guiParams, 'trueAnomaly', 0, 360, 1).name('True Anomaly (°)').onChange(value => {
         launchEvent.trueAnomaly = value;
+        markDirtyAndUpdate();
+    }).disable();
+
+    launchEventGUI.add(guiParams, 'captureDistance', 50, 400000, 10).name('Capture Dist (km)').onChange(value => {
+        launchEvent.captureDistance = value;
         markDirtyAndUpdate();
     });
 
@@ -2624,19 +2845,19 @@ function createLaunchEventGUI() {
         chandrayaanControllers.apogeeAlt.updateDisplay();
         chandrayaanControllers.trueAnomaly.updateDisplay();
 
-        // Invalidate cache
+        // Invalidate cache so fresh calculations use current renderDate
         invalidateOrbitalParamsCache();
 
-        // Update moon position based on intercept date
-        if (params.moonMode === 'Real' && launchEvent.moonInterceptDate) {
-            const originalDate = timelineState.currentDate;
-            timelineState.currentDate = launchEvent.moonInterceptDate;
-            updateMoonFromRealPosition();
-            timelineState.currentDate = originalDate;
-        }
+        // Update orbital period display (depends on perigee/apogee which may have changed)
+        updateChandrayaanPeriodDisplay();
 
-        // Update Chandrayaan orbit visualization
-        updateChandrayaanOrbit();
+        // Update visualization based on ACTIVE timeline (respects which checkbox is selected)
+        // updateRenderDate() sets renderControl.renderDate which becomes the source of truth
+        // All render functions will pull from getRenderDate() automatically
+        updateRenderDate();
+
+        // Update orbital geometry (nodes, planes, angle visualizations)
+        // These depend on orbital parameters (inclination, RAAN, omega) which may have changed
         updateChandrayaanNodePositions();
         updateChandrayaanOrbitCircle();
         updateRAANLines();
@@ -2649,10 +2870,10 @@ function saveLaunchEvent() {
     draftState.savedLaunchEvent = JSON.parse(JSON.stringify(launchEvent));
     draftState.isDirty = false;
 
-    // Invalidate cache
+    // Invalidate cache so fresh calculations use current renderDate
     invalidateOrbitalParamsCache();
 
-    // Update visualizations
+    // Update visualizations - will automatically use renderDate from active timeline
     updateChandrayaanOrbit();
     updateChandrayaanPeriodDisplay();
 
@@ -2679,6 +2900,9 @@ function deleteLaunchEvent() {
     // Clear draft state
     draftState.isDirty = false;
     draftState.savedLaunchEvent = null;
+
+    // Reset capture state
+    resetCaptureState();
 
     // Hide container, show button
     document.getElementById('launch-event-container').style.display = 'none';
@@ -2796,33 +3020,19 @@ function animate() {
             timelineState.startDate.getTime() + timelineState.daysElapsed * 24 * 60 * 60 * 1000
         );
 
-        // Update slider and display
+        // Update slider position
         const slider = document.getElementById('timeline-slider');
         slider.value = timelineState.daysElapsed;
 
-        const currentDateSpan = document.getElementById('current-date');
-        currentDateSpan.textContent = timelineState.currentDate.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-
-        // Update countdown timer if launch exists
-        updateCountdownTimer();
-
-        // Update moon position if in Real mode
-        if (params.moonMode === 'Real') {
-            updateMoonFromRealPosition();
+        // Update timeline slider display
+        const timelineSliderDisplay = document.getElementById('timeline-slider-display');
+        if (timelineSliderDisplay) {
+            timelineSliderDisplay.textContent = `Day ${timelineState.daysElapsed.toFixed(1)}`;
         }
 
-        // Update chandrayaan orbit if launched
-        if (launchEvent.exists) {
-            updateChandrayaanOrbit();
-            // Sync GUI controls with current orbital state in Game mode
-            syncGUIWithLaunchEvent();
-        }
+        // Update renderDate and all visualization (single source of truth)
+        // This handles date display, countdown, Moon position, and Chandrayaan orbit
+        updateRenderDate();
     } else {
         lastFrameTime = Date.now();
     }
