@@ -75,11 +75,41 @@ let lunarControllers = {};
 let chandrayaanControllers = {};
 let lunarFolder, chandrayaanFolder, moonModeController;
 
+// Scene and orbital constants
 const SPHERE_RADIUS = 100;
 const LUNAR_ORBIT_DISTANCE = 384400; // Lunar orbit distance in km
 const SCALE_FACTOR = SPHERE_RADIUS / LUNAR_ORBIT_DISTANCE; // Scale lunar distance to fit scene
 const EARTH_RADIUS = 6371; // Earth radius in km
 const EARTH_MU = 398600.4418; // Earth's gravitational parameter (km^3/s^2)
+
+// Camera configuration
+const CAMERA_FOV = 45; // Field of view in degrees
+const CAMERA_NEAR_PLANE = 0.1;
+const CAMERA_FAR_PLANE = 10000;
+const CAMERA_INITIAL_X = 240;
+const CAMERA_INITIAL_Y = 160;
+const CAMERA_INITIAL_Z = 240;
+
+// Rendering constants
+const ORBIT_SEGMENTS_DETAILED = 512; // For Chandrayaan elliptical orbit
+const ORBIT_SEGMENTS_STANDARD = 128; // For circular orbits (equator, lunar)
+const SPRITE_CANVAS_SIZE = 128; // Canvas size for text sprites
+const SPRITE_FONT_SIZE = 80; // Font size for sprite text
+
+// Zoom-aware scaling constants
+const ZOOM_BASE_DISTANCE = 240; // Reference distance (matches camera initial position)
+const ZOOM_BASE_SCALE = 1.0;
+
+// Scale caps for different object types
+const ZOOM_NODE_MIN_SCALE = 0.3;
+const ZOOM_NODE_MAX_SCALE = 1.5;
+const ZOOM_ARIES_MIN_SCALE = 0.2;
+const ZOOM_ARIES_MAX_SCALE = 0.8;
+const ZOOM_SPACECRAFT_MIN_SCALE = 0.5;
+const ZOOM_SPACECRAFT_MAX_SCALE = 2.0;
+
+// Sprite base sizes
+const ARIES_MARKER_BASE_SIZE = 8;
 
 // Helper function to calculate Chandrayaan orbit eccentricity
 function calculateChandrayaanEccentricity() {
@@ -330,12 +360,12 @@ function init() {
 
     // Camera
     camera = new THREE.PerspectiveCamera(
-        75,
+        CAMERA_FOV,
         window.innerWidth / window.innerHeight,
-        0.1,
-        10000
+        CAMERA_NEAR_PLANE,
+        CAMERA_FAR_PLANE
     );
-    camera.position.set(150, 100, 150);
+    camera.position.set(CAMERA_INITIAL_X, CAMERA_INITIAL_Y, CAMERA_INITIAL_Z);
 
     // Renderer
     renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -483,15 +513,15 @@ function createAriesMarker() {
     // Use Aries symbol ♈ as a sprite instead of a sphere
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
-    canvas.width = 128;
-    canvas.height = 128;
+    canvas.width = SPRITE_CANVAS_SIZE;
+    canvas.height = SPRITE_CANVAS_SIZE;
 
     // Clear canvas to transparent
     context.clearRect(0, 0, canvas.width, canvas.height);
 
     // Draw Aries symbol in red
     context.fillStyle = '#ff0000';
-    context.font = 'Bold 80px Arial';
+    context.font = `Bold ${SPRITE_FONT_SIZE}px Arial`;
     context.textAlign = 'center';
     context.textBaseline = 'middle';
     context.fillText('♈', canvas.width / 2, canvas.height / 2);
@@ -499,10 +529,10 @@ function createAriesMarker() {
     const texture = new THREE.CanvasTexture(canvas);
     const spriteMaterial = new THREE.SpriteMaterial({
         map: texture,
-        transparent: true // Enable transparency
+        transparent: true
     });
     ariesMarker = new THREE.Sprite(spriteMaterial);
-    ariesMarker.scale.set(8, 8, 1); // Make it visible
+    ariesMarker.scale.set(ARIES_MARKER_BASE_SIZE, ARIES_MARKER_BASE_SIZE, 1);
 
     // Position at the tip of the X axis
     ariesMarker.position.set(SPHERE_RADIUS * 1.2, 0, 0);
@@ -510,7 +540,7 @@ function createAriesMarker() {
 }
 
 function createGreatCircle(radius, color, inclination = 0, raan = 0) {
-    const segments = 128;
+    const segments = ORBIT_SEGMENTS_STANDARD;
     const points = [];
 
     // Create circle in XZ plane (counter-clockwise when viewed from above)
@@ -754,7 +784,7 @@ function updateChandrayaanOrbit() {
     const perigeeDistance = rp * SCALE_FACTOR;
     const a = perigeeDistance / (1 - e); // Semi-major axis
 
-    const segments = 512;
+    const segments = ORBIT_SEGMENTS_DETAILED;
     const points = [];
 
     const omega = THREE.MathUtils.degToRad(orbitalParams.omega);
@@ -2006,9 +2036,6 @@ function updateCountdownTimer() {
 
 // Update marker sizes based on camera distance (zoom-aware rendering)
 function updateMarkerSizes() {
-    const baseDistance = 150; // Reference distance (initial camera position)
-    const baseScale = 1.0; // Original size at base distance
-
     // Node markers: cap scale to prevent huge spheres when zoomed in
     const nodeMarkers = [
         lunarAscendingNode,
@@ -2023,41 +2050,34 @@ function updateMarkerSizes() {
         const distance = camera.position.distanceTo(node.position);
 
         // Scale proportional to distance (farther = bigger to stay visible)
-        let scale = (distance / baseDistance) * baseScale;
+        let scale = (distance / ZOOM_BASE_DISTANCE) * ZOOM_BASE_SCALE;
 
-        // Cap the scale: min 0.3x (when very close), max 1.5x (when far)
-        // This prevents tiny dots when far AND huge spheres when close
-        const minScale = 0.3;
-        const maxScale = 1.5;
-        scale = Math.max(minScale, Math.min(maxScale, scale));
+        // Cap the scale to prevent tiny dots when far AND huge spheres when close
+        scale = Math.max(ZOOM_NODE_MIN_SCALE, Math.min(ZOOM_NODE_MAX_SCALE, scale));
 
         node.scale.setScalar(scale);
     });
 
-    // Aries marker (sprite): same caps as nodes
+    // Aries marker (sprite): tighter caps than nodes to keep it small
     if (ariesMarker) {
         const distance = camera.position.distanceTo(ariesMarker.position);
-        let scale = (distance / baseDistance) * baseScale;
+        let scale = (distance / ZOOM_BASE_DISTANCE) * ZOOM_BASE_SCALE;
 
-        const minScale = 0.3;
-        const maxScale = 1.5;
-        scale = Math.max(minScale, Math.min(maxScale, scale));
+        // Tighter caps: keep marker smaller when zooming in
+        scale = Math.max(ZOOM_ARIES_MIN_SCALE, Math.min(ZOOM_ARIES_MAX_SCALE, scale));
 
         // Sprites use uniform scale on X and Y (Z is always 1)
-        const baseSize = 8; // Original scale from creation
-        ariesMarker.scale.set(baseSize * scale, baseSize * scale, 1);
+        ariesMarker.scale.set(ARIES_MARKER_BASE_SIZE * scale, ARIES_MARKER_BASE_SIZE * scale, 1);
     }
 
     // Spacecraft: slightly larger caps
     if (chandrayaan) {
         const distance = camera.position.distanceTo(chandrayaan.position);
 
-        let scale = (distance / baseDistance) * baseScale;
+        let scale = (distance / ZOOM_BASE_DISTANCE) * ZOOM_BASE_SCALE;
 
-        // Cap: min 0.5x, max 2.0x (allow slightly larger than nodes)
-        const minScale = 0.5;
-        const maxScale = 2.0;
-        scale = Math.max(minScale, Math.min(maxScale, scale));
+        // Cap: allow slightly larger than nodes
+        scale = Math.max(ZOOM_SPACECRAFT_MIN_SCALE, Math.min(ZOOM_SPACECRAFT_MAX_SCALE, scale));
 
         chandrayaan.scale.setScalar(scale);
     }
