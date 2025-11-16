@@ -159,6 +159,7 @@ body {
     z-index: 1000 !important;
     --width: 300px;
     right: 10px !important;
+    top: 50px !important; /* Position below mode tabs */
 }
 
 /* Timeline Wrapper and Launch Marker */

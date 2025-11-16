@@ -109,6 +109,167 @@ let draftState = {
     savedLaunchEvent: null
 };
 
+// Parameter Set Class - Complete state isolation between modes
+class ParameterSet {
+    constructor(name, config) {
+        this.name = name;
+
+        // Lunar params
+        this.lunarInclination = config.lunarInclination;
+        this.lunarNodes = config.lunarNodes;
+        this.moonRA = config.moonRA;
+        this.moonMode = config.moonMode;
+
+        // Chandrayaan params
+        this.chandrayaanInclination = config.chandrayaanInclination;
+        this.chandrayaanNodes = config.chandrayaanNodes;
+        this.chandrayaanOmega = config.chandrayaanOmega;
+        this.chandrayaanPerigeeAlt = config.chandrayaanPerigeeAlt;
+        this.chandrayaanApogeeAlt = config.chandrayaanApogeeAlt;
+        this.chandrayaanTrueAnomaly = config.chandrayaanTrueAnomaly;
+    }
+
+    // Copy this set's values to the global params object
+    copyTo(params) {
+        params.lunarInclination = this.lunarInclination;
+        params.lunarNodes = this.lunarNodes;
+        params.moonRA = this.moonRA;
+        params.moonMode = this.moonMode;
+
+        params.chandrayaanInclination = this.chandrayaanInclination;
+        params.chandrayaanNodes = this.chandrayaanNodes;
+        params.chandrayaanOmega = this.chandrayaanOmega;
+        params.chandrayaanPerigeeAlt = this.chandrayaanPerigeeAlt;
+        params.chandrayaanApogeeAlt = this.chandrayaanApogeeAlt;
+        params.chandrayaanTrueAnomaly = this.chandrayaanTrueAnomaly;
+    }
+
+    // Copy from global params object to this set
+    copyFrom(params) {
+        this.lunarInclination = params.lunarInclination;
+        this.lunarNodes = params.lunarNodes;
+        this.moonRA = params.moonRA;
+        this.moonMode = params.moonMode;
+
+        this.chandrayaanInclination = params.chandrayaanInclination;
+        this.chandrayaanNodes = params.chandrayaanNodes;
+        this.chandrayaanOmega = params.chandrayaanOmega;
+        this.chandrayaanPerigeeAlt = params.chandrayaanPerigeeAlt;
+        this.chandrayaanApogeeAlt = params.chandrayaanApogeeAlt;
+        this.chandrayaanTrueAnomaly = params.chandrayaanTrueAnomaly;
+    }
+
+    // Load from launch event
+    loadFromLaunchEvent(launchEvent) {
+        if (!launchEvent.exists) return;
+
+        this.chandrayaanInclination = launchEvent.inclination;
+        this.chandrayaanNodes = launchEvent.raan;
+        this.chandrayaanOmega = launchEvent.omega;
+        this.chandrayaanPerigeeAlt = launchEvent.perigeeAlt;
+        this.chandrayaanApogeeAlt = launchEvent.apogeeAlt;
+        this.chandrayaanTrueAnomaly = launchEvent.trueAnomaly || 0;
+    }
+}
+
+// Set A: Explore mode (manual, gamed moon, not tied to real-world time)
+const exploreParamSet = new ParameterSet('Explore', {
+    lunarInclination: 23.44,
+    lunarNodes: 0,
+    moonRA: 0,
+    moonMode: 'Gamed',
+    chandrayaanInclination: 30,
+    chandrayaanNodes: 0,
+    chandrayaanOmega: 45,
+    chandrayaanPerigeeAlt: 180,
+    chandrayaanApogeeAlt: 378029,
+    chandrayaanTrueAnomaly: 0
+});
+
+// Set B: Plan/Game modes (real moon ephemeris, launch event driven)
+const planGameParamSet = new ParameterSet('Plan/Game', {
+    lunarInclination: 23.44, // Will be overwritten by real ephemeris
+    lunarNodes: 0, // Will be overwritten by real ephemeris
+    moonRA: 0, // Will be overwritten by real ephemeris
+    moonMode: 'Real',
+    chandrayaanInclination: 21.5, // From launch event
+    chandrayaanNodes: 5,
+    chandrayaanOmega: 178,
+    chandrayaanPerigeeAlt: 180,
+    chandrayaanApogeeAlt: 370000,
+    chandrayaanTrueAnomaly: 0
+});
+
+// Track which parameter set is currently active
+let currentParamSet = exploreParamSet;
+
+// State Manager - handles switching between completely isolated parameter sets
+const stateManager = {
+    // Switch to Explore mode parameter set (Set A)
+    activateExploreParams() {
+        // Save current params to current set before switching
+        currentParamSet.copyFrom(params);
+
+        // Switch to Explore set
+        currentParamSet = exploreParamSet;
+        exploreParamSet.copyTo(params);
+
+        // Update all GUI displays
+        this.updateAllGUIDisplays();
+    },
+
+    // Switch to Plan/Game mode parameter set (Set B)
+    activatePlanGameParams() {
+        // Save current params to current set before switching
+        currentParamSet.copyFrom(params);
+
+        // Switch to Plan/Game set
+        currentParamSet = planGameParamSet;
+
+        // Load from launch event if it exists
+        if (launchEvent.exists) {
+            planGameParamSet.loadFromLaunchEvent(launchEvent);
+        }
+
+        // Copy to params
+        planGameParamSet.copyTo(params);
+
+        // Update all GUI displays
+        this.updateAllGUIDisplays();
+    },
+
+    // Update all GUI controllers to reflect current params
+    updateAllGUIDisplays() {
+        // Lunar controllers
+        if (lunarControllers.inclination) lunarControllers.inclination.updateDisplay();
+        if (lunarControllers.nodes) lunarControllers.nodes.updateDisplay();
+        if (lunarControllers.moonRA) lunarControllers.moonRA.updateDisplay();
+
+        // Chandrayaan controllers
+        if (chandrayaanControllers.inclination) chandrayaanControllers.inclination.updateDisplay();
+        if (chandrayaanControllers.nodes) chandrayaanControllers.nodes.updateDisplay();
+        if (chandrayaanControllers.omega) chandrayaanControllers.omega.updateDisplay();
+        if (chandrayaanControllers.perigeeAlt) chandrayaanControllers.perigeeAlt.updateDisplay();
+        if (chandrayaanControllers.apogeeAlt) chandrayaanControllers.apogeeAlt.updateDisplay();
+        if (chandrayaanControllers.trueAnomaly) chandrayaanControllers.trueAnomaly.updateDisplay();
+    },
+
+    // Update launch event from current params (used in Plan mode when user edits)
+    saveParamsToLaunchEvent() {
+        if (!launchEvent.exists) return;
+
+        launchEvent.inclination = params.chandrayaanInclination;
+        launchEvent.raan = params.chandrayaanNodes;
+        launchEvent.omega = params.chandrayaanOmega;
+        launchEvent.perigeeAlt = params.chandrayaanPerigeeAlt;
+        launchEvent.apogeeAlt = params.chandrayaanApogeeAlt;
+        launchEvent.trueAnomaly = params.chandrayaanTrueAnomaly;
+
+        // Mark as dirty
+        draftState.isDirty = true;
+    }
+};
+
 // Launch event GUI instance
 let launchEventGUI = null;
 let launchEventGUIParams = null; // Reference to GUI params for updating
@@ -172,21 +333,28 @@ function calculateOrbitalPeriod(perigeeAlt, apogeeAlt) {
     return T;
 }
 
+// Helper functions for time conversion
+const secondsToHours = (seconds) => Math.floor(seconds / 3600);
+const secondsToMinutes = (seconds) => Math.floor((seconds % 3600) / 60);
+const secondsToSecs = (seconds) => Math.floor(seconds % 60);
+const hoursToDays = (hours) => Math.floor(hours / 24);
+const hoursRemainder = (hours) => hours % 24;
+
 // Format period as human-readable string
 function formatPeriod(seconds) {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
+    const hours = secondsToHours(seconds);
+    const minutes = secondsToMinutes(seconds);
+    const secs = secondsToSecs(seconds);
 
     if (hours > 24) {
-        const days = Math.floor(hours / 24);
-        const remainingHours = hours % 24;
+        const days = hoursToDays(hours);
+        const remainingHours = hoursRemainder(hours);
         return `${days}d ${remainingHours}h ${minutes}m`;
-    } else if (hours > 0) {
-        return `${hours}h ${minutes}m ${secs}s`;
-    } else {
-        return `${minutes}m ${secs}s`;
     }
+
+    return hours > 0
+        ? `${hours}h ${minutes}m ${secs}s`
+        : `${minutes}m ${secs}s`;
 }
 
 // Solve Kepler's equation to get true anomaly from time since periapsis
@@ -219,82 +387,106 @@ function getTrueAnomalyFromTime(timeSinceLaunch, perigeeAlt, apogeeAlt) {
     return trueAnomalyDeg;
 }
 
+// Pure caching utility using closures
+const createCache = () => {
+    let cache = { value: null, key: null };
+
+    return {
+        get: (key) => (key === cache.key && cache.value !== null) ? cache.value : null,
+        set: (value, key) => {
+            cache = { value, key };
+            return value;
+        },
+        invalidate: () => {
+            cache = { value: null, key: null };
+        }
+    };
+};
+
 // Cache for getChandrayaanParams to avoid redundant calculations per frame
-let cachedOrbitalParams = null;
-let lastParamsCacheFrame = -1;
+const orbitalParamsCache = createCache();
 let currentAnimationFrame = 0;
 
 // Invalidate the orbital params cache (call when parameters change manually)
 function invalidateOrbitalParamsCache() {
-    cachedOrbitalParams = null;
-    lastParamsCacheFrame = -1;
+    orbitalParamsCache.invalidate();
 }
 
 // Get the date to use for rendering - single source of truth
 // This pulls from the active timeline (View/Launch/Intercept)
 function getRenderDate() {
-    // If renderControl.renderDate is set, use it (updated by updateRenderDate())
-    if (renderControl.renderDate) {
-        return renderControl.renderDate;
-    }
-    // Fallback to timeline's current date
-    return timelineState.currentDate;
+    // Use nullish coalescing for fallback
+    return renderControl.renderDate ?? timelineState.currentDate;
 }
 
-// Get current chandrayaan orbital parameters (manual or from launch event)
-function getChandrayaanParams() {
-    // Return cached result if already calculated this frame
-    if (currentAnimationFrame === lastParamsCacheFrame && cachedOrbitalParams !== null) {
-        return cachedOrbitalParams;
+// Pure function to calculate chandrayaan orbital parameters
+// All inputs are explicit, making it testable and predictable
+function calculateChandrayaanParams(options) {
+    const { launchEvent, manualParams, renderDate, mode } = options;
+
+    // In Explore mode: ALWAYS use manual params (Set A), ignore launch event
+    if (mode === 'Explore') {
+        return {
+            ...manualParams,
+            isLaunched: false
+        };
     }
 
-    // Calculate new parameters
-    let result;
-
-    // If a launch event exists, always use launch parameters for the orbit
-    // This prevents the orbit from jumping when crossing the launch date
+    // In Plan/Game modes: Use launch event params (Set B) if it exists
     if (launchEvent.exists) {
-        // Use render date (respects active timeline) instead of current date
-        const renderDate = getRenderDate();
         const isLaunched = renderDate >= launchEvent.date;
 
-        let trueAnomaly;
-        if (isLaunched) {
-            // After launch: calculate true anomaly from time since launch
-            const timeSinceLaunch = (renderDate.getTime() - launchEvent.date.getTime()) / 1000;
-            trueAnomaly = getTrueAnomalyFromTime(timeSinceLaunch, launchEvent.perigeeAlt, launchEvent.apogeeAlt);
-        } else {
-            // Before launch: freeze at perigee (true anomaly = 0)
-            trueAnomaly = 0;
-        }
+        const trueAnomaly = isLaunched
+            ? getTrueAnomalyFromTime(
+                (renderDate.getTime() - launchEvent.date.getTime()) / 1000,
+                launchEvent.perigeeAlt,
+                launchEvent.apogeeAlt
+            )
+            : 0; // Before launch: freeze at perigee
 
-        result = {
+        return {
             inclination: launchEvent.inclination,
             raan: launchEvent.raan,
             omega: launchEvent.omega,
             perigeeAlt: launchEvent.perigeeAlt,
             apogeeAlt: launchEvent.apogeeAlt,
-            trueAnomaly: trueAnomaly,
-            isLaunched: isLaunched
+            trueAnomaly,
+            isLaunched
         };
-    } else {
-        // No launch event: use manual parameters
-        result = {
+    }
+
+    // Plan/Game mode but no launch event: use manual parameters
+    return {
+        ...manualParams,
+        isLaunched: false
+    };
+}
+
+// Impure wrapper that handles global state and caching
+function getChandrayaanParams() {
+    // Return cached result if already calculated this frame
+    const cached = orbitalParamsCache.get(currentAnimationFrame);
+    if (cached) {
+        return cached;
+    }
+
+    // Calculate parameters using pure function
+    const result = calculateChandrayaanParams({
+        launchEvent,
+        manualParams: {
             inclination: params.chandrayaanInclination,
             raan: params.chandrayaanNodes,
             omega: params.chandrayaanOmega,
             perigeeAlt: params.chandrayaanPerigeeAlt,
             apogeeAlt: params.chandrayaanApogeeAlt,
-            trueAnomaly: params.chandrayaanTrueAnomaly,
-            isLaunched: false
-        };
-    }
+            trueAnomaly: params.chandrayaanTrueAnomaly
+        },
+        renderDate: getRenderDate(),
+        mode: params.appMode  // Pass current mode to enforce state isolation
+    });
 
-    // Cache the result
-    cachedOrbitalParams = result;
-    lastParamsCacheFrame = currentAnimationFrame;
-
-    return result;
+    // Cache the result and return
+    return orbitalParamsCache.set(result, currentAnimationFrame);
 }
 
 // Calculate Moon's orbital elements from position and velocity vectors
@@ -421,8 +613,8 @@ const COLORS = {
     lunarAscending: 0x00ffff,  // Cyan
     lunarDescending: 0xff8800, // Orange
     moon: 0xaaaaaa,            // Gray
-    chandrayaanPlane: 0xffff00,     // Yellow
-    chandrayaanOrbit: 0xffa500,     // Gold/Amber
+    chandrayaanPlane: 0xffff00,     // Yellow (orbital plane)
+    chandrayaanOrbit: 0xffff00,     // Yellow (orbit path - same as plane, but dashed)
     chandrayaanAscending: 0x88ff88, // Light Green
     chandrayaanDescending: 0xff88ff,// Pink
     chandrayaan: 0xffffff      // White
@@ -618,10 +810,11 @@ function createAriesMarker() {
 
 function createGreatCircle(radius, color, inclination = 0, raan = 0) {
     const segments = ORBIT_SEGMENTS_STANDARD;
-    const points = [];
+    const inclinationRad = THREE.MathUtils.degToRad(inclination);
+    const raanRad = THREE.MathUtils.degToRad(raan);
 
-    // Create circle in XZ plane (counter-clockwise when viewed from above)
-    for (let i = 0; i <= segments; i++) {
+    // Generate points functionally using Array.from
+    const points = Array.from({ length: segments + 1 }, (_, i) => {
         const theta = (i / segments) * Math.PI * 2;
         const x = radius * Math.cos(theta);
         const y = 0;
@@ -630,11 +823,11 @@ function createGreatCircle(radius, color, inclination = 0, raan = 0) {
         const point = new THREE.Vector3(x, y, z);
 
         // Apply rotations to each point: inclination first, then RAAN
-        point.applyAxisAngle(new THREE.Vector3(1, 0, 0), THREE.MathUtils.degToRad(inclination));
-        point.applyAxisAngle(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(raan));
+        point.applyAxisAngle(new THREE.Vector3(1, 0, 0), inclinationRad);
+        point.applyAxisAngle(new THREE.Vector3(0, 1, 0), raanRad);
 
-        points.push(point);
-    }
+        return point;
+    });
 
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
     const material = new THREE.LineBasicMaterial({
@@ -832,23 +1025,26 @@ function createChandrayaanOrbit() {
     const a = perigeeDistance / (1 - e); // Semi-major axis
 
     const segments = 128;
-    const points = [];
 
     // Create ellipse using polar form: r(θ) = a(1-e²)/(1+e*cos(θ))
-    for (let i = 0; i <= segments; i++) {
+    // Generate points functionally using Array.from
+    const points = Array.from({ length: segments + 1 }, (_, i) => {
         const theta = (i / segments) * Math.PI * 2;
         const r = a * (1 - e * e) / (1 + e * Math.cos(theta));
         const x = r * Math.cos(theta);
         const z = -r * Math.sin(theta); // Negative for counter-clockwise from above
-        points.push(new THREE.Vector3(x, 0, z));
-    }
+        return new THREE.Vector3(x, 0, z);
+    });
 
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const material = new THREE.LineBasicMaterial({
+    const material = new THREE.LineDashedMaterial({
         color: COLORS.chandrayaanOrbit,
-        linewidth: 2
+        linewidth: 2,
+        dashSize: 3,
+        gapSize: 2
     });
     chandrayaanOrbitCircle3D = new THREE.Line(geometry, material);
+    chandrayaanOrbitCircle3D.computeLineDistances(); // Required for dashed lines - call on Line object
 
     scene.add(chandrayaanOrbitCircle3D);
 
@@ -878,14 +1074,14 @@ function updateChandrayaanOrbit() {
     const a = perigeeDistance / (1 - e); // Semi-major axis
 
     const segments = ORBIT_SEGMENTS_DETAILED;
-    const points = [];
 
     const omega = THREE.MathUtils.degToRad(orbitalParams.omega);
     const inc = THREE.MathUtils.degToRad(orbitalParams.inclination);
     const raan = THREE.MathUtils.degToRad(orbitalParams.raan);
 
     // Create elliptical orbit in XZ plane using polar form
-    for (let i = 0; i <= segments; i++) {
+    // Generate points functionally using Array.from
+    const points = Array.from({ length: segments + 1 }, (_, i) => {
         const theta = (i / segments) * Math.PI * 2;
         const r = a * (1 - e * e) / (1 + e * Math.cos(theta));
         const point = new THREE.Vector3(
@@ -899,15 +1095,18 @@ function updateChandrayaanOrbit() {
         point.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
         point.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
 
-        points.push(point);
-    }
+        return point;
+    });
 
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const material = new THREE.LineBasicMaterial({
+    const material = new THREE.LineDashedMaterial({
         color: COLORS.chandrayaanOrbit,
-        linewidth: 2
+        linewidth: 2,
+        dashSize: 3,
+        gapSize: 2
     });
     chandrayaanOrbitCircle3D = new THREE.Line(geometry, material);
+    chandrayaanOrbitCircle3D.computeLineDistances(); // Required for dashed lines - call on Line object
     chandrayaanOrbitCircle3D.visible = params.showChandrayaanOrbit;
     scene.add(chandrayaanOrbitCircle3D);
 
@@ -963,14 +1162,14 @@ function updateChandrayaanOrbit() {
     if (captureState.isCaptured && params.appMode === 'Game') {
         // After capture - hide the spacecraft
         chandrayaan.visible = false;
-    } else if (launchEvent.exists && !orbitalParams.isLaunched) {
-        // Launch exists but not reached yet - grey and frozen at perigee
+    } else if (params.appMode !== 'Explore' && launchEvent.exists && !orbitalParams.isLaunched) {
+        // Plan/Game mode: Launch exists but not reached yet - grey and frozen at perigee
         // Respect showChandrayaan visibility toggle
         chandrayaan.visible = params.showChandrayaan;
         chandrayaan.material.color.setHex(0x888888);
         chandrayaan.material.emissive.setHex(0x000000);
     } else {
-        // No launch event (manual mode) OR launched - white and active
+        // Explore mode OR no launch event OR launched - white and active
         // Respect showChandrayaan visibility toggle
         chandrayaan.visible = params.showChandrayaan;
         chandrayaan.material.color.setHex(COLORS.chandrayaan);
@@ -1631,11 +1830,12 @@ function switchAppMode(mode) {
 
     if (mode === 'Explore') {
         // Explore mode: Show all manual controls, hide timeline, force Gamed Moon mode, hide actions panel
+
+        // Activate Set A (completely isolated from Plan/Game params)
+        stateManager.activateExploreParams();
+
         lunarFolder.show();
         chandrayaanFolder.show();
-
-        // Force Moon to Gamed mode
-        params.moonMode = 'Gamed';
 
         // Enable all lunar controls
         lunarControllers.inclination.enable();
@@ -1653,11 +1853,19 @@ function switchAppMode(mode) {
         // Hide timeline panel
         timelinePanel.style.display = 'none';
 
-        // Show actions panel but disabled
-        actionsPanel.classList.add('visible');
-        actionsPanel.classList.add('disabled');
+        // Hide launch event container and Add Launch button completely in Explore mode
+        document.getElementById('launch-event-container').style.display = 'none';
+        document.getElementById('add-launch-action-btn').style.display = 'none';
 
-        // Update period display
+        // Hide actions panel completely in Explore mode
+        actionsPanel.classList.remove('visible');
+        actionsPanel.classList.remove('disabled');
+
+        // Update visuals with Set A params
+        updateLunarOrbitCircle();
+        updateLunarNodePositions();
+        updateMoonPosition();
+        updateChandrayaanOrbit();
         updateChandrayaanPeriodDisplay();
 
         // Hide Launch and Intercept timeline rows in Explore mode
@@ -1668,18 +1876,19 @@ function switchAppMode(mode) {
 
     } else if (mode === 'Plan') {
         // Plan mode: Show all controls but disabled (read-only), show actions panel for editing, show timeline, force Real Moon mode
+
+        // Activate Set B (completely isolated from Explore params)
+        stateManager.activatePlanGameParams();
+
         lunarFolder.show();
         chandrayaanFolder.show();
 
-        // Force Moon to Real mode
-        params.moonMode = 'Real';
-
-        // Disable all lunar controls (read-only display)
+        // Disable all lunar controls (read-only display - controlled by Real ephemeris)
         lunarControllers.inclination.disable();
         lunarControllers.nodes.disable();
         lunarControllers.moonRA.disable();
 
-        // Disable all chandrayaan controls (read-only display)
+        // Disable all chandrayaan controls (read-only display - controlled by launch event)
         chandrayaanControllers.inclination.disable();
         chandrayaanControllers.nodes.disable();
         chandrayaanControllers.omega.disable();
@@ -1695,30 +1904,13 @@ function switchAppMode(mode) {
         timelinePanel.style.display = 'block';
         timelinePanel.classList.remove('disabled');
 
-        // Update moon position from current date when switching to Plan mode
+        // Update moon position from current date using Real ephemeris
         updateMoonFromRealPosition();
-
-        // Sync params with launch event if it exists
-        if (launchEvent.exists) {
-            params.chandrayaanInclination = launchEvent.inclination;
-            params.chandrayaanNodes = launchEvent.raan;
-            params.chandrayaanOmega = launchEvent.omega;
-            params.chandrayaanPerigeeAlt = launchEvent.perigeeAlt;
-            params.chandrayaanApogeeAlt = launchEvent.apogeeAlt;
-            params.chandrayaanTrueAnomaly = launchEvent.trueAnomaly || 0;
-
-            chandrayaanControllers.inclination.updateDisplay();
-            chandrayaanControllers.nodes.updateDisplay();
-            chandrayaanControllers.omega.updateDisplay();
-            chandrayaanControllers.perigeeAlt.updateDisplay();
-            chandrayaanControllers.apogeeAlt.updateDisplay();
-            chandrayaanControllers.trueAnomaly.updateDisplay();
-        }
 
         // Update period display
         updateChandrayaanPeriodDisplay();
 
-        // If launch event exists, show the container
+        // Show/hide Add Launch button and launch event container based on launch event existence
         if (launchEvent.exists) {
             document.getElementById('add-launch-action-btn').style.display = 'none';
             document.getElementById('launch-event-container').style.display = 'block';
@@ -1734,6 +1926,10 @@ function switchAppMode(mode) {
 
             // Sync render control sliders with launch event
             syncRenderControlSlidersWithLaunchEvent();
+        } else {
+            // No launch event: show Add Launch button, hide container
+            document.getElementById('add-launch-action-btn').style.display = 'block';
+            document.getElementById('launch-event-container').style.display = 'none';
         }
 
         // Show Launch and Intercept timeline rows in Plan mode
@@ -1753,11 +1949,13 @@ function switchAppMode(mode) {
 
     } else if (mode === 'Game') {
         // Game mode: Show controls but disabled, show timeline, force Real Moon mode, show actions panel disabled
+        // Note: Game mode uses Set B (same as Plan mode - complete isolation from Explore)
+
+        // Activate Set B (same params as Plan mode)
+        stateManager.activatePlanGameParams();
+
         lunarFolder.show();
         chandrayaanFolder.show();
-
-        // Force Moon to Real mode
-        params.moonMode = 'Real';
 
         // Disable all lunar controls (read-only display)
         lunarControllers.inclination.disable();
@@ -1918,16 +2116,8 @@ function syncParamsToLaunchEvent() {
     if (params.appMode !== 'Plan') return;
     if (!launchEvent.exists) return;
 
-    // Update launch event from params
-    launchEvent.inclination = params.chandrayaanInclination;
-    launchEvent.raan = params.chandrayaanNodes;
-    launchEvent.omega = params.chandrayaanOmega;
-    launchEvent.perigeeAlt = params.chandrayaanPerigeeAlt;
-    launchEvent.apogeeAlt = params.chandrayaanApogeeAlt;
-    launchEvent.trueAnomaly = params.chandrayaanTrueAnomaly;
-
-    // Mark as dirty
-    draftState.isDirty = true;
+    // Use centralized state manager
+    stateManager.saveParamsToLaunchEvent();
 
     // Note: lil-gui will handle display updates automatically via .listen()
 }
@@ -2148,11 +2338,14 @@ function updateRenderDate() {
         updateMoonFromRealPosition();
     }
 
-    if (launchEvent.exists) {
-        updateChandrayaanOrbit();
-        if (params.appMode === 'Game' || params.appMode === 'Plan') {
-            syncGUIWithLaunchEvent();
-        }
+    // Update Chandrayaan orbit in all modes
+    // In Explore: uses Set A (manual params)
+    // In Plan/Game: uses Set B (launch event params if exists)
+    updateChandrayaanOrbit();
+
+    // Sync GUI with launch event only in Plan/Game modes
+    if ((params.appMode === 'Game' || params.appMode === 'Plan') && launchEvent.exists) {
+        syncGUIWithLaunchEvent();
     }
 }
 
