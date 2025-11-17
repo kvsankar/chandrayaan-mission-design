@@ -1,0 +1,31 @@
+{
+  "name": "cy3-orbit",
+  "version": "1.0.0",
+  "description": "Chandrayaan-3 Orbit Visualization",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "type-check": "tsc --noEmit",
+    "compile": "tsc",
+    "compile:watch": "tsc --watch",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage"
+  },
+  "devDependencies": {
+    "@types/three": "^0.152.0",
+    "@vitest/coverage-v8": "^1.0.4",
+    "@vitest/ui": "^1.0.4",
+    "happy-dom": "^12.10.3",
+    "typescript": "^5.3.3",
+    "vite": "^5.4.21",
+    "vitest": "^1.0.4"
+  },
+  "dependencies": {
+    "astronomy-engine": "^2.1.19",
+    "lil-gui": "^0.18.2",
+    "three": "^0.152.2"
+  }
+}

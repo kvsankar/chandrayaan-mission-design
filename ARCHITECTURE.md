@@ -544,11 +544,112 @@ launchEvent.moonInterceptDate = newDate;
 
 ## Lessons Learned
 
+### From Reactive Architecture
+
 1. **Scoping issues are architectural red flags** - If a function can't be called from where it's needed, that's a design problem
 2. **Manual dependencies don't scale** - As features grow, dependency maps become unmaintainable
 3. **Pull > Push** - Views pulling data when needed is better than pushing updates
 4. **Modern frameworks got it right** - Vue, React, Solid.js all use reactivity for good reason
 5. **Debugging matters** - Named effects and error handling are essential for production code
+
+### From RA Calculation Bug Regression
+
+The RA sync positioning bug reappeared after being fixed, teaching valuable lessons about code quality:
+
+#### 1. DRY Principle (Don't Repeat Yourself)
+
+**Problem**: Same logic in multiple places means fixes don't propagate
+
+**Solution**: Centralize shared logic in reusable functions
+
+**Before**:
+- RA↔Anomaly calculations duplicated in 6 places (5 inverse, 1 forward)
+- Fixes only applied to 1 place initially
+- Bug regressed during TypeScript refactoring
+
+**After**:
+- Created `calculateTrueAnomalyFromRA()` function (inverse)
+- Created `calculateRAFromTrueAnomaly()` function (forward)
+- All 7 locations now call centralized functions
+- Single source of truth for each direction
+
+#### 2. Automated Refactoring Risks
+
+**Problem**: Using AI/automated tools to convert code can copy bugs
+
+**What Happened**:
+- Task agent converted JavaScript → TypeScript
+- Agent likely copied original code without understanding the previous fix
+- No tests caught the regression (UI-only code at the time)
+
+**Solution**:
+- Review automated changes carefully
+- Have comprehensive tests (now implemented)
+- Use linters and type checkers
+
+#### 3. Test Coverage Gaps
+
+**Problem**: UI interaction code wasn't tested initially
+
+**Solution**: Need integration/E2E tests for UI
+
+**Current State**:
+- ✅ 97 unit tests for orbital mechanics and calculations
+- ✅ Tests cover both RA→Anomaly and Anomaly→RA conversions
+- ✅ Bidirectional consistency verification
+- ⚠️ Future: Need E2E tests for GUI button callbacks
+
+#### 4. Code Comments Aren't Enough
+
+**Problem**: Comments explaining fixes don't prevent regression
+
+**Solution**: Structural solutions over documentation
+
+Comments had detailed explanations of spherical trigonometry, but:
+- Comments don't prevent copy-paste errors
+- Comments don't enforce correctness
+- Comments can become outdated
+
+Better solutions:
+- **Functions** with clear names (`calculateTrueAnomalyFromRA`)
+- **Types** that prevent wrong parameter order
+- **Tests** that verify behavior
+- **Linters** that detect duplicated code
+
+#### 5. Regression Testing
+
+**Problem**: Previous bugs can resurface during refactoring
+
+**Solution**: Add test when fixing any bug
+
+When a bug is fixed:
+1. ✅ Add a test that would have caught it
+2. ✅ Document the bug and fix
+3. ✅ Centralize the logic
+4. ✅ Add to regression test suite
+
+### Software Engineering Principles
+
+This project demonstrates fundamental software development challenges:
+
+**Consistency is hard to maintain as codebases grow**
+
+Solutions require multiple layers:
+- **Architecture** (DRY, single responsibility)
+- **Testing** (unit, integration, E2E)
+- **Tooling** (linters, type checkers, analyzers)
+- **Process** (code review, documentation)
+- **Culture** (refactoring, technical debt management)
+
+No single solution is sufficient. We need **defense in depth**.
+
+### Key Takeaways
+
+1. **Centralize shared logic** - Don't duplicate calculations
+2. **Test everything** - Especially after fixing bugs
+3. **Review automated changes** - AI tools can propagate bugs
+4. **Use proper algorithms** - Simple formulas (`RA = RAAN + ω + ν`) only work for special cases (i=0°)
+5. **Spherical trigonometry matters** - For inclined orbits, must use proper formulas
 
 ---
 
@@ -557,3 +658,171 @@ launchEvent.moonInterceptDate = newDate;
 ✅ **Production-ready** with excellent developer experience
 
 The reactive architecture prevents not just the TLI sync bug, but an entire class of similar bugs in the future.
+
+---
+
+## Testing
+
+### Test Suite Overview
+
+Comprehensive unit test suite using Vitest:
+- **97 tests** across 4 test files
+- **100% pass rate**
+- Covers reactive system, orbital mechanics, utilities, and RA calculations
+
+### Running Tests
+
+```bash
+npm test              # Run all tests once
+npm run test:ui       # Run tests in watch mode with UI
+npm run test:coverage # Generate coverage report
+```
+
+### Test Files
+
+**1. reactive.test.ts (28 tests)**
+- Reactive proxy creation and tracking
+- Computed values with lazy evaluation
+- watchEffect and watch APIs
+- Error handling and debug naming
+- Complex scenarios (nested computed, conditional deps)
+
+**2. orbital-mechanics.test.ts (24 tests)**
+- Eccentricity and orbital period calculations
+- True anomaly from time (Kepler equation)
+- Right Ascension calculations with spherical trigonometry
+- Distance and coordinate transformations
+- Inclination/omega constraints
+
+**3. ra-calculation.test.ts (5 tests)**
+- Forward: True Anomaly → RA conversion
+- Inverse: RA → True Anomaly conversion
+- Bidirectional consistency verification
+- Round-trip accuracy for various inclinations
+
+**4. utils.test.ts (40 tests)**
+- Angle normalization and conversions
+- Date/time utilities
+- Number formatting and validation
+- Array operations and edge cases
+
+### Test Configuration
+
+- **Framework**: Vitest v1.6.1
+- **Environment**: happy-dom (browser DOM simulation)
+- **Coverage**: v8 provider
+- **TypeScript**: Full type safety enabled
+
+### Coverage
+
+Current coverage (reactive system):
+- **Statements**: 94.66%
+- **Branches**: 85.71%
+- **Functions**: 100%
+- **Lines**: 94.66%
+
+---
+
+## Deployment
+
+### GitHub Pages Deployment
+
+The project uses **Vite + TypeScript** with automatic GitHub Actions deployment.
+
+### How It Works
+
+1. **Push to `master` branch** triggers the deployment workflow
+2. **GitHub Actions** runs automatically:
+   - Installs dependencies (`npm ci`)
+   - Runs tests (`npm test`)
+   - Compiles TypeScript (`npm run compile`)
+   - Builds with Vite (`npm run build`)
+   - Copies assets to `dist-pages/`
+   - Deploys to GitHub Pages
+
+### GitHub Pages Configuration
+
+In repository settings:
+1. Go to **Settings** → **Pages**
+2. Source: **GitHub Actions** (not "Deploy from branch")
+3. Workflow automatically deploys on push
+
+### Local Development
+
+```bash
+npm run dev          # Start Vite dev server with HMR
+                     # Runs at http://localhost:3000 (or 3001)
+                     # Changes auto-reload in browser
+```
+
+### Manual Deployment
+
+```bash
+npm install          # Install dependencies
+npm test             # Run tests
+npm run compile      # Build TypeScript
+npm run build        # Build with Vite
+                     # Output in dist-pages/
+```
+
+### Build Output Structure
+
+```
+dist-pages/
+├── index.html          # Entry point
+├── main.js            # Bundled JavaScript (Three.js, lil-gui, etc.)
+├── style.css          # Styles
+├── *.glb              # 3D models
+└── chandrayaan-mission-design.png
+```
+
+### Important Notes
+
+1. **Dependencies are Bundled**: Three.js, lil-gui, and astronomy-engine bundled into main.js
+2. **No CDN Dependencies**: Everything is self-contained
+3. **TypeScript Support**: Source is .ts, compiled to .js for browser
+4. **Tests Run on Deploy**: Build fails if tests fail
+5. **Relative Paths**: Uses `base: './'` for GitHub Pages compatibility
+
+### Development vs Production
+
+| Feature | Development | Production |
+|---------|-------------|------------|
+| Server | Vite dev (port 3000) | Static files in dist-pages/ |
+| TypeScript | On-the-fly | Pre-compiled then bundled |
+| Modules | Loaded separately | Bundled into main.js |
+| Hot Reload | ✅ Yes | ❌ No |
+| Source Maps | ✅ Yes | ✅ Yes |
+| File Size | Larger (unbundled) | Optimized & minified |
+
+### CI/CD Workflow
+
+The deployment workflow (`.github/workflows/deploy.yml`) runs on:
+- Push to `master` branch
+- Manual trigger (workflow_dispatch)
+
+Steps:
+1. Checkout code
+2. Setup Node.js 18
+3. Install dependencies
+4. Run tests
+5. Build TypeScript
+6. Build with Vite
+7. Copy assets
+8. Deploy to GitHub Pages
+
+### Troubleshooting
+
+**Build fails on GitHub Actions:**
+- Check Actions tab for error logs
+- Ensure all dependencies in package.json
+- Run `npm test` locally first
+
+**Page shows blank:**
+- Check browser console for errors
+- Verify GitHub Pages source is "GitHub Actions"
+- Check workflow completed successfully
+
+**Assets not loading:**
+- Ensure files copied in deploy.yml
+- Check file paths are relative (no leading `/`)

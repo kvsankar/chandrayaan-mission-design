@@ -15,3 +15,24 @@
 # OS files
 .DS_Store
 Thumbs.db
+
+# Node modules
+node_modules/
+
+# TypeScript build output
+dist/
+dist-pages/
+*.tsbuildinfo
+reactive.js
+reactive.js.map
+
+# Test coverage
+coverage/
+
+# Temporary/backup files
+*.backup
+*.full
+*.partial
+
+# Vite cache
+.vite/
