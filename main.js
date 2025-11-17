@@ -6,7 +6,7 @@ import * as Astronomy from 'astronomy-engine';
 // Three.js scene setup
 let scene, camera, renderer, controls;
 let celestialSphere;
-let equatorCircle, lunarOrbitCircle, chandrayaanOrbitCircle;
+let equatorCircle, lunarOrbitCircle, lunarOrbitFilledPlane, chandrayaanOrbitCircle, chandrayaanOrbitFilledPlane;
 let lunarAscendingNode, lunarDescendingNode;
 let chandrayaanAscendingNode, chandrayaanDescendingNode;
 let chandrayaanOrbitCircle3D, chandrayaan;
@@ -24,9 +24,11 @@ const params = {
     showEquator: true,
     showAxes: true,
     showLunarOrbitPlane: true,
+    showLunarOrbitFilledPlane: true,
     showLunarNodes: true,
     showMoon: true,
     showChandrayaanOrbitPlane: true,
+    showChandrayaanOrbitFilledPlane: true,
     showChandrayaanOrbit: true,
     showChandrayaan: true,
     showChandrayaanNodes: true,
@@ -39,7 +41,8 @@ const params = {
     // Lunar orbit parameters (plane only, with Moon on circular orbit)
     lunarInclination: 23.44, // degrees (relative to equator)
     lunarNodes: 0, // RAAN - Right Ascension of Ascending Node
-    moonRA: 0, // Moon's Right Ascension from First Point of Aries (degrees) - for Gamed mode input
+    moonRA: 0, // Moon's Right Ascension from First Point of Aries (degrees)
+    moonTrueAnomaly: 0, // Moon's True Anomaly in its orbit (degrees)
     moonRADisplay: '--', // Current Moon RA (display only)
     moonDistanceDisplay: '--', // Moon distance from Earth (display only)
 
@@ -49,11 +52,13 @@ const params = {
     chandrayaanOmega: 45, // Argument of periapsis (degrees)
     chandrayaanPerigeeAlt: 180, // Perigee altitude in km
     chandrayaanApogeeAlt: 378029, // Apogee altitude in km (default: 384400 - 6371 = lunar orbit distance altitude)
-    chandrayaanTrueAnomaly: 0, // True anomaly (position along orbit, degrees)
+    chandrayaanRA: 0, // Right Ascension (degrees) - for Explore mode (similar to Moon RA)
+    chandrayaanTrueAnomaly: 0, // True anomaly (position along orbit, degrees) - for Plan/Game modes
     chandrayaanPeriod: '--', // Orbital period (display only)
     chandrayaanRADisplay: '--', // Current Chandrayaan RA (display only)
     craftEarthDistance: '--', // Craft distance from Earth (display only)
     craftMoonDistance: '--', // Distance from craft to Moon in km (display only)
+    restrictOrbitalParams: false, // Restrict inclination and AoP to allowed launch values (Explore mode only)
 };
 
 // Capture state
@@ -118,6 +123,7 @@ class ParameterSet {
         this.lunarInclination = config.lunarInclination;
         this.lunarNodes = config.lunarNodes;
         this.moonRA = config.moonRA;
+        this.moonTrueAnomaly = config.moonTrueAnomaly;
         this.moonMode = config.moonMode;
 
         // Chandrayaan params
@@ -126,6 +132,7 @@ class ParameterSet {
         this.chandrayaanOmega = config.chandrayaanOmega;
         this.chandrayaanPerigeeAlt = config.chandrayaanPerigeeAlt;
         this.chandrayaanApogeeAlt = config.chandrayaanApogeeAlt;
+        this.chandrayaanRA = config.chandrayaanRA;
         this.chandrayaanTrueAnomaly = config.chandrayaanTrueAnomaly;
     }
 
@@ -134,6 +141,7 @@ class ParameterSet {
         params.lunarInclination = this.lunarInclination;
         params.lunarNodes = this.lunarNodes;
         params.moonRA = this.moonRA;
+        params.moonTrueAnomaly = this.moonTrueAnomaly;
         params.moonMode = this.moonMode;
 
         params.chandrayaanInclination = this.chandrayaanInclination;
@@ -141,6 +149,7 @@ class ParameterSet {
         params.chandrayaanOmega = this.chandrayaanOmega;
         params.chandrayaanPerigeeAlt = this.chandrayaanPerigeeAlt;
         params.chandrayaanApogeeAlt = this.chandrayaanApogeeAlt;
+        params.chandrayaanRA = this.chandrayaanRA;
         params.chandrayaanTrueAnomaly = this.chandrayaanTrueAnomaly;
     }
 
@@ -149,6 +158,7 @@ class ParameterSet {
         this.lunarInclination = params.lunarInclination;
         this.lunarNodes = params.lunarNodes;
         this.moonRA = params.moonRA;
+        this.moonTrueAnomaly = params.moonTrueAnomaly;
         this.moonMode = params.moonMode;
 
         this.chandrayaanInclination = params.chandrayaanInclination;
@@ -156,6 +166,7 @@ class ParameterSet {
         this.chandrayaanOmega = params.chandrayaanOmega;
         this.chandrayaanPerigeeAlt = params.chandrayaanPerigeeAlt;
         this.chandrayaanApogeeAlt = params.chandrayaanApogeeAlt;
+        this.chandrayaanRA = params.chandrayaanRA;
         this.chandrayaanTrueAnomaly = params.chandrayaanTrueAnomaly;
     }
 
@@ -177,12 +188,14 @@ const exploreParamSet = new ParameterSet('Explore', {
     lunarInclination: 23.44,
     lunarNodes: 0,
     moonRA: 0,
+    moonTrueAnomaly: 0,
     moonMode: 'Gamed',
     chandrayaanInclination: 30,
     chandrayaanNodes: 0,
     chandrayaanOmega: 45,
     chandrayaanPerigeeAlt: 180,
     chandrayaanApogeeAlt: 378029,
+    chandrayaanRA: 0,
     chandrayaanTrueAnomaly: 0
 });
 
@@ -191,12 +204,14 @@ const planGameParamSet = new ParameterSet('Plan/Game', {
     lunarInclination: 23.44, // Will be overwritten by real ephemeris
     lunarNodes: 0, // Will be overwritten by real ephemeris
     moonRA: 0, // Will be overwritten by real ephemeris
+    moonTrueAnomaly: 0, // Will be overwritten by real ephemeris
     moonMode: 'Real',
     chandrayaanInclination: 21.5, // From launch event
     chandrayaanNodes: 5,
     chandrayaanOmega: 178,
     chandrayaanPerigeeAlt: 180,
     chandrayaanApogeeAlt: 370000,
+    chandrayaanRA: 0,
     chandrayaanTrueAnomaly: 0
 });
 
@@ -324,6 +339,32 @@ function calculateChandrayaanEccentricity() {
     return e;
 }
 
+// Helper functions for orbital parameter restrictions (launch event constraints)
+function getClosestAllowedInclination(currentInclination) {
+    // Allowed inclinations: 21.5° or 41.8°
+    const allowed = [21.5, 41.8];
+    return allowed.reduce((prev, curr) =>
+        Math.abs(curr - currentInclination) < Math.abs(prev - currentInclination) ? curr : prev
+    );
+}
+
+function getAllowedOmegaValues(inclination) {
+    // Omega constraints based on inclination
+    if (inclination === 21.5) {
+        return [178];
+    } else if (inclination === 41.8) {
+        return [198, 203];
+    }
+    return [178]; // default
+}
+
+function getClosestAllowedOmega(currentOmega, inclination) {
+    const allowed = getAllowedOmegaValues(inclination);
+    return allowed.reduce((prev, curr) =>
+        Math.abs(curr - currentOmega) < Math.abs(prev - currentOmega) ? curr : prev
+    );
+}
+
 // Calculate orbital period from perigee and apogee altitudes
 function calculateOrbitalPeriod(perigeeAlt, apogeeAlt) {
     const rp = EARTH_RADIUS + perigeeAlt; // Perigee distance from Earth center (km)
@@ -331,6 +372,157 @@ function calculateOrbitalPeriod(perigeeAlt, apogeeAlt) {
     const a = (rp + ra) / 2; // Semi-major axis (km)
     const T = 2 * Math.PI * Math.sqrt(Math.pow(a, 3) / EARTH_MU); // Period in seconds
     return T;
+}
+
+// Custom confirm dialog
+function showConfirmDialog(message, title = 'Confirm') {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('custom-confirm-modal');
+        const titleEl = document.getElementById('confirm-modal-title');
+        const messageEl = document.getElementById('confirm-modal-message');
+        const okBtn = document.getElementById('confirm-modal-ok');
+        const cancelBtn = document.getElementById('confirm-modal-cancel');
+
+        titleEl.textContent = title;
+        messageEl.textContent = message;
+        modal.style.display = 'flex';
+
+        const handleOk = () => {
+            modal.style.display = 'none';
+            okBtn.removeEventListener('click', handleOk);
+            cancelBtn.removeEventListener('click', handleCancel);
+            resolve(true);
+        };
+
+        const handleCancel = () => {
+            modal.style.display = 'none';
+            okBtn.removeEventListener('click', handleOk);
+            cancelBtn.removeEventListener('click', handleCancel);
+            resolve(false);
+        };
+
+        okBtn.addEventListener('click', handleOk);
+        cancelBtn.addEventListener('click', handleCancel);
+    });
+}
+
+// ============================================================================
+// CENTRALIZED PARAMETER CHANGE SYSTEM
+// ============================================================================
+// This system ensures that when any parameter changes, all dependent views
+// are updated automatically. This prevents bugs where we forget to call
+// an update function.
+
+const ParameterDependencies = {
+    // Lunar orbit parameters
+    lunarInclination: [
+        'updateLunarOrbitCircle',
+        'updateLunarNodePositions',
+        'updateMoonPosition',
+        'updateOrbitalElements'
+    ],
+    lunarNodes: [
+        'updateLunarOrbitCircle',
+        'updateLunarNodePositions',
+        'updateMoonPosition',
+        'updateRAANLines',
+        'updateOrbitalElements'
+    ],
+    moonRA: [
+        'updateMoonPosition',
+        'updateCraftMoonDistance',
+        'updateOrbitalElements'
+    ],
+    moonTrueAnomaly: [
+        'updateMoonPosition',
+        'updateCraftMoonDistance',
+        'updateOrbitalElements'
+    ],
+
+    // Chandrayaan orbit parameters
+    chandrayaanInclination: [
+        'updateChandrayaanOrbitCircle',
+        'updateChandrayaanOrbit',
+        'updateChandrayaanNodePositions',
+        'updateAOPLines',
+        'updateCraftMoonDistance',
+        'updateOrbitalElements'
+    ],
+    chandrayaanNodes: [
+        'updateChandrayaanOrbitCircle',
+        'updateChandrayaanOrbit',
+        'updateChandrayaanNodePositions',
+        'updateRAANLines',
+        'updateAOPLines',
+        'updateCraftMoonDistance',
+        'updateOrbitalElements'
+    ],
+    chandrayaanOmega: [
+        'updateChandrayaanOrbitCircle',
+        'updateChandrayaanOrbit',
+        'updateAOPLines',
+        'updateCraftMoonDistance',
+        'updateOrbitalElements'
+    ],
+    chandrayaanPerigeeAlt: [
+        'updateChandrayaanOrbit',
+        'updateCraftMoonDistance',
+        'updateOrbitalElements'
+    ],
+    chandrayaanApogeeAlt: [
+        'updateChandrayaanOrbit',
+        'updateCraftMoonDistance',
+        'updateOrbitalElements'
+    ],
+    chandrayaanRA: [
+        'updateChandrayaanOrbit',
+        'updateCraftMoonDistance',
+        'updateOrbitalElements'
+    ],
+    chandrayaanTrueAnomaly: [
+        'updateChandrayaanOrbit',
+        'updateCraftMoonDistance',
+        'updateOrbitalElements'
+    ]
+};
+
+// Map of function names to actual functions (will be populated after functions are defined)
+const UpdateFunctions = {};
+
+// Centralized parameter update handler
+function onParameterChange(paramName, newValue, skipSync = false) {
+    // Prevent circular updates
+    if (isUpdatingFromCode) return;
+
+    isUpdatingFromCode = true;
+
+    try {
+        // Update the parameter
+        params[paramName] = newValue;
+
+        // Sync to launch event if needed (unless explicitly skipped)
+        if (!skipSync) {
+            syncParamsToLaunchEvent();
+        }
+
+        // Invalidate cache if needed
+        if (paramName.startsWith('chandrayaan') || paramName.startsWith('moon')) {
+            invalidateOrbitalParamsCache();
+        }
+
+        // Call all dependent update functions
+        const dependencies = ParameterDependencies[paramName] || [];
+        for (const funcName of dependencies) {
+            const func = UpdateFunctions[funcName];
+            if (func && typeof func === 'function') {
+                func();
+            } else {
+                console.warn(`Update function not found: ${funcName}`);
+            }
+        }
+    } finally {
+        isUpdatingFromCode = false;
+    }
 }
 
 // Helper functions for time conversion
@@ -677,12 +869,25 @@ function init() {
 
     // Create Chandrayaan circular orbit and spacecraft
     createChandrayaanOrbit();
+    updateChandrayaanOrbitCircle();
 
     // Create RAAN angle visualization
     createRAANLines();
 
     // Create AOP angle visualization
     createAOPLines();
+
+    // Populate update functions map for centralized parameter system
+    UpdateFunctions.updateLunarOrbitCircle = updateLunarOrbitCircle;
+    UpdateFunctions.updateLunarNodePositions = updateLunarNodePositions;
+    UpdateFunctions.updateMoonPosition = updateMoonPosition;
+    UpdateFunctions.updateChandrayaanOrbitCircle = updateChandrayaanOrbitCircle;
+    UpdateFunctions.updateChandrayaanOrbit = updateChandrayaanOrbit;
+    UpdateFunctions.updateChandrayaanNodePositions = updateChandrayaanNodePositions;
+    UpdateFunctions.updateRAANLines = updateRAANLines;
+    UpdateFunctions.updateAOPLines = updateAOPLines;
+    UpdateFunctions.updateCraftMoonDistance = updateCraftMoonDistance;
+    UpdateFunctions.updateOrbitalElements = updateOrbitalElements;
 
     // Setup GUI
     setupGUI();
@@ -961,16 +1166,15 @@ function updateMoonPosition() {
             moonPos.z * SCALE_FACTOR
         );
     } else {
-        // Gamed mode: Position Moon based on Right Ascension (measured from First Point of Aries)
-        // RA is absolute and doesn't change when RAAN changes
-        // RA increases counter-clockwise when viewed from above (from north pole)
+        // Gamed mode: Position Moon based on RA or True Anomaly
+        // For circular orbit, True Anomaly = angle in orbit from ascending node
+        // RA = RAAN + True Anomaly (for circular orbit)
 
-        const ra = THREE.MathUtils.degToRad(params.moonRA);
         const inc = THREE.MathUtils.degToRad(params.lunarInclination);
         const raan = THREE.MathUtils.degToRad(params.lunarNodes);
 
-        // Calculate the angle within the orbital plane
-        // When RAAN changes, this angle changes to keep RA constant in space
+        // Use RA to calculate angle in orbit (True Anomaly for circular orbit)
+        const ra = THREE.MathUtils.degToRad(params.moonRA);
         const angleInOrbit = ra - raan;
 
         // Start with position in the unrotated orbital plane (XZ plane)
@@ -986,11 +1190,19 @@ function updateMoonPosition() {
         posInOrbit.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
 
         moon.position.copy(posInOrbit);
+
+        // In Gamed mode, display the assumed lunar orbit distance
+        params.moonDistanceDisplay = LUNAR_ORBIT_DISTANCE.toFixed(1) + ' km';
+        if (lunarControllers.moonDistanceDisplay) {
+            lunarControllers.moonDistanceDisplay.updateDisplay();
+        }
     }
 }
 
 function updateLunarOrbitCircle() {
     scene.remove(lunarOrbitCircle);
+    scene.remove(lunarOrbitFilledPlane);
+
     lunarOrbitCircle = createGreatCircle(
         SPHERE_RADIUS,
         COLORS.lunarOrbitPlane,
@@ -999,10 +1211,50 @@ function updateLunarOrbitCircle() {
     );
     scene.add(lunarOrbitCircle);
     lunarOrbitCircle.visible = params.showLunarOrbitPlane;
+
+    // Create filled plane (semi-transparent disc)
+    // Apply rotations to geometry, same as createGreatCircle
+    const filledGeometry = new THREE.CircleGeometry(SPHERE_RADIUS, 64);
+    const inc = THREE.MathUtils.degToRad(params.lunarInclination);
+    const raan = THREE.MathUtils.degToRad(params.lunarNodes);
+
+    // Rotate geometry vertices to match orbital plane
+    // Start in XY plane, rotate to XZ plane, then apply inclination and RAAN
+    const positions = filledGeometry.attributes.position;
+    for (let i = 0; i < positions.count; i++) {
+        const v = new THREE.Vector3(
+            positions.getX(i),
+            positions.getY(i),
+            positions.getZ(i)
+        );
+        // Rotate from XY to XZ plane
+        v.applyAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+        // Apply inclination around X
+        v.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+        // Apply RAAN around Y
+        v.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+
+        positions.setXYZ(i, v.x, v.y, v.z);
+    }
+    positions.needsUpdate = true;
+    filledGeometry.computeVertexNormals();
+
+    const filledMaterial = new THREE.MeshBasicMaterial({
+        color: COLORS.lunarOrbitPlane,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.1,
+        depthWrite: false
+    });
+    lunarOrbitFilledPlane = new THREE.Mesh(filledGeometry, filledMaterial);
+
+    scene.add(lunarOrbitFilledPlane);
+    lunarOrbitFilledPlane.visible = params.showLunarOrbitFilledPlane;
 }
 
 function updateChandrayaanOrbitCircle() {
     scene.remove(chandrayaanOrbitCircle);
+    scene.remove(chandrayaanOrbitFilledPlane);
 
     // Get current parameters (manual or from launch event)
     const orbitalParams = getChandrayaanParams();
@@ -1015,6 +1267,45 @@ function updateChandrayaanOrbitCircle() {
     );
     scene.add(chandrayaanOrbitCircle);
     chandrayaanOrbitCircle.visible = params.showChandrayaanOrbitPlane;
+
+    // Create filled plane (semi-transparent disc)
+    // Apply rotations to geometry, same as createGreatCircle
+    const filledGeometry = new THREE.CircleGeometry(SPHERE_RADIUS, 64);
+    const inc = THREE.MathUtils.degToRad(orbitalParams.inclination);
+    const raan = THREE.MathUtils.degToRad(orbitalParams.raan);
+
+    // Rotate geometry vertices to match orbital plane
+    // Start in XY plane, rotate to XZ plane, then apply inclination and RAAN
+    const positions = filledGeometry.attributes.position;
+    for (let i = 0; i < positions.count; i++) {
+        const v = new THREE.Vector3(
+            positions.getX(i),
+            positions.getY(i),
+            positions.getZ(i)
+        );
+        // Rotate from XY to XZ plane
+        v.applyAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+        // Apply inclination around X
+        v.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+        // Apply RAAN around Y
+        v.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+
+        positions.setXYZ(i, v.x, v.y, v.z);
+    }
+    positions.needsUpdate = true;
+    filledGeometry.computeVertexNormals();
+
+    const filledMaterial = new THREE.MeshBasicMaterial({
+        color: COLORS.chandrayaanPlane,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.1,
+        depthWrite: false
+    });
+    chandrayaanOrbitFilledPlane = new THREE.Mesh(filledGeometry, filledMaterial);
+
+    scene.add(chandrayaanOrbitFilledPlane);
+    chandrayaanOrbitFilledPlane.visible = params.showChandrayaanOrbitFilledPlane;
 }
 
 function createChandrayaanOrbit() {
@@ -1110,8 +1401,26 @@ function updateChandrayaanOrbit() {
     chandrayaanOrbitCircle3D.visible = params.showChandrayaanOrbit;
     scene.add(chandrayaanOrbitCircle3D);
 
-    // Update Chandrayaan position based on true anomaly
-    const nu = THREE.MathUtils.degToRad(orbitalParams.trueAnomaly);
+    // Update Chandrayaan position
+    let nu; // True anomaly in radians
+
+    if (params.appMode === 'Explore') {
+        // In Explore mode, use RA to calculate position (similar to Moon)
+        const ra = THREE.MathUtils.degToRad(params.chandrayaanRA);
+        const angleInOrbit = ra - raan;
+
+        // Calculate radial distance at this angle using elliptical orbit equation
+        // We need to find true anomaly from the angle in orbit
+        // For elliptical orbit: r(θ) = a(1-e²)/(1+e*cos(θ))
+        // where θ is measured from periapsis
+        // angleInOrbit is measured from ascending node
+        // So: θ = angleInOrbit - omega
+        nu = angleInOrbit - omega;
+    } else {
+        // In Plan/Game modes, use true anomaly directly
+        nu = THREE.MathUtils.degToRad(orbitalParams.trueAnomaly);
+    }
+
     const r = a * (1 - e * e) / (1 + e * Math.cos(nu));
     const spacecraftPos = new THREE.Vector3(
         r * Math.cos(nu),
@@ -1841,6 +2150,7 @@ function switchAppMode(mode) {
         lunarControllers.inclination.enable();
         lunarControllers.nodes.enable();
         lunarControllers.moonRA.enable();
+        lunarControllers.moonTrueAnomaly.enable();
 
         // Enable all chandrayaan controls
         chandrayaanControllers.inclination.enable();
@@ -1848,7 +2158,18 @@ function switchAppMode(mode) {
         chandrayaanControllers.omega.enable();
         chandrayaanControllers.perigeeAlt.enable();
         chandrayaanControllers.apogeeAlt.enable();
+        chandrayaanControllers.ra.enable();
         chandrayaanControllers.trueAnomaly.enable();
+
+        // Enable sync buttons in Explore mode
+        chandrayaanControllers.syncInclination.enable();
+        chandrayaanControllers.syncRaan.enable();
+        chandrayaanControllers.syncAop.enable();
+        chandrayaanControllers.syncApogee.enable();
+        chandrayaanControllers.syncRA.enable();
+
+        // Show restrict checkbox only in Explore mode
+        chandrayaanControllers.restrictOrbitalParams.show();
 
         // Hide timeline panel
         timelinePanel.style.display = 'none';
@@ -1887,6 +2208,7 @@ function switchAppMode(mode) {
         lunarControllers.inclination.disable();
         lunarControllers.nodes.disable();
         lunarControllers.moonRA.disable();
+        lunarControllers.moonTrueAnomaly.disable();
 
         // Disable all chandrayaan controls (read-only display - controlled by launch event)
         chandrayaanControllers.inclination.disable();
@@ -1894,7 +2216,18 @@ function switchAppMode(mode) {
         chandrayaanControllers.omega.disable();
         chandrayaanControllers.perigeeAlt.disable();
         chandrayaanControllers.apogeeAlt.disable();
+        chandrayaanControllers.ra.disable();
         chandrayaanControllers.trueAnomaly.disable();
+
+        // Disable sync buttons in Plan mode
+        chandrayaanControllers.syncInclination.disable();
+        chandrayaanControllers.syncRaan.disable();
+        chandrayaanControllers.syncAop.disable();
+        chandrayaanControllers.syncApogee.disable();
+        chandrayaanControllers.syncRA.disable();
+
+        // Hide restrict checkbox in Plan mode
+        chandrayaanControllers.restrictOrbitalParams.hide();
 
         // Show actions panel (enabled)
         actionsPanel.classList.add('visible');
@@ -1961,6 +2294,7 @@ function switchAppMode(mode) {
         lunarControllers.inclination.disable();
         lunarControllers.nodes.disable();
         lunarControllers.moonRA.disable();
+        lunarControllers.moonTrueAnomaly.disable();
 
         // Disable all chandrayaan controls (show but grayed out)
         chandrayaanControllers.inclination.disable();
@@ -1968,7 +2302,18 @@ function switchAppMode(mode) {
         chandrayaanControllers.omega.disable();
         chandrayaanControllers.perigeeAlt.disable();
         chandrayaanControllers.apogeeAlt.disable();
+        chandrayaanControllers.ra.disable();
         chandrayaanControllers.trueAnomaly.disable();
+
+        // Disable sync buttons in Game mode
+        chandrayaanControllers.syncInclination.disable();
+        chandrayaanControllers.syncRaan.disable();
+        chandrayaanControllers.syncAop.disable();
+        chandrayaanControllers.syncApogee.disable();
+        chandrayaanControllers.syncRA.disable();
+
+        // Hide restrict checkbox in Game mode
+        chandrayaanControllers.restrictOrbitalParams.hide();
 
         // Show timeline panel
         timelinePanel.style.display = 'block';
@@ -2173,8 +2518,11 @@ function setupGUI() {
     lunarVisFolder.add(params, 'showMoon').name('Show Moon').onChange(value => {
         moon.visible = value;
     });
-    lunarVisFolder.add(params, 'showLunarOrbitPlane').name('Show Plane').onChange(value => {
+    lunarVisFolder.add(params, 'showLunarOrbitPlane').name('Show Plane Circle').onChange(value => {
         lunarOrbitCircle.visible = value;
+    });
+    lunarVisFolder.add(params, 'showLunarOrbitFilledPlane').name('Show Filled Plane').onChange(value => {
+        if (lunarOrbitFilledPlane) lunarOrbitFilledPlane.visible = value;
     });
     lunarVisFolder.add(params, 'showLunarNodes').name('Show Nodes').onChange(value => {
         lunarAscendingNode.visible = value;
@@ -2185,8 +2533,11 @@ function setupGUI() {
     chandrayaanVisFolder.add(params, 'showChandrayaan').name('Show Chandrayaan').onChange(value => {
         chandrayaan.visible = value;
     });
-    chandrayaanVisFolder.add(params, 'showChandrayaanOrbitPlane').name('Show Plane').onChange(value => {
+    chandrayaanVisFolder.add(params, 'showChandrayaanOrbitPlane').name('Show Plane Circle').onChange(value => {
         chandrayaanOrbitCircle.visible = value;
+    });
+    chandrayaanVisFolder.add(params, 'showChandrayaanOrbitFilledPlane').name('Show Filled Plane').onChange(value => {
+        if (chandrayaanOrbitFilledPlane) chandrayaanOrbitFilledPlane.visible = value;
     });
     chandrayaanVisFolder.add(params, 'showChandrayaanOrbit').name('Show Orbit').onChange(value => {
         chandrayaanOrbitCircle3D.visible = value;
@@ -2215,75 +2566,320 @@ function setupGUI() {
     lunarFolder = gui.addFolder('Lunar Orbit Parameters');
 
     // Store controller references for enable/disable
-    lunarControllers.inclination = lunarFolder.add(params, 'lunarInclination', 18.3, 28.6, 0.1).name('Inclination (°)').onChange(() => {
-        updateLunarOrbitCircle();
-        updateLunarNodePositions();
-        updateMoonPosition();
-        updateOrbitalElements();
+    lunarControllers.inclination = lunarFolder.add(params, 'lunarInclination', 18.3, 28.6, 0.1).name('Inclination (°)').onChange((value) => {
+        onParameterChange('lunarInclination', value);
     });
-    lunarControllers.nodes = lunarFolder.add(params, 'lunarNodes', 0, 360, 1).name('Nodes (RAAN) (°)').onChange(() => {
-        updateLunarOrbitCircle();
-        updateLunarNodePositions();
-        updateMoonPosition();
-        updateOrbitalElements();
+    lunarControllers.nodes = lunarFolder.add(params, 'lunarNodes', 0, 360, 1).name('Nodes (RAAN) (°)').onChange((value) => {
+        // When RAAN changes, update RA to keep True Anomaly constant
+        // RA = RAAN + TrueAnomaly
+        let ra = value + params.moonTrueAnomaly;
+        while (ra < 0) ra += 360;
+        while (ra >= 360) ra -= 360;
+        params.moonRA = ra;
+        if (lunarControllers.moonRA) {
+            lunarControllers.moonRA.updateDisplay();
+        }
+        onParameterChange('lunarNodes', value);
     });
-    lunarControllers.moonRA = lunarFolder.add(params, 'moonRA', 0, 360, 1).name('Moon RA (°)').onChange(() => {
-        updateMoonPosition();
-        updateOrbitalElements();
+    // Moon RA control (affects True Anomaly)
+    lunarControllers.moonRA = lunarFolder.add(params, 'moonRA', 0, 360, 1).name('Moon RA (°)').onChange((value) => {
+        // Update moonTrueAnomaly from moonRA
+        // For circular orbit: RA = RAAN + TrueAnomaly
+        let ta = value - params.lunarNodes;
+        // Normalize to 0-360
+        while (ta < 0) ta += 360;
+        while (ta >= 360) ta -= 360;
+        params.moonTrueAnomaly = ta;
+        if (lunarControllers.moonTrueAnomaly) {
+            lunarControllers.moonTrueAnomaly.updateDisplay();
+        }
+        onParameterChange('moonRA', value);
         updateMoonRADisplay();
     });
+
+    // Moon True Anomaly control (affects RA)
+    lunarControllers.moonTrueAnomaly = lunarFolder.add(params, 'moonTrueAnomaly', 0, 360, 1).name('Moon True Anomaly (°)').onChange((value) => {
+        // Update moonRA from moonTrueAnomaly
+        // For circular orbit: RA = RAAN + TrueAnomaly
+        let ra = params.lunarNodes + value;
+        // Normalize to 0-360
+        while (ra < 0) ra += 360;
+        while (ra >= 360) ra -= 360;
+        params.moonRA = ra;
+        if (lunarControllers.moonRA) {
+            lunarControllers.moonRA.updateDisplay();
+        }
+        onParameterChange('moonTrueAnomaly', value);
+        updateMoonRADisplay();
+    });
+
     lunarControllers.moonRADisplay = lunarFolder.add(params, 'moonRADisplay').name('Moon RA (current)').disable();
     lunarControllers.moonDistanceDisplay = lunarFolder.add(params, 'moonDistanceDisplay').name('Distance from Earth').disable();
     lunarFolder.open();
 
     // Chandrayaan orbit folder
     chandrayaanFolder = gui.addFolder('Chandrayaan Orbit Parameters');
-    chandrayaanControllers.inclination = chandrayaanFolder.add(params, 'chandrayaanInclination', 0, 90, 0.1).name('Inclination (°)').onChange(() => {
-        syncParamsToLaunchEvent();
-        invalidateOrbitalParamsCache();
-        updateChandrayaanOrbitCircle();
-        updateChandrayaanOrbit();
-        updateChandrayaanNodePositions();
-        updateAOPLines();
-        updateOrbitalElements();
+
+    // Restrict Orbital Parameters checkbox (Explore mode only)
+    chandrayaanControllers.restrictOrbitalParams = chandrayaanFolder.add(params, 'restrictOrbitalParams').name('Restrict to Launch Values').onChange(async (value) => {
+        if (value) {
+            // Show warning popup
+            const confirmed = await showConfirmDialog(
+                'This will restrict Inclination and Argument of Periapsis to allowed launch event values.\n\n' +
+                'Allowed Inclinations: 21.5° or 41.8°\n' +
+                'Allowed AoP values:\n' +
+                '  • 21.5° inclination: 178°\n' +
+                '  • 41.8° inclination: 198° or 203°\n\n' +
+                'Current values will be adjusted to the closest allowed values.\n\n' +
+                'Continue?',
+                'Restrict Orbital Parameters'
+            );
+
+            if (confirmed) {
+                // Clamp inclination to closest allowed value
+                const newInclination = getClosestAllowedInclination(params.chandrayaanInclination);
+                params.chandrayaanInclination = newInclination;
+                chandrayaanControllers.inclination.updateDisplay();
+
+                // Clamp omega to closest allowed value for this inclination
+                const newOmega = getClosestAllowedOmega(params.chandrayaanOmega, newInclination);
+                params.chandrayaanOmega = newOmega;
+                chandrayaanControllers.omega.updateDisplay();
+
+                // Update visualization
+                syncParamsToLaunchEvent();
+                invalidateOrbitalParamsCache();
+                updateChandrayaanOrbitCircle();
+                updateChandrayaanOrbit();
+                updateChandrayaanNodePositions();
+                updateAOPLines();
+                updateOrbitalElements();
+            } else {
+                // User cancelled - uncheck the box
+                params.restrictOrbitalParams = false;
+                chandrayaanControllers.restrictOrbitalParams.updateDisplay();
+            }
+        }
+        // When unchecked, values stay as-is, user can now change them freely
     });
-    chandrayaanControllers.nodes = chandrayaanFolder.add(params, 'chandrayaanNodes', 0, 360, 1).name('Nodes (RAAN) (°)').onChange(() => {
-        syncParamsToLaunchEvent();
-        invalidateOrbitalParamsCache();
-        updateChandrayaanOrbitCircle();
-        updateChandrayaanOrbit();
-        updateChandrayaanNodePositions();
-        updateRAANLines();
-        updateAOPLines();
-        updateOrbitalElements();
+
+    // Inclination with sync button
+    chandrayaanControllers.inclination = chandrayaanFolder.add(params, 'chandrayaanInclination', 0, 90, 0.1).name('Inclination (°)').onChange((value) => {
+        // If restrictions are enabled, clamp to allowed values
+        if (params.restrictOrbitalParams) {
+            const newInclination = getClosestAllowedInclination(value);
+            if (newInclination !== value) {
+                value = newInclination;
+                chandrayaanControllers.inclination.updateDisplay();
+            }
+            // Also update omega to valid value for this inclination
+            const newOmega = getClosestAllowedOmega(params.chandrayaanOmega, newInclination);
+            if (newOmega !== params.chandrayaanOmega) {
+                params.chandrayaanOmega = newOmega;
+                chandrayaanControllers.omega.updateDisplay();
+            }
+        }
+        onParameterChange('chandrayaanInclination', value);
     });
-    chandrayaanControllers.omega = chandrayaanFolder.add(params, 'chandrayaanOmega', 0, 360, 1).name('ω (Arg. Periapsis) (°)').onChange(() => {
-        syncParamsToLaunchEvent();
-        invalidateOrbitalParamsCache();
-        updateChandrayaanOrbit();
-        updateAOPLines();
-        updateOrbitalElements();
+    chandrayaanControllers.syncInclination = chandrayaanFolder.add({ syncInclination: () => {
+        let value = params.lunarInclination;
+
+        // If restrictions are enabled, clamp to allowed values
+        if (params.restrictOrbitalParams) {
+            const newInclination = getClosestAllowedInclination(value);
+            value = newInclination;
+
+            // Also update omega to valid value for this inclination
+            const newOmega = getClosestAllowedOmega(params.chandrayaanOmega, newInclination);
+            params.chandrayaanOmega = newOmega;
+            chandrayaanControllers.omega.updateDisplay();
+        }
+
+        params.chandrayaanInclination = value;
+        chandrayaanControllers.inclination.updateDisplay();
+        onParameterChange('chandrayaanInclination', value);
+    }}, 'syncInclination').name('⟲ Sync from Moon');
+
+    // RAAN with sync button
+    chandrayaanControllers.nodes = chandrayaanFolder.add(params, 'chandrayaanNodes', 0, 360, 1).name('Nodes (RAAN) (°)').onChange((value) => {
+        // When RAAN changes, update RA to keep True Anomaly constant
+        // RA = RAAN + AOP + TrueAnomaly
+        let ra = value + params.chandrayaanOmega + params.chandrayaanTrueAnomaly;
+        while (ra < 0) ra += 360;
+        while (ra >= 360) ra -= 360;
+        params.chandrayaanRA = ra;
+        if (chandrayaanControllers.ra) {
+            chandrayaanControllers.ra.updateDisplay();
+        }
+        onParameterChange('chandrayaanNodes', value);
     });
-    chandrayaanControllers.perigeeAlt = chandrayaanFolder.add(params, 'chandrayaanPerigeeAlt', 180, 600000, 100).name('Perigee Altitude (km)').onChange(() => {
+    chandrayaanControllers.syncRaan = chandrayaanFolder.add({ syncRaan: () => {
+        const value = params.lunarNodes;
+        params.chandrayaanNodes = value;
+        chandrayaanControllers.nodes.updateDisplay();
+        onParameterChange('chandrayaanNodes', value);
+    }}, 'syncRaan').name('⟲ Sync from Moon');
+
+    // AoP with sync button (calculate to point apogee toward Moon)
+    chandrayaanControllers.omega = chandrayaanFolder.add(params, 'chandrayaanOmega', 0, 360, 1).name('ω (Arg. Periapsis) (°)').onChange((value) => {
+        // If restrictions are enabled, clamp to allowed values
+        if (params.restrictOrbitalParams) {
+            const newOmega = getClosestAllowedOmega(value, params.chandrayaanInclination);
+            if (newOmega !== value) {
+                value = newOmega;
+                chandrayaanControllers.omega.updateDisplay();
+            }
+        }
+        // When AOP changes, update RA to keep True Anomaly constant
+        // RA = RAAN + AOP + TrueAnomaly
+        let ra = params.chandrayaanNodes + value + params.chandrayaanTrueAnomaly;
+        while (ra < 0) ra += 360;
+        while (ra >= 360) ra -= 360;
+        params.chandrayaanRA = ra;
+        if (chandrayaanControllers.ra) {
+            chandrayaanControllers.ra.updateDisplay();
+        }
+        onParameterChange('chandrayaanOmega', value);
+    });
+    chandrayaanControllers.syncAop = chandrayaanFolder.add({ syncAop: () => {
+        // Calculate AoP to point apogee toward Moon's current position
+        // Apogee is at true anomaly = 180°, so we need AoP such that AoP + 180° points to Moon
+        // Moon's position in orbital plane is at moonRA degrees from First Point of Aries
+        // We need to find the angle from the ascending node to the Moon in the spacecraft's orbital plane
+
+        const moonRA_rad = params.moonRA * Math.PI / 180;
+        const chandrayaanRAAN_rad = params.chandrayaanNodes * Math.PI / 180;
+        const chandrayaanInc_rad = params.chandrayaanInclination * Math.PI / 180;
+        const lunarRAAN_rad = params.lunarNodes * Math.PI / 180;
+        const lunarInc_rad = params.lunarInclination * Math.PI / 180;
+
+        // Get Moon's position in 3D space
+        const angleInLunarOrbit = moonRA_rad - lunarRAAN_rad;
+        const moonPos = new THREE.Vector3(
+            SPHERE_RADIUS * Math.cos(angleInLunarOrbit),
+            0,
+            -SPHERE_RADIUS * Math.sin(angleInLunarOrbit)
+        );
+        moonPos.applyAxisAngle(new THREE.Vector3(1, 0, 0), lunarInc_rad);
+        moonPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), lunarRAAN_rad);
+
+        // Calculate the angle from Chandrayaan's ascending node to Moon
+        // First, get the ascending node position in 3D
+        const ascNodePos = new THREE.Vector3(SPHERE_RADIUS, 0, 0);
+        ascNodePos.applyAxisAngle(new THREE.Vector3(1, 0, 0), chandrayaanInc_rad);
+        ascNodePos.applyAxisAngle(new THREE.Vector3(0, 1, 0), chandrayaanRAAN_rad);
+
+        // Project both vectors onto Chandrayaan's orbital plane
+        // The orbital plane normal is (0, 1, 0) rotated by inclination and RAAN
+        const normal = new THREE.Vector3(0, 1, 0);
+        normal.applyAxisAngle(new THREE.Vector3(1, 0, 0), chandrayaanInc_rad);
+        normal.applyAxisAngle(new THREE.Vector3(0, 1, 0), chandrayaanRAAN_rad);
+
+        // Get vectors in the orbital plane
+        const nodeInPlane = ascNodePos.clone().projectOnPlane(normal).normalize();
+        const moonInPlane = moonPos.clone().projectOnPlane(normal).normalize();
+
+        // Calculate angle between them (this is where apogee should be)
+        let apogeeAngle = Math.acos(nodeInPlane.dot(moonInPlane)) * 180 / Math.PI;
+
+        // Determine sign using cross product
+        const cross = new THREE.Vector3().crossVectors(nodeInPlane, moonInPlane);
+        if (cross.dot(normal) < 0) {
+            apogeeAngle = 360 - apogeeAngle;
+        }
+
+        // Since apogee is at true anomaly = 180°, AoP = apogeeAngle - 180°
+        let aop = apogeeAngle - 180;
+        if (aop < 0) aop += 360;
+
+        params.chandrayaanOmega = aop;
+
+        // If restrictions are enabled, clamp to allowed values
+        if (params.restrictOrbitalParams) {
+            const newOmega = getClosestAllowedOmega(params.chandrayaanOmega, params.chandrayaanInclination);
+            params.chandrayaanOmega = newOmega;
+        }
+
+        chandrayaanControllers.omega.updateDisplay();
+        onParameterChange('chandrayaanOmega', aop);
+    }}, 'syncAop').name('⟲ Point to Moon');
+
+    chandrayaanControllers.perigeeAlt = chandrayaanFolder.add(params, 'chandrayaanPerigeeAlt', 180, 600000, 100).name('Perigee Altitude (km)').onChange((value) => {
+        onParameterChange('chandrayaanPerigeeAlt', value);
+        updateChandrayaanPeriodDisplay();
+    });
+
+    // Apogee with sync button (sync to lunar orbit radius)
+    chandrayaanControllers.apogeeAlt = chandrayaanFolder.add(params, 'chandrayaanApogeeAlt', 180, 600000, 100).name('Apogee Altitude (km)').onChange((value) => {
+        onParameterChange('chandrayaanApogeeAlt', value);
+        updateChandrayaanPeriodDisplay();
+    });
+    chandrayaanControllers.syncApogee = chandrayaanFolder.add({ syncApogee: () => {
+        // Set apogee to lunar orbit distance (384,400 km from Earth center - Earth radius)
+        params.chandrayaanApogeeAlt = LUNAR_ORBIT_DISTANCE - EARTH_RADIUS;
+        chandrayaanControllers.apogeeAlt.updateDisplay();
         syncParamsToLaunchEvent();
         invalidateOrbitalParamsCache();
         updateChandrayaanOrbit();
         updateOrbitalElements();
         updateChandrayaanPeriodDisplay();
-    });
-    chandrayaanControllers.apogeeAlt = chandrayaanFolder.add(params, 'chandrayaanApogeeAlt', 180, 600000, 100).name('Apogee Altitude (km)').onChange(() => {
+    }}, 'syncApogee').name('⟲ Sync to Lunar Dist');
+
+    // RA control (affects True Anomaly)
+    chandrayaanControllers.ra = chandrayaanFolder.add(params, 'chandrayaanRA', 0, 360, 1).name('Craft RA (°)').onChange(() => {
+        // Update chandrayaanTrueAnomaly from chandrayaanRA
+        // For elliptical orbit: RA = RAAN + (AOP + TrueAnomaly)
+        // So: TrueAnomaly = RA - RAAN - AOP
+        let ta = params.chandrayaanRA - params.chandrayaanNodes - params.chandrayaanOmega;
+        // Normalize to 0-360
+        while (ta < 0) ta += 360;
+        while (ta >= 360) ta -= 360;
+        params.chandrayaanTrueAnomaly = ta;
+        if (chandrayaanControllers.trueAnomaly) {
+            chandrayaanControllers.trueAnomaly.updateDisplay();
+        }
         syncParamsToLaunchEvent();
         invalidateOrbitalParamsCache();
         updateChandrayaanOrbit();
         updateOrbitalElements();
-        updateChandrayaanPeriodDisplay();
     });
-    chandrayaanControllers.trueAnomaly = chandrayaanFolder.add(params, 'chandrayaanTrueAnomaly', 0, 360, 1).name('True Anomaly (°)').onChange(() => {
+
+    // Sync button for RA
+    chandrayaanControllers.syncRA = chandrayaanFolder.add({ syncRA: () => {
+        params.chandrayaanRA = params.moonRA;
+        chandrayaanControllers.ra.updateDisplay();
+        // Also update True Anomaly
+        let ta = params.chandrayaanRA - params.chandrayaanNodes - params.chandrayaanOmega;
+        while (ta < 0) ta += 360;
+        while (ta >= 360) ta -= 360;
+        params.chandrayaanTrueAnomaly = ta;
+        if (chandrayaanControllers.trueAnomaly) {
+            chandrayaanControllers.trueAnomaly.updateDisplay();
+        }
+        syncParamsToLaunchEvent();
+        invalidateOrbitalParamsCache();
+        updateChandrayaanOrbit();
+        updateOrbitalElements();
+    }}, 'syncRA').name('⟲ Sync from Moon');
+
+    // True Anomaly control (affects RA)
+    chandrayaanControllers.trueAnomaly = chandrayaanFolder.add(params, 'chandrayaanTrueAnomaly', 0, 360, 1).name('Craft True Anomaly (°)').onChange(() => {
+        // Update chandrayaanRA from chandrayaanTrueAnomaly
+        // For elliptical orbit: RA = RAAN + AOP + TrueAnomaly
+        let ra = params.chandrayaanNodes + params.chandrayaanOmega + params.chandrayaanTrueAnomaly;
+        // Normalize to 0-360
+        while (ra < 0) ra += 360;
+        while (ra >= 360) ra -= 360;
+        params.chandrayaanRA = ra;
+        if (chandrayaanControllers.ra) {
+            chandrayaanControllers.ra.updateDisplay();
+        }
         syncParamsToLaunchEvent();
         invalidateOrbitalParamsCache();
         updateChandrayaanOrbit();
         updateOrbitalElements();
     });
+
     chandrayaanControllers.period = chandrayaanFolder.add(params, 'chandrayaanPeriod').name('Orbital Period').disable();
     chandrayaanControllers.raDisplay = chandrayaanFolder.add(params, 'chandrayaanRADisplay').name('Craft RA (current)').disable();
     chandrayaanControllers.craftEarthDistance = chandrayaanFolder.add(params, 'craftEarthDistance').name('Distance from Earth').disable();
