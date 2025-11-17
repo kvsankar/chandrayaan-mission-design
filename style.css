@@ -168,6 +168,17 @@ body {
     border-bottom: 1px dotted rgba(255, 255, 255, 0.3);
 }
 
+/* Reserve space for sync buttons - all sliders aligned */
+.lil-gui .controller.number,
+.lil-gui .controller.slider {
+    position: relative;
+}
+
+.lil-gui .controller.number input,
+.lil-gui .controller.slider .slider {
+    margin-left: 22px !important;
+}
+
 /* Timeline Wrapper and Launch Marker */
 #timeline-wrapper {
     position: relative;

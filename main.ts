@@ -51,6 +51,8 @@ interface LaunchEvent {
     moonInterceptDate: Date | null;
     captureDistance: number;
     syncTLIWithLOI: boolean;
+    autoLOI: boolean;  // When true, LOI date is automatically selected from optimal dates
+    optimalLOIDates: Date[];  // List of optimal LOI dates (equator/node crossings)
 }
 
 /**
@@ -184,11 +186,12 @@ interface ChandrayaanControllers {
     craftEarthDistance?: Controller;
     craftMoonDistance?: Controller;
     restrictOrbitalParams?: Controller;
-    syncInclination?: Controller;
-    syncRaan?: Controller;
-    syncAop?: Controller;
-    syncApogee?: Controller;
-    syncRA?: Controller;
+    // Inline sync buttons (HTML elements, not lil-gui controllers)
+    syncInclinationBtn?: HTMLButtonElement;
+    syncRaanBtn?: HTMLButtonElement;
+    syncAopBtn?: HTMLButtonElement;
+    syncApogeeBtn?: HTMLButtonElement;
+    syncRABtn?: HTMLButtonElement;
 }
 
 /**
@@ -212,6 +215,19 @@ interface Colors {
 }
 
 /**
+ * Complete orbital elements
+ */
+interface OrbitalElements {
+    inclination: number;
+    raan: number;
+    eccentricity: number;
+    omega: number;  // argument of periapsis
+    semiMajorAxis: number;  // in km
+    perigee: number;  // in km
+    apogee: number;  // in km
+}
+
+/**
  * Real Moon position data from ephemeris
  */
 interface RealMoonData {
@@ -221,6 +237,7 @@ interface RealMoonData {
     inclination: number;
     raan: number;
     positionKm: PositionKm;
+    orbitalElements: OrbitalElements;
 }
 
 /**
@@ -280,6 +297,7 @@ let celestialSphere: THREE.Mesh;
 let equatorCircle: THREE.Line;
 let lunarOrbitCircle: THREE.Line;
 let lunarOrbitFilledPlane: THREE.Mesh;
+let lunarOrbitEllipse: THREE.Line;  // Dashed ellipse showing actual lunar orbit
 let chandrayaanOrbitCircle: THREE.Line;
 let chandrayaanOrbitFilledPlane: THREE.Mesh;
 let lunarAscendingNode: THREE.Mesh;
@@ -370,6 +388,9 @@ const realPositionsCache: RealPositionsCache = {
 // Update guard to prevent circular updates
 let isUpdatingFromCode: boolean = false;
 
+// Timeline constants
+const TIMELINE_MAX_DAYS = 90;
+
 // Timeline state
 const timelineState: TimelineState = {
     startDate: new Date('2023-07-01T00:00:00'),
@@ -399,7 +420,9 @@ let launchEvent = reactive<LaunchEvent>({
     trueAnomaly: 0,
     moonInterceptDate: null,
     captureDistance: 5000,
-    syncTLIWithLOI: true
+    syncTLIWithLOI: true,
+    autoLOI: false,
+    optimalLOIDates: []
 });
 
 // Draft state for Plan mode
@@ -1168,9 +1191,10 @@ function getChandrayaanParams(): OrbitalParams {
     return orbitalParamsCache.set(result, currentAnimationFrame);
 }
 
-function calculateOrbitalElements(posVector: any, velVector: any): { inclination: number; raan: number } {
+function calculateOrbitalElements(posVector: any, velVector: any): OrbitalElements {
     const AU_TO_KM = 149597870.7;
     const DAYS_TO_SEC = 86400.0;
+    const MU_EARTH = 398600.4418;  // km^3/s^2
 
     const r = {
         x: posVector.x * AU_TO_KM,
@@ -1184,6 +1208,10 @@ function calculateOrbitalElements(posVector: any, velVector: any): { inclination
         z: velVector.dz * AU_TO_KM / DAYS_TO_SEC
     };
 
+    const rMag = Math.sqrt(r.x * r.x + r.y * r.y + r.z * r.z);
+    const vMag = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+
+    // Angular momentum vector
     const h = {
         x: r.y * v.z - r.z * v.y,
         y: r.z * v.x - r.x * v.z,
@@ -1193,6 +1221,7 @@ function calculateOrbitalElements(posVector: any, velVector: any): { inclination
     const hMag = Math.sqrt(h.x * h.x + h.y * h.y + h.z * h.z);
     const inclination = Math.acos(h.z / hMag) * 180 / Math.PI;
 
+    // Node vector
     const n = {
         x: -h.y,
         y: h.x,
@@ -1207,28 +1236,61 @@ function calculateOrbitalElements(posVector: any, velVector: any): { inclination
         if (n.y < 0) raan = 360 - raan;
     }
 
+    // Eccentricity vector
+    const rdotv = r.x * v.x + r.y * v.y + r.z * v.z;
+    const e = {
+        x: (vMag * vMag - MU_EARTH / rMag) * r.x - rdotv * v.x,
+        y: (vMag * vMag - MU_EARTH / rMag) * r.y - rdotv * v.y,
+        z: (vMag * vMag - MU_EARTH / rMag) * r.z - rdotv * v.z
+    };
+    const eMag = Math.sqrt(e.x * e.x + e.y * e.y + e.z * e.z) / MU_EARTH;
+
+    // Semi-major axis
+    const energy = vMag * vMag / 2 - MU_EARTH / rMag;
+    const a = -MU_EARTH / (2 * energy);
+
+    // Argument of periapsis
+    let omega = 0;
+    if (nMag > 1e-10 && eMag > 1e-10) {
+        const cosOmega = (n.x * e.x + n.y * e.y + n.z * e.z) / (nMag * eMag * MU_EARTH);
+        omega = Math.acos(Math.max(-1, Math.min(1, cosOmega))) * 180 / Math.PI;
+        if (e.z < 0) omega = 360 - omega;
+    }
+
+    // Perigee and apogee
+    const perigee = a * (1 - eMag) - EARTH_RADIUS;
+    const apogee = a * (1 + eMag) - EARTH_RADIUS;
+
     return {
         inclination: inclination,
-        raan: raan
+        raan: raan,
+        eccentricity: eMag,
+        omega: omega,
+        semiMajorAxis: a,
+        perigee: perigee,
+        apogee: apogee
     };
 }
 
 function calculateRealMoonPosition(date: Date): RealMoonData {
     const astroTime = Astronomy.MakeTime(date);
-    const state = Astronomy.GeoMoonState(astroTime);
+    const state: any = Astronomy.GeoMoonState(astroTime);
 
-    // GeoMoonState returns { position: Vector, velocity: Vector }
+    // Handle both StateVector (x, y, z directly) and { position, velocity } formats
+    // The runtime library may differ from type definitions
+    const hasPosition = state.position !== undefined;
+
     const geoVector = {
-        x: state.position.x,
-        y: state.position.y,
-        z: state.position.z,
-        t: state.position.t
+        x: hasPosition ? state.position.x : state.x,
+        y: hasPosition ? state.position.y : state.y,
+        z: hasPosition ? state.position.z : state.z,
+        t: hasPosition ? state.position.t : state.t
     };
 
     const velVector = {
-        dx: state.velocity.x,
-        dy: state.velocity.y,
-        dz: state.velocity.z
+        dx: hasPosition ? state.velocity.x : state.vx,
+        dy: hasPosition ? state.velocity.y : state.vy,
+        dz: hasPosition ? state.velocity.z : state.vz
     };
 
     const equatorial = Astronomy.EquatorFromVector(geoVector);
@@ -1241,9 +1303,9 @@ function calculateRealMoonPosition(date: Date): RealMoonData {
 
     // Convert from AU to km
     const celestialPosKm = {
-        x: state.position.x * 149597870.7,
-        y: state.position.y * 149597870.7,
-        z: state.position.z * 149597870.7
+        x: geoVector.x * 149597870.7,
+        y: geoVector.y * 149597870.7,
+        z: geoVector.z * 149597870.7
     };
 
     const positionKm = {
@@ -1258,8 +1320,138 @@ function calculateRealMoonPosition(date: Date): RealMoonData {
         distance: distanceKm,
         inclination: elements.inclination,
         raan: elements.raan,
-        positionKm: positionKm
+        positionKm: positionKm,
+        orbitalElements: elements
     };
+}
+
+/**
+ * Find times when Moon crosses the equatorial plane (declination = 0)
+ * Returns both ascending and descending crossings (nodes) for ~13.7 day spacing
+ * Note: In this project, "nodes" means equator crossings, not ecliptic crossings
+ * @param startDate - Start of search window
+ * @param endDate - End of search window
+ * @returns Array of AstroTime objects when Moon crosses equator (both directions)
+ */
+function findMoonEquatorCrossings(startDate: Date, endDate: Date): Astronomy.AstroTime[] {
+    const crossings: Astronomy.AstroTime[] = [];
+    const t1 = Astronomy.MakeTime(startDate);
+    const t2 = Astronomy.MakeTime(endDate);
+
+    // Function that returns Moon's declination
+    const declinationFunc = (t: Astronomy.AstroTime): number => {
+        const state: any = Astronomy.GeoMoonState(t);
+        const hasPosition = state.position !== undefined;
+        const geoVector = {
+            x: hasPosition ? state.position.x : state.x,
+            y: hasPosition ? state.position.y : state.y,
+            z: hasPosition ? state.position.z : state.z,
+            t: hasPosition ? state.position.t : state.t
+        };
+        const equatorial = Astronomy.EquatorFromVector(geoVector);
+        return equatorial.dec;  // Returns declination in degrees
+    };
+
+    // Search for zero crossings in declination
+    let searchStart = t1;
+    const stepDays = 1.0;  // Search in 1-day increments
+
+    while (searchStart.ut < t2.ut) {
+        const searchEnd = (searchStart as any).AddDays(stepDays);
+        if (searchEnd.ut > t2.ut) break;
+
+        // Check if there's a sign change in this interval
+        const dec1 = declinationFunc(searchStart);
+        const dec2 = declinationFunc(searchEnd);
+
+        // Detect BOTH ascending and descending crossings
+        // This gives opportunities every ~13.7 days instead of ~27 days
+        if (dec1 * dec2 < 0) {  // Sign change = equator crossing (either direction)
+            const crossing = (Astronomy as any).Search(declinationFunc, searchStart, searchEnd);
+            if (crossing) {
+                crossings.push(crossing);
+            }
+        }
+
+        searchStart = searchEnd;
+    }
+
+    return crossings;
+}
+
+/**
+ * Find times when Moon crosses orbital nodes (latitude = 0 in ecliptic coords)
+ * Only returns ascending crossings (south to north) for ~14 day spacing
+ * @param startDate - Start of search window
+ * @param endDate - End of search window
+ * @returns Array of AstroTime objects when Moon crosses ascending node
+ */
+// @ts-ignore - keeping for potential future use
+function findMoonNodeCrossings(startDate: Date, endDate: Date): Astronomy.AstroTime[] {
+    const crossings: Astronomy.AstroTime[] = [];
+    const t1 = Astronomy.MakeTime(startDate);
+    const t2 = Astronomy.MakeTime(endDate);
+
+    // Function that returns Moon's ecliptic latitude
+    const latitudeFunc = (t: Astronomy.AstroTime): number => {
+        const state: any = Astronomy.GeoMoonState(t);
+        const hasPosition = state.position !== undefined;
+        const geoVector = {
+            x: hasPosition ? state.position.x : state.x,
+            y: hasPosition ? state.position.y : state.y,
+            z: hasPosition ? state.position.z : state.z,
+            t: hasPosition ? state.position.t : state.t
+        };
+        const ecliptic = (Astronomy as any).Ecliptic(geoVector);
+        return ecliptic.elat;  // Returns ecliptic latitude in degrees
+    };
+
+    // Search for zero crossings in ecliptic latitude
+    let searchStart = t1;
+    const stepDays = 1.0;  // Search in 1-day increments
+
+    while (searchStart.ut < t2.ut) {
+        const searchEnd = (searchStart as any).AddDays(stepDays);
+        if (searchEnd.ut > t2.ut) break;
+
+        // Check if there's a sign change in this interval
+        const lat1 = latitudeFunc(searchStart);
+        const lat2 = latitudeFunc(searchEnd);
+
+        // Only detect ascending node crossings: lat1 < 0 and lat2 > 0 (south to north)
+        if (lat1 < 0 && lat2 > 0) {  // Ascending node crossing
+            const crossing = (Astronomy as any).Search(latitudeFunc, searchStart, searchEnd);
+            if (crossing) {
+                crossings.push(crossing);
+            }
+        }
+
+        searchStart = searchEnd;
+    }
+
+    return crossings;
+}
+
+/**
+ * Find optimal LOI dates (equator crossings + node crossings)
+ * @param startDate - Start of search window
+ * @param endDate - End of search window
+ * @returns Array of Date objects sorted chronologically
+ */
+function findOptimalLOIDates(startDate: Date, endDate: Date): Date[] {
+    // Use ONLY equator crossings for ~27-day spacing
+    // (Node crossings are for ecliptic plane, which is different from equatorial plane)
+    const equatorCrossings = findMoonEquatorCrossings(startDate, endDate);
+
+    console.log(`Equator crossings (${equatorCrossings.length}):`, equatorCrossings.map(t => t.date.toISOString()));
+
+    // Convert to Date objects
+    const allDates = equatorCrossings.map(t => t.date);
+
+    // Sort chronologically
+    allDates.sort((a, b) => a.getTime() - b.getTime());
+
+    return allDates;
 }
 
 // Color scheme
@@ -1320,6 +1512,7 @@ function init(): void {
     createAriesMarker();
     createEquator();
     createLunarOrbitCircle();
+    createLunarOrbitEllipse();
     createChandrayaanOrbitCircle();
     createLunarNodes();
     createChandrayaanNodes();
@@ -1492,6 +1685,69 @@ function createChandrayaanOrbitCircle(): void {
         params.chandrayaanNodes
     );
     scene.add(chandrayaanOrbitCircle);
+}
+
+function createLunarOrbitEllipse(): void {
+    // Create a placeholder - will be updated with actual orbital elements
+    const geometry = new THREE.BufferGeometry();
+    const material = new THREE.LineDashedMaterial({
+        color: COLORS.moon,
+        linewidth: 2,
+        dashSize: 3,
+        gapSize: 2
+    });
+    lunarOrbitEllipse = new THREE.Line(geometry, material);
+    lunarOrbitEllipse.visible = false;  // Initially hidden, shown only in Plan/Game modes
+    scene.add(lunarOrbitEllipse);
+}
+
+function updateLunarOrbitEllipse(elements: OrbitalElements): void {
+    if (!lunarOrbitEllipse) return;
+
+    scene.remove(lunarOrbitEllipse);
+
+    // Calculate orbital parameters
+    const e = elements.eccentricity;
+    const a = elements.semiMajorAxis;
+
+    const segments = 128;
+
+    const omega = THREE.MathUtils.degToRad(elements.omega);
+    const inc = THREE.MathUtils.degToRad(elements.inclination);
+    const raan = THREE.MathUtils.degToRad(elements.raan);
+
+    // Create elliptical orbit in XZ plane using polar form
+    const points = Array.from({ length: segments + 1 }, (_, i) => {
+        const theta = (i / segments) * Math.PI * 2;
+        const r = a * (1 - e * e) / (1 + e * Math.cos(theta));
+        const point = new THREE.Vector3(
+            r * SCALE_FACTOR * Math.cos(theta),
+            0,
+            -r * SCALE_FACTOR * Math.sin(theta)
+        );
+
+        // Apply rotations: omega, then inclination, then RAAN
+        point.applyAxisAngle(new THREE.Vector3(0, 1, 0), omega);
+        point.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+        point.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+
+        return point;
+    });
+
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineDashedMaterial({
+        color: COLORS.moon,
+        linewidth: 2,
+        dashSize: 3,
+        gapSize: 2
+    });
+    lunarOrbitEllipse = new THREE.Line(geometry, material);
+    lunarOrbitEllipse.computeLineDistances();
+
+    // Show only in Plan and Game modes
+    lunarOrbitEllipse.visible = (params.appMode === 'Plan' || params.appMode === 'Game') && params.showLunarOrbitPlane;
+
+    scene.add(lunarOrbitEllipse);
 }
 
 function createLunarNodes(): void {
@@ -2497,6 +2753,7 @@ function updateMoonFromRealPosition(): void {
 
     // Update visual representation
     updateLunarOrbitCircle();
+    updateLunarOrbitEllipse(moonData.orbitalElements);
     updateLunarNodePositions();
     updateMoonPosition();
     updateOrbitalElements();
@@ -2538,12 +2795,12 @@ function switchAppMode(mode: AppMode): void {
         chandrayaanControllers.ra?.enable();
         chandrayaanControllers.trueAnomaly?.enable();
 
-        // Enable sync buttons in Explore mode
-        chandrayaanControllers.syncInclination?.enable();
-        chandrayaanControllers.syncRaan?.enable();
-        chandrayaanControllers.syncAop?.enable();
-        chandrayaanControllers.syncApogee?.enable();
-        chandrayaanControllers.syncRA?.enable();
+        // Enable sync buttons in Explore mode (now inline buttons, controlled via DOM)
+        if (chandrayaanControllers.syncInclinationBtn) chandrayaanControllers.syncInclinationBtn.disabled = false;
+        if (chandrayaanControllers.syncRaanBtn) chandrayaanControllers.syncRaanBtn.disabled = false;
+        if (chandrayaanControllers.syncAopBtn) chandrayaanControllers.syncAopBtn.disabled = false;
+        if (chandrayaanControllers.syncApogeeBtn) chandrayaanControllers.syncApogeeBtn.disabled = false;
+        if (chandrayaanControllers.syncRABtn) chandrayaanControllers.syncRABtn.disabled = false;
 
         // Show restrict checkbox only in Explore mode
         chandrayaanControllers.restrictOrbitalParams?.show();
@@ -2569,6 +2826,9 @@ function switchAppMode(mode: AppMode): void {
         updateMoonPosition();
         updateChandrayaanOrbit();
         updateChandrayaanPeriodDisplay();
+
+        // Hide lunar orbit ellipse in Explore mode
+        if (lunarOrbitEllipse) lunarOrbitEllipse.visible = false;
 
         // Hide Launch and Intercept timeline rows in Explore mode
         const launchRow = document.querySelector('.timeline-row-selector:nth-child(3)');
@@ -2600,12 +2860,12 @@ function switchAppMode(mode: AppMode): void {
         chandrayaanControllers.ra?.disable();
         chandrayaanControllers.trueAnomaly?.disable();
 
-        // Disable sync buttons in Plan mode
-        chandrayaanControllers.syncInclination?.disable();
-        chandrayaanControllers.syncRaan?.disable();
-        chandrayaanControllers.syncAop?.disable();
-        chandrayaanControllers.syncApogee?.disable();
-        chandrayaanControllers.syncRA?.disable();
+        // Disable sync buttons in Plan mode (now inline buttons, controlled via DOM)
+        if (chandrayaanControllers.syncInclinationBtn) chandrayaanControllers.syncInclinationBtn.disabled = true;
+        if (chandrayaanControllers.syncRaanBtn) chandrayaanControllers.syncRaanBtn.disabled = true;
+        if (chandrayaanControllers.syncAopBtn) chandrayaanControllers.syncAopBtn.disabled = true;
+        if (chandrayaanControllers.syncApogeeBtn) chandrayaanControllers.syncApogeeBtn.disabled = true;
+        if (chandrayaanControllers.syncRABtn) chandrayaanControllers.syncRABtn.disabled = true;
 
         // Hide restrict checkbox in Plan mode
         chandrayaanControllers.restrictOrbitalParams?.hide();
@@ -2694,12 +2954,12 @@ function switchAppMode(mode: AppMode): void {
         chandrayaanControllers.ra?.disable();
         chandrayaanControllers.trueAnomaly?.disable();
 
-        // Disable sync buttons in Game mode
-        chandrayaanControllers.syncInclination?.disable();
-        chandrayaanControllers.syncRaan?.disable();
-        chandrayaanControllers.syncAop?.disable();
-        chandrayaanControllers.syncApogee?.disable();
-        chandrayaanControllers.syncRA?.disable();
+        // Disable sync buttons in Game mode (now inline buttons, controlled via DOM)
+        if (chandrayaanControllers.syncInclinationBtn) chandrayaanControllers.syncInclinationBtn.disabled = true;
+        if (chandrayaanControllers.syncRaanBtn) chandrayaanControllers.syncRaanBtn.disabled = true;
+        if (chandrayaanControllers.syncAopBtn) chandrayaanControllers.syncAopBtn.disabled = true;
+        if (chandrayaanControllers.syncApogeeBtn) chandrayaanControllers.syncApogeeBtn.disabled = true;
+        if (chandrayaanControllers.syncRABtn) chandrayaanControllers.syncRABtn.disabled = true;
 
         // Hide restrict checkbox in Game mode
         chandrayaanControllers.restrictOrbitalParams?.hide();
@@ -2903,6 +3163,10 @@ function setupGUI(): void {
     });
     lunarVisFolder.add(params, 'showLunarOrbitPlane').name('Show Plane Circle').onChange(value => {
         lunarOrbitCircle.visible = value;
+        // Also update ellipse visibility (only shown in Plan/Game modes)
+        if (lunarOrbitEllipse) {
+            lunarOrbitEllipse.visible = value && (params.appMode === 'Plan' || params.appMode === 'Game');
+        }
     });
     lunarVisFolder.add(params, 'showLunarOrbitFilledPlane').name('Show Filled Plane').onChange(value => {
         if (lunarOrbitFilledPlane) lunarOrbitFilledPlane.visible = value;
@@ -3000,6 +3264,65 @@ function setupGUI(): void {
     lunarControllers.moonDistanceDisplay = lunarFolder.add(params, 'moonDistanceDisplay').name('Distance from Earth').disable();
     lunarFolder.open();
 
+    // Helper function to add inline sync button (moon icon)
+    function addInlineSyncButton(controller: any, onClick: () => void): HTMLButtonElement {
+        const domElement = controller.domElement;
+        const widgetContainer = domElement.querySelector('.slider') || domElement.querySelector('input[type="number"]');
+
+        if (widgetContainer && widgetContainer.parentElement) {
+            const button = document.createElement('button');
+            button.innerHTML = '☽'; // Moon crescent symbol
+            button.title = 'Sync from Moon';
+            button.style.cssText = `
+                position: absolute;
+                left: -22px;
+                top: 50%;
+                transform: translateY(-50%);
+                width: 18px;
+                height: 18px;
+                padding: 0;
+                margin: 0;
+                font-size: 12px;
+                line-height: 18px;
+                border: 1px solid #555;
+                border-radius: 2px;
+                background: #1a1a1a;
+                color: #aaa;
+                cursor: pointer;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                font-family: Arial, sans-serif;
+                z-index: 10;
+            `;
+            button.addEventListener('mouseenter', () => {
+                button.style.background = '#2a2a2a';
+                button.style.color = '#fff';
+                button.style.borderColor = '#888';
+            });
+            button.addEventListener('mouseleave', () => {
+                button.style.background = '#1a1a1a';
+                button.style.color = '#aaa';
+                button.style.borderColor = '#555';
+            });
+            button.addEventListener('click', (e) => {
+                e.stopPropagation();
+                onClick();
+            });
+
+            // Make the parent container position relative for absolute positioning
+            const parent = widgetContainer.parentElement;
+            if (parent && getComputedStyle(parent).position === 'static') {
+                parent.style.position = 'relative';
+            }
+
+            // Append button to the widget container's parent
+            parent?.appendChild(button);
+            return button;
+        }
+        return null as any;
+    }
+
     // Chandrayaan orbit folder
     chandrayaanFolder = gui.addFolder('Chandrayaan Orbit Parameters');
 
@@ -3060,12 +3383,13 @@ function setupGUI(): void {
         }
         onParameterChange('chandrayaanNodes', value);
     });
-    chandrayaanControllers.syncRaan = chandrayaanFolder.add({ syncRaan: () => {
+    // Add inline sync button for RAAN
+    chandrayaanControllers.syncRaanBtn = addInlineSyncButton(chandrayaanControllers.nodes, () => {
         const value = params.lunarNodes;
         params.chandrayaanNodes = value;
         chandrayaanControllers.nodes?.updateDisplay();
         onParameterChange('chandrayaanNodes', value);
-    }}, 'syncRaan').name('⟲ Sync from Moon');
+    });
 
     chandrayaanControllers.inclination = chandrayaanFolder.add(params, 'chandrayaanInclination', 0, 90, 0.1).name('Inclination (°)').onChange((value) => {
         // If restrictions are enabled, clamp to allowed values
@@ -3084,7 +3408,8 @@ function setupGUI(): void {
         }
         onParameterChange('chandrayaanInclination', value);
     });
-    chandrayaanControllers.syncInclination = chandrayaanFolder.add({ syncInclination: () => {
+    // Add inline sync button for Inclination
+    chandrayaanControllers.syncInclinationBtn = addInlineSyncButton(chandrayaanControllers.inclination, () => {
         let value = params.lunarInclination;
 
         // If restrictions are enabled, clamp to allowed values
@@ -3101,7 +3426,7 @@ function setupGUI(): void {
         params.chandrayaanInclination = value;
         chandrayaanControllers.inclination?.updateDisplay();
         onParameterChange('chandrayaanInclination', value);
-    }}, 'syncInclination').name('⟲ Sync from Moon');
+    });
 
     // AoP with sync button (calculate to point apogee toward Moon)
     chandrayaanControllers.omega = chandrayaanFolder.add(params, 'chandrayaanOmega', 0, 360, 1).name('ω (Arg. Periapsis) (°)').onChange((value) => {
@@ -3124,7 +3449,8 @@ function setupGUI(): void {
         }
         onParameterChange('chandrayaanOmega', value);
     });
-    chandrayaanControllers.syncAop = chandrayaanFolder.add({ syncAop: () => {
+    // Add inline sync button for AOP
+    chandrayaanControllers.syncAopBtn = addInlineSyncButton(chandrayaanControllers.omega, () => {
         // Calculate AoP to point apogee toward Moon's current position
         // Apogee is at true anomaly = 180°, so we need AoP such that AoP + 180° points to Moon
         // Moon's position in orbital plane is at moonRA degrees from First Point of Aries
@@ -3191,7 +3517,7 @@ function setupGUI(): void {
 
         chandrayaanControllers.omega?.updateDisplay();
         onParameterChange('chandrayaanOmega', aop);
-    }}, 'syncAop').name('⟲ Point to Moon');
+    });
 
     chandrayaanControllers.perigeeAlt = chandrayaanFolder.add(params, 'chandrayaanPerigeeAlt', 180, 600000, 100).name('Perigee Altitude (km)').onChange((value) => {
         onParameterChange('chandrayaanPerigeeAlt', value);
@@ -3203,7 +3529,8 @@ function setupGUI(): void {
         onParameterChange('chandrayaanApogeeAlt', value);
         updateChandrayaanPeriodDisplay();
     });
-    chandrayaanControllers.syncApogee = chandrayaanFolder.add({ syncApogee: () => {
+    // Add inline sync button for Apogee
+    chandrayaanControllers.syncApogeeBtn = addInlineSyncButton(chandrayaanControllers.apogeeAlt, () => {
         // Set apogee to lunar orbit distance (384,400 km from Earth center - Earth radius)
         params.chandrayaanApogeeAlt = LUNAR_ORBIT_DISTANCE - EARTH_RADIUS;
         chandrayaanControllers.apogeeAlt?.updateDisplay();
@@ -3212,7 +3539,7 @@ function setupGUI(): void {
         updateChandrayaanOrbit();
         updateOrbitalElements();
         updateChandrayaanPeriodDisplay();
-    }}, 'syncApogee').name('⟲ Sync to Lunar Dist');
+    });
 
     // RA control (affects True Anomaly)
     chandrayaanControllers.ra = chandrayaanFolder.add(params, 'chandrayaanRA', 0, 360, 1).name('Craft RA (°)').onChange(() => {
@@ -3237,8 +3564,8 @@ function setupGUI(): void {
         updateOrbitalElements();
     });
 
-    // Sync button for RA
-    chandrayaanControllers.syncRA = chandrayaanFolder.add({ syncRA: () => {
+    // Add inline sync button for RA
+    chandrayaanControllers.syncRABtn = addInlineSyncButton(chandrayaanControllers.ra, () => {
         params.chandrayaanRA = params.moonRA;
         chandrayaanControllers.ra?.updateDisplay();
 
@@ -3262,7 +3589,7 @@ function setupGUI(): void {
         invalidateOrbitalParamsCache();
         updateChandrayaanOrbit();
         updateOrbitalElements();
-    }}, 'syncRA').name('⟲ Sync from Moon');
+    });
 
     // True Anomaly control (affects RA)
     chandrayaanControllers.trueAnomaly = chandrayaanFolder.add(params, 'chandrayaanTrueAnomaly', 0, 360, 1).name('Craft True Anomaly (°)').onChange(() => {
@@ -3681,14 +4008,14 @@ function syncRenderControlSlidersWithLaunchEvent(): void {
     if (launchEvent.date && launchSlider) {
         // Calculate days from start for launch date
         const launchDays = (launchEvent.date.getTime() - timelineState.startDate.getTime()) / (24 * 60 * 60 * 1000);
-        renderControl.launchDays = Math.max(0, Math.min(90, launchDays));
+        renderControl.launchDays = Math.max(0, Math.min(TIMELINE_MAX_DAYS, launchDays));
         (launchSlider as HTMLInputElement).value = String(renderControl.launchDays);
     }
 
     if (launchEvent.moonInterceptDate && interceptSlider) {
         // Calculate days from start for intercept date
         const interceptDays = (launchEvent.moonInterceptDate.getTime() - timelineState.startDate.getTime()) / (24 * 60 * 60 * 1000);
-        renderControl.interceptDays = Math.max(0, Math.min(90, interceptDays));
+        renderControl.interceptDays = Math.max(0, Math.min(TIMELINE_MAX_DAYS, interceptDays));
         (interceptSlider as HTMLInputElement).value = String(renderControl.interceptDays);
     }
 
@@ -3885,8 +4212,10 @@ function createLaunchEventGUI(): void {
     }
 
     // Create a temporary params object for the GUI
-    const guiParams = {
+    const guiParams: any = {
         moonInterceptDate: formatDateForDisplay(launchEvent.moonInterceptDate),
+        autoLOI: launchEvent.autoLOI,
+        optimalLOIDate: formatDateForDisplay(launchEvent.moonInterceptDate),  // For dropdown
         syncTLIWithLOI: launchEvent.syncTLIWithLOI,
         launchDate: formatDateForDisplay(launchEvent.date),
         inclination: launchEvent.inclination,
@@ -3904,7 +4233,93 @@ function createLaunchEventGUI(): void {
     // Store reference for updating from timeline sliders
     launchEventGUIParams = guiParams;
 
-    // Add controls - LOI Date first
+    // Variable to hold the optimal LOI controller reference
+    let optimalLOIController: any = null;
+
+    // Helper function to handle optimal LOI selection
+    const handleOptimalLOIChange = (value: string) => {
+        console.log('Optimal LOI selected:', value);
+        if (value && value !== 'None' && value !== 'Select Auto LOI first' && value !== 'No optimal dates found') {
+            const newDate = new Date(value);
+            console.log('Setting LOI date to:', newDate);
+
+            // Update the reactive property - this will trigger all updates automatically
+            launchEvent.moonInterceptDate = newDate;
+
+            // Update the manual input display value
+            guiParams.moonInterceptDate = formatDateForDisplay(newDate);
+
+            // Trigger render update
+            updateRenderDate();
+        }
+    };
+
+    // Create Automatic LOI checkbox
+    const autoLOIController = launchEventGUI.add(guiParams, 'autoLOI').name('Auto LOI').onChange((value: boolean) => {
+        launchEvent.autoLOI = value;
+
+        if (value) {
+            // Calculate optimal LOI dates when enabled
+            // Search the full timeline window
+            const searchStart = timelineState.startDate;
+            const searchEnd = new Date(timelineState.startDate.getTime() + TIMELINE_MAX_DAYS * 24 * 60 * 60 * 1000);
+
+            console.log('Searching for optimal LOI dates from', searchStart, 'to', searchEnd);
+            launchEvent.optimalLOIDates = findOptimalLOIDates(searchStart, searchEnd);
+            console.log('Found', launchEvent.optimalLOIDates.length, 'optimal LOI dates:', launchEvent.optimalLOIDates);
+
+            // Destroy existing dropdown if it exists
+            if (optimalLOIController) {
+                optimalLOIController.destroy();
+                optimalLOIController = null;
+            }
+
+            // Build options object for lil-gui
+            const options: Record<string, string> = {};
+            if (launchEvent.optimalLOIDates.length === 0) {
+                options['No optimal dates found'] = 'None';
+                guiParams.optimalLOIDate = 'None';
+            } else {
+                launchEvent.optimalLOIDates.forEach((date) => {
+                    const formatted = formatDateForDisplay(date);
+                    options[formatted] = formatted;
+                });
+
+                // Select first optimal date
+                const firstDate = formatDateForDisplay(launchEvent.optimalLOIDates[0]);
+                guiParams.optimalLOIDate = firstDate;
+                launchEvent.moonInterceptDate = launchEvent.optimalLOIDates[0];
+                guiParams.moonInterceptDate = formatDateForDisplay(launchEvent.optimalLOIDates[0]);
+
+                console.log('Setting initial value to:', firstDate);
+
+                // Trigger render update
+                updateRenderDate();
+            }
+
+            // Create new dropdown with proper options
+            optimalLOIController = launchEventGUI.add(guiParams, 'optimalLOIDate', options).name('Optimal LOI').onChange(handleOptimalLOIChange);
+
+            // Move dropdown to appear right after the checkbox
+            const autoLOIElement = autoLOIController.domElement;
+            const optimalLOIElement = optimalLOIController.domElement;
+            if (autoLOIElement && optimalLOIElement && autoLOIElement.parentElement) {
+                autoLOIElement.parentElement.insertBefore(optimalLOIElement, autoLOIElement.nextSibling);
+            }
+
+            optimalLOIController.show();
+            interceptDateController.hide();
+        } else {
+            // Destroy dropdown when unchecked
+            if (optimalLOIController) {
+                optimalLOIController.destroy();
+                optimalLOIController = null;
+            }
+            interceptDateController.show();
+        }
+    });
+
+    // Create LOI Date manual input (appears after checkbox)
     const interceptDateController = launchEventGUI.add(guiParams, 'moonInterceptDate').name('LOI Date').listen();
     const interceptInputElem = interceptDateController.domElement.querySelector('input');
 
@@ -3933,22 +4348,17 @@ function createLaunchEventGUI(): void {
     if (interceptInputElem3) interceptInputElem3.addEventListener('focus', switchToLOITimeline);
 
     const interceptInputElem4 = interceptDateController.domElement.querySelector('input');
-
-
     if (interceptInputElem4) interceptInputElem4.addEventListener('click', switchToLOITimeline);
 
-
-
-    if (launchDateController) {
-        const launchInputElem = launchDateController.domElement.querySelector('input');
-    if (launchInputElem) launchInputElem.addEventListener('change', (e: Event) => {
+    // Add change handler for LOI date input
+    const interceptInputElem5 = interceptDateController.domElement.querySelector('input');
+    if (interceptInputElem5) interceptInputElem5.addEventListener('change', (e: Event) => {
         if (isUpdatingFromCode) return; // Prevent circular updates from slider
 
         // Just set the value - reactivity handles everything!
         launchEvent.moonInterceptDate = new Date((e.target as HTMLInputElement).value);
         guiParams.moonInterceptDate = (e.target as HTMLInputElement).value;
     });
-    }
 
     // Sync TLI with LOI checkbox
     // @ts-expect-error - Used in reactive effects
@@ -4216,8 +4626,8 @@ function updateTimelineSliderFromInterceptDate(): void {
     // Calculate days from timeline start to intercept date
     const daysFromStart = (launchEvent.moonInterceptDate.getTime() - timelineState.startDate.getTime()) / (24 * 60 * 60 * 1000);
 
-    // Clamp to valid range [0, 90]
-    const clampedDays = Math.max(0, Math.min(90, daysFromStart));
+    // Clamp to valid range [0, TIMELINE_MAX_DAYS]
+    const clampedDays = Math.max(0, Math.min(TIMELINE_MAX_DAYS, daysFromStart));
 
     // Update timeline state
     timelineState.daysElapsed = clampedDays;
@@ -4260,8 +4670,8 @@ function updateLaunchMarker(): void {
     // Calculate days from start
     const daysFromStart = (launchEvent.date.getTime() - timelineState.startDate.getTime()) / (24 * 60 * 60 * 1000);
 
-    // Clamp to [0, 90] range to handle small timing differences
-    const clampedDays = Math.max(0, Math.min(90, daysFromStart));
+    // Clamp to [0, TIMELINE_MAX_DAYS] range to handle small timing differences
+    const clampedDays = Math.max(0, Math.min(TIMELINE_MAX_DAYS, daysFromStart));
 
     // Hide if significantly outside window (more than 1 day before or after)
     if (daysFromStart < -1 || daysFromStart > 91) {
@@ -4270,7 +4680,7 @@ function updateLaunchMarker(): void {
     }
 
     // Show marker at relative position (0-100%)
-    const percentage = (clampedDays / 90) * 100;
+    const percentage = (clampedDays / TIMELINE_MAX_DAYS) * 100;
     launchMarker.style.display = 'block';
     launchMarker.style.left = `${percentage}%`;
 }
@@ -4291,9 +4701,9 @@ function animate(): void {
         const daysIncrement = timelineState.speed * deltaTime;
         timelineState.daysElapsed += daysIncrement;
 
-        // Clamp to 90 days max
-        if (timelineState.daysElapsed >= 90) {
-            timelineState.daysElapsed = 90;
+        // Clamp to max timeline days
+        if (timelineState.daysElapsed >= TIMELINE_MAX_DAYS) {
+            timelineState.daysElapsed = TIMELINE_MAX_DAYS;
             timelineState.isPlaying = false;
             const playPauseBtn = document.getElementById('play-pause-btn');
             if (playPauseBtn) playPauseBtn.textContent = '▶ Play';
