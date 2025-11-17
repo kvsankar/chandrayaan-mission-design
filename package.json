@@ -12,7 +12,17 @@
     "compile:watch": "tsc --watch",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "test:coverage": "vitest --coverage"
+    "test:coverage": "vitest --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:workflow": "playwright test e2e-workflow",
+    "test:e2e:modes": "playwright test e2e-modes",
+    "test:e2e:features": "playwright test e2e-features",
+    "test:e2e:errors": "playwright test e2e-error-handling",
+    "test:e2e:visual": "playwright test e2e-visual-verification",
+    "test:e2e:optimize": "playwright test e2e-optimize",
+    "test:all": "npm run test && npm run test:e2e"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",
