@@ -183,9 +183,11 @@ Celestial Z = Three.js +Y
 This handles Three.js's Y-up convention while maintaining celestial semantics.
 
 ### Code Organization
-- `main.js`: Core visualization logic, orbital calculations, GUI setup
+- `main.js`: Core visualization logic, orbital calculations, GUI setup, reactive state management
+- `reactive.js`: Vue-inspired reactive system for automatic state updates
 - `index.html`: Layout, timeline controls, legend panel
 - `style.css`: UI styling, responsive design
+- `ARCHITECTURE.md`: Reactive architecture documentation
 - `CLAUDE.md`: Developer documentation with implementation details
 
 ## Project Structure
@@ -194,7 +196,9 @@ This handles Three.js's Y-up convention while maintaining celestial semantics.
 cy3-orbit/
 ├── index.html          # Main HTML with UI components
 ├── main.js            # Three.js visualization and orbital mechanics
+├── reactive.js        # Reactive state management system
 ├── style.css          # Styling for all UI elements
+├── ARCHITECTURE.md    # Reactive architecture documentation
 ├── CLAUDE.md          # Technical developer documentation
 └── README.md          # This file
 ```
@@ -220,4 +224,4 @@ Simply open `index.html` in a modern web browser. No build process required.
 
 Built with Three.js and astronomy-engine.
 
-See [CLAUDE.md](CLAUDE.md) for detailed technical documentation and implementation notes.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for reactive architecture documentation and [CLAUDE.md](CLAUDE.md) for detailed technical documentation and implementation notes.

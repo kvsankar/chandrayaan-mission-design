@@ -67,11 +67,34 @@ This mapping handles Three.js's Y-up convention while maintaining proper celesti
 
 ```
 cy3-orbit/
-├── index.html          # Main HTML with legend panel and imports
-├── main.js            # Three.js visualization logic
-├── style.css          # Styling for UI elements
-└── CLAUDE.md          # This file
+├── index.html               # Main HTML with legend panel and imports
+├── main.ts                  # Three.js visualization logic (TypeScript)
+├── main.js                  # Compiled JavaScript (generated)
+├── reactive.ts              # Reactive state management system
+├── style.css                # Styling for UI elements
+├── package.json             # NPM dependencies and scripts
+├── tsconfig.json            # TypeScript configuration
+├── vite.config.js           # Vite build configuration
+├── vitest.config.ts         # Testing configuration
+├── *.test.ts                # Unit tests (97 tests)
+├── CLAUDE.md                # This file (developer documentation)
+├── ARCHITECTURE.md          # Reactive architecture documentation
+├── DEPLOYMENT.md            # GitHub Pages deployment guide
+├── LESSONS-LEARNED.md       # Bug regression documentation
+└── .github/workflows/       # CI/CD pipeline
+    └── deploy.yml           # Automated deployment to GitHub Pages
 ```
+
+##  Technology Stack
+
+- **Language**: TypeScript (compiled to JavaScript)
+- **3D Visualization**: Three.js
+- **State Management**: Custom reactive system (Vue-inspired)
+- **GUI**: lil-gui
+- **Astronomy**: astronomy-engine
+- **Build Tool**: Vite
+- **Testing**: Vitest (97 unit tests, 100% pass rate)
+- **Deployment**: GitHub Actions → GitHub Pages
 
 ## Color Scheme
 
@@ -174,6 +197,50 @@ All distance measurements use **center-to-center distances** and are calculated 
 3. **Counter-clockwise**: All rotations follow right-hand rule (counter-clockwise when viewed from above/north)
 4. **Node Positions**: Calculated by rotating (±R, 0, 0) in orbital plane by inclination and RAAN
 5. **Center-to-center distances**: All distance thresholds (capture, etc.) measure from object centers
+6. **Spherical Trigonometry**: RA↔True Anomaly conversions use proper spherical trig (NOT simple addition/subtraction)
+
+## Orbital Calculations
+
+### RA and True Anomaly Conversions
+
+The application supports both directions of conversion between Right Ascension (RA) and True Anomaly using proper spherical trigonometry.
+
+#### Forward (True Anomaly → RA)
+
+**Function**: `calculateRAFromTrueAnomaly(nu, raan, omega, inc)` (main.ts:836)
+
+**Formula**:
+```
+u = ω + ν  (argument of latitude)
+RA = RAAN + atan2(cos(i) * sin(u), cos(u))
+```
+
+**Used in**:
+- `updateChandrayaanRADisplay()` - Display current spacecraft RA
+- `chandrayaanTrueAnomaly.onChange()` - When user drags True Anomaly slider
+
+#### Inverse (RA → True Anomaly)
+
+**Function**: `calculateTrueAnomalyFromRA(ra, raan, omega, inc)` (main.ts:806)
+
+**Formula**: Inverts the forward formula using derived solution
+```
+Δ RA = RA - RAAN
+k = 1 / sqrt(sin²(ΔRA) + cos²(ΔRA) * cos²(i))
+sin(u) = k * sin(ΔRA)
+cos(u) = k * cos(ΔRA) * cos(i)
+u = atan2(sin(u), cos(u))
+ν = u - ω
+```
+
+**Used in**:
+- `updateChandrayaanOrbit()` - Position spacecraft in Explore mode
+- `updateMoonPosition()` - Position Moon from RA in Gamed mode
+- `chandrayaanRA.onChange()` - When user drags RA slider
+- `syncRA` button - Sync spacecraft RA to Moon RA
+- `syncAOP` button - Calculate position for apogee alignment
+
+**Critical**: Simple addition/subtraction `RA = RAAN + ω + ν` **only works for equatorial orbits** (i=0°). For inclined orbits, must use spherical trigonometry. See LESSONS-LEARNED.md for details on why this matters.
 
 ## GUI Controls
 
@@ -195,11 +262,34 @@ All distance measurements use **center-to-center distances** and are calculated 
 
 ## Development Notes
 
-- Uses ES6 modules with import maps for Three.js
+### TypeScript
+- Written in TypeScript for type safety and better IDE support
+- Compiles to JavaScript via `npm run compile`
+- Full type annotations for orbital parameters and Three.js objects
+- Custom type definitions for astronomy-engine and lil-gui
+
+### Development Workflow
+```bash
+npm run dev          # Start Vite dev server with HMR (port 3000/3001)
+npm run compile      # Compile TypeScript to JavaScript
+npm test             # Run 97 unit tests
+npm test:coverage    # Generate coverage report
+npm run build        # Production build for GitHub Pages
+```
+
+### Code Organization
+- **Reactive State Management**: Custom Vue-inspired system in reactive.ts
+- **Centralized Functions**: RA↔Anomaly conversions in main.ts:806, main.ts:836
+- **Modular Architecture**: Clear separation between state, UI, and rendering
+- **Comprehensive Testing**: 97 tests covering orbital mechanics and utilities
+
+### Key Technical Details
+- ES6 modules with Vite bundling
 - lil-gui for interactive controls
 - All geometry uses `applyAxisAngle()` for consistent rotations
 - Text labels created using canvas textures and sprites
 - Legend panel is collapsible and positioned on left side
+- Automatic dependency tracking prevents bugs from missing update calls
 
 ## Future Enhancements
 
