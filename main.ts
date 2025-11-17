@@ -1570,8 +1570,6 @@ function findOptimalLOIDates(startDate: Date, endDate: Date): Date[] {
     // (Node crossings are for ecliptic plane, which is different from equatorial plane)
     const equatorCrossings = findMoonEquatorCrossings(startDate, endDate);
 
-    console.log(`Equator crossings (${equatorCrossings.length}):`, equatorCrossings.map(t => t.date.toISOString()));
-
     // Convert to Date objects
     const allDates = equatorCrossings.map(t => t.date);
 
@@ -1728,9 +1726,6 @@ function calculateClosestApproachToMoon(raan: number, apogeeAlt: number, perigee
 function optimizeApogeeToMoon(loiDate: Date, omega: number, inclination: number, initialRaan: number, initialApogeeAlt: number): { raan: number, apogeeAlt: number, distance: number } {
     const perigeeAlt = 180; // Fixed perigee at 180 km
 
-    console.log('Optimizing RAAN and Apogee for closest approach to Moon');
-    console.log('Initial RAAN:', initialRaan, 'Initial Apogee:', initialApogeeAlt);
-
     // Nelder-Mead parameters
     const alpha = 1.0;   // Reflection
     const gamma = 2.0;   // Expansion
@@ -1764,8 +1759,6 @@ function optimizeApogeeToMoon(loiDate: Date, omega: number, inclination: number,
 
         // Check convergence
         if (worst.value - best.value < tolerance) {
-            console.log(`Optimization converged in ${iter} iterations`);
-            console.log('Best RAAN:', best.raan, 'Best Apogee:', best.apogeeAlt, 'Closest approach:', best.value, 'km');
             return { raan: best.raan, apogeeAlt: best.apogeeAlt, distance: best.value };
         }
 
@@ -1832,8 +1825,6 @@ function optimizeApogeeToMoon(loiDate: Date, omega: number, inclination: number,
     // Return best result after max iterations
     simplex.sort((a, b) => a.value - b.value);
     const best = simplex[0];
-    console.log('Optimization reached max iterations');
-    console.log('Best RAAN:', best.raan, 'Best Apogee:', best.apogeeAlt, 'Closest approach:', best.value, 'km');
     return { raan: best.raan, apogeeAlt: best.apogeeAlt, distance: best.value };
 }
 
@@ -4672,10 +4663,8 @@ function createLaunchEventGUI(): void {
 
     // Helper function to handle optimal LOI selection
     const handleOptimalLOIChange = (value: string) => {
-        console.log('Optimal LOI selected:', value);
         if (value && value !== 'None' && value !== 'Select Auto LOI first' && value !== 'No optimal dates found') {
             const newDate = new Date(value);
-            console.log('Setting LOI date to:', newDate);
 
             // Update the reactive property - this will trigger all updates automatically
             launchEvent.moonInterceptDate = newDate;
@@ -4698,9 +4687,7 @@ function createLaunchEventGUI(): void {
             const searchStart = timelineState.startDate;
             const searchEnd = new Date(timelineState.startDate.getTime() + TIMELINE_MAX_DAYS * 24 * 60 * 60 * 1000);
 
-            console.log('Searching for optimal LOI dates from', searchStart, 'to', searchEnd);
             launchEvent.optimalLOIDates = findOptimalLOIDates(searchStart, searchEnd);
-            console.log('Found', launchEvent.optimalLOIDates.length, 'optimal LOI dates:', launchEvent.optimalLOIDates);
 
             // Destroy existing dropdown if it exists
             if (optimalLOIController) {
@@ -4724,8 +4711,6 @@ function createLaunchEventGUI(): void {
                 guiParams.optimalLOIDate = firstDate;
                 launchEvent.moonInterceptDate = launchEvent.optimalLOIDates[0];
                 guiParams.moonInterceptDate = formatDateForDisplay(launchEvent.optimalLOIDates[0]);
-
-                console.log('Setting initial value to:', firstDate);
 
                 // Trigger render update
                 updateRenderDate();
