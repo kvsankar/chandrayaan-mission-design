@@ -1217,18 +1217,18 @@ function calculateRealMoonPosition(date: Date): RealMoonData {
     const astroTime = Astronomy.MakeTime(date);
     const state = Astronomy.GeoMoonState(astroTime);
 
-    // StateVector has x, y, z directly (not state.position.x)
+    // GeoMoonState returns { position: Vector, velocity: Vector }
     const geoVector = {
-        x: state.x,
-        y: state.y,
-        z: state.z,
-        t: state.t
+        x: state.position.x,
+        y: state.position.y,
+        z: state.position.z,
+        t: state.position.t
     };
 
     const velVector = {
-        dx: state.vx,
-        dy: state.vy,
-        dz: state.vz
+        dx: state.velocity.x,
+        dy: state.velocity.y,
+        dz: state.velocity.z
     };
 
     const equatorial = Astronomy.EquatorFromVector(geoVector);
@@ -1239,11 +1239,11 @@ function calculateRealMoonPosition(date: Date): RealMoonData {
 
     const elements = calculateOrbitalElements(geoVector, velVector);
 
-    // Convert from AU to km (StateVector has x, y, z directly)
+    // Convert from AU to km
     const celestialPosKm = {
-        x: state.x * 149597870.7,
-        y: state.y * 149597870.7,
-        z: state.z * 149597870.7
+        x: state.position.x * 149597870.7,
+        y: state.position.y * 149597870.7,
+        z: state.position.z * 149597870.7
     };
 
     const positionKm = {
