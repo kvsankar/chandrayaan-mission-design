@@ -425,6 +425,22 @@ let launchEvent = reactive<LaunchEvent>({
     optimalLOIDates: []
 });
 
+// Expose for E2E testing
+if (typeof window !== 'undefined') {
+    (window as any).launchEvent = launchEvent;
+    (window as any).params = params;
+    (window as any).realPositionsCache = realPositionsCache;
+    (window as any).updateRenderDate = updateRenderDate;
+    (window as any).timelineState = timelineState;
+
+    // Helper function to set the simulation time
+    (window as any).setSimulationTime = (date: Date) => {
+        const daysSinceStart = (date.getTime() - timelineState.startDate.getTime()) / (24 * 60 * 60 * 1000);
+        timelineState.daysElapsed = daysSinceStart;
+        updateRenderDate();
+    };
+}
+
 // Draft state for Plan mode
 const draftState: DraftState = {
     isDirty: false,
@@ -556,14 +572,29 @@ let currentParamSet: ParameterSet = exploreParamSet;
 // State Manager - handles switching between completely isolated parameter sets
 const stateManager: StateManager = {
     activateExploreParams(): void {
-        currentParamSet.copyFrom(params);
+        // When leaving Plan/Game mode, save launch event to planGameParamSet (not params)
+        // This ensures we don't save stale params values back to planGameParamSet
+        if (currentParamSet === planGameParamSet && launchEvent.exists) {
+            planGameParamSet.loadFromLaunchEvent(launchEvent);
+        } else {
+            currentParamSet.copyFrom(params);
+        }
+
         currentParamSet = exploreParamSet;
         exploreParamSet.copyTo(params);
         this.updateAllGUIDisplays();
     },
 
     activatePlanGameParams(): void {
-        currentParamSet.copyFrom(params);
+        // When leaving Explore mode, save current params to exploreParamSet
+        if (currentParamSet === exploreParamSet) {
+            currentParamSet.copyFrom(params);
+        }
+        // When leaving Plan/Game mode (switching between Plan and Game), save launch event
+        else if (launchEvent.exists) {
+            planGameParamSet.loadFromLaunchEvent(launchEvent);
+        }
+
         currentParamSet = planGameParamSet;
 
         if (launchEvent.exists) {
@@ -1452,6 +1483,312 @@ function findOptimalLOIDates(startDate: Date, endDate: Date): Date[] {
     allDates.sort((a, b) => a.getTime() - b.getTime());
 
     return allDates;
+}
+
+// ============================================================================
+// APOGEE-MOON DISTANCE OPTIMIZATION
+// ============================================================================
+
+
+/**
+ * Calculate Moon's position at a given date
+ * Returns position in km (Three.js coordinates)
+ */
+function calculateMoonPositionAtDate(date: Date): { x: number, y: number, z: number } {
+    const astroTime = Astronomy.MakeTime(date);
+    const state: any = Astronomy.GeoMoonState(astroTime);
+
+    // Get position from state
+    const hasPosition = state.position !== undefined;
+    const geoVector = {
+        x: hasPosition ? state.position.x : state.x,
+        y: hasPosition ? state.position.y : state.y,
+        z: hasPosition ? state.position.z : state.z,
+        t: hasPosition ? state.position.t : state.t
+    };
+
+    // Convert AU to km (1 AU = 149597870.7 km)
+    const moonPosKm = {
+        x: geoVector.x * 149597870.7,
+        y: geoVector.y * 149597870.7,
+        z: geoVector.z * 149597870.7
+    };
+
+    // Convert from celestial coordinates to Three.js coordinates
+    // Must match the transformation used by calculateRealMoonPosition
+    return {
+        x: moonPosKm.x,
+        y: moonPosKm.z,
+        z: -moonPosKm.y
+    };
+}
+
+/**
+ * Calculate time elapsed to reach a given true anomaly from periapsis
+ * Uses Kepler's equation: M = E - e*sin(E), where M = mean anomaly, E = eccentric anomaly
+ * Returns time in seconds
+ */
+function calculateTimeToTrueAnomaly(trueAnomalyDeg: number, perigeeAlt: number, apogeeAlt: number): number {
+    const rpKm = EARTH_RADIUS + perigeeAlt;
+    const raKm = EARTH_RADIUS + apogeeAlt;
+    const e = (raKm - rpKm) / (raKm + rpKm);
+
+    // Convert true anomaly to radians
+    let nu = trueAnomalyDeg * Math.PI / 180;
+
+    // Normalize to 0-2π range
+    while (nu < 0) nu += 2 * Math.PI;
+    while (nu >= 2 * Math.PI) nu -= 2 * Math.PI;
+
+    // Calculate eccentric anomaly from true anomaly
+    // cos(E) = (e + cos(nu)) / (1 + e*cos(nu))
+    const cosE = (e + Math.cos(nu)) / (1 + e * Math.cos(nu));
+    let E = Math.acos(cosE);
+
+    // E has the same quadrant as nu
+    if (nu > Math.PI) {
+        E = 2 * Math.PI - E;
+    }
+
+    // Calculate mean anomaly from eccentric anomaly
+    // M = E - e*sin(E)
+    const M = E - e * Math.sin(E);
+
+    // Calculate orbital period
+    const periodSeconds = calculateOrbitalPeriod(perigeeAlt, apogeeAlt);
+
+    // Time elapsed = M / (2*pi) * Period
+    const timeElapsed = (M / (2 * Math.PI)) * periodSeconds;
+
+    return timeElapsed;
+}
+
+/**
+ * Calculate spacecraft position at a given true anomaly
+ */
+function calculateCraftPositionAtTrueAnomaly(nu: number, raan: number, apogeeAlt: number, perigeeAlt: number, omega: number, inclination: number): { x: number, y: number, z: number } {
+    const rpKm = EARTH_RADIUS + perigeeAlt;
+    const raKm = EARTH_RADIUS + apogeeAlt;
+    const aKm = (rpKm + raKm) / 2;
+    const e = (raKm - rpKm) / (raKm + rpKm);
+
+    const rKm = aKm * (1 - e * e) / (1 + e * Math.cos(nu));
+
+    const craftPosKm = new THREE.Vector3(
+        rKm * Math.cos(nu),
+        0,
+        -rKm * Math.sin(nu)
+    );
+
+    const omegaRad = THREE.MathUtils.degToRad(omega);
+    const incRad = THREE.MathUtils.degToRad(inclination);
+    const raanRad = THREE.MathUtils.degToRad(raan);
+
+    craftPosKm.applyAxisAngle(new THREE.Vector3(0, 1, 0), omegaRad);
+    craftPosKm.applyAxisAngle(new THREE.Vector3(1, 0, 0), incRad);
+    craftPosKm.applyAxisAngle(new THREE.Vector3(0, 1, 0), raanRad);
+
+    return { x: craftPosKm.x, y: craftPosKm.y, z: craftPosKm.z };
+}
+
+/**
+ * Calculate closest approach distance between spacecraft orbit and Moon at LOI date
+ * Searches around apogee (true anomaly ~180°) for minimum distance
+ * Returns both the minimum distance and the true anomaly where it occurs
+ */
+function calculateClosestApproachToMoon(raan: number, apogeeAlt: number, perigeeAlt: number, loiDate: Date, omega: number, inclination: number): { distance: number, trueAnomaly: number } {
+    const moonPos = calculateMoonPositionAtDate(loiDate);
+
+    // Search around apogee (true anomaly = 180°) in a range of ±30°
+    const nuCenter = Math.PI; // 180° = apogee
+    const nuRange = Math.PI / 6; // ±30°
+    const numSamples = 61; // Sample every degree in ±30° range
+
+    let minDistance = Infinity;
+    let minNu = nuCenter;
+
+    for (let i = 0; i < numSamples; i++) {
+        const nu = nuCenter - nuRange + (2 * nuRange * i / (numSamples - 1));
+        const craftPos = calculateCraftPositionAtTrueAnomaly(nu, raan, apogeeAlt, perigeeAlt, omega, inclination);
+
+        const dx = craftPos.x - moonPos.x;
+        const dy = craftPos.y - moonPos.y;
+        const dz = craftPos.z - moonPos.z;
+        const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+        if (distance < minDistance) {
+            minDistance = distance;
+            minNu = nu;
+        }
+    }
+
+    return { distance: minDistance, trueAnomaly: minNu * 180 / Math.PI };
+}
+
+/**
+ * Optimize RAAN and Apogee to minimize closest approach distance to Moon
+ * Uses Nelder-Mead simplex algorithm (derivative-free optimization)
+ */
+function optimizeApogeeToMoon(loiDate: Date, omega: number, inclination: number, initialRaan: number, initialApogeeAlt: number): { raan: number, apogeeAlt: number, distance: number } {
+    const perigeeAlt = 180; // Fixed perigee at 180 km
+
+    console.log('Optimizing RAAN and Apogee for closest approach to Moon');
+    console.log('Initial RAAN:', initialRaan, 'Initial Apogee:', initialApogeeAlt);
+
+    // Nelder-Mead parameters
+    const alpha = 1.0;   // Reflection
+    const gamma = 2.0;   // Expansion
+    const rho = 0.5;     // Contraction
+    const sigma = 0.5;   // Shrinkage
+
+    const maxIterations = 150;
+    const tolerance = 1.0; // 1 km tolerance
+
+    // Objective function: minimize closest approach distance
+    const objectiveFunc = (raan: number, apogeeAlt: number): number => {
+        // Clamp to valid ranges
+        raan = Math.max(0, Math.min(360, raan));
+        apogeeAlt = Math.max(180, Math.min(600000, apogeeAlt));
+        return calculateClosestApproachToMoon(raan, apogeeAlt, perigeeAlt, loiDate, omega, inclination).distance;
+    };
+
+    // Initialize simplex (3 points for 2D optimization)
+    let simplex = [
+        { raan: initialRaan, apogeeAlt: initialApogeeAlt, value: objectiveFunc(initialRaan, initialApogeeAlt) },
+        { raan: initialRaan + 10, apogeeAlt: initialApogeeAlt, value: objectiveFunc(initialRaan + 10, initialApogeeAlt) },
+        { raan: initialRaan, apogeeAlt: initialApogeeAlt + 5000, value: objectiveFunc(initialRaan, initialApogeeAlt + 5000) }
+    ];
+
+    for (let iter = 0; iter < maxIterations; iter++) {
+        // Sort simplex by objective value
+        simplex.sort((a, b) => a.value - b.value);
+
+        const best = simplex[0];
+        const worst = simplex[2];
+
+        // Check convergence
+        if (worst.value - best.value < tolerance) {
+            console.log(`Optimization converged in ${iter} iterations`);
+            console.log('Best RAAN:', best.raan, 'Best Apogee:', best.apogeeAlt, 'Closest approach:', best.value, 'km');
+            return { raan: best.raan, apogeeAlt: best.apogeeAlt, distance: best.value };
+        }
+
+        // Calculate centroid of best two points
+        const centroid = {
+            raan: (simplex[0].raan + simplex[1].raan) / 2,
+            apogeeAlt: (simplex[0].apogeeAlt + simplex[1].apogeeAlt) / 2
+        };
+
+        // Reflection
+        const reflected = {
+            raan: centroid.raan + alpha * (centroid.raan - worst.raan),
+            apogeeAlt: centroid.apogeeAlt + alpha * (centroid.apogeeAlt - worst.apogeeAlt),
+            value: 0
+        };
+        reflected.value = objectiveFunc(reflected.raan, reflected.apogeeAlt);
+
+        if (reflected.value < simplex[1].value && reflected.value >= best.value) {
+            simplex[2] = reflected;
+            continue;
+        }
+
+        if (reflected.value < best.value) {
+            // Try expansion
+            const expanded = {
+                raan: centroid.raan + gamma * (reflected.raan - centroid.raan),
+                apogeeAlt: centroid.apogeeAlt + gamma * (reflected.apogeeAlt - centroid.apogeeAlt),
+                value: 0
+            };
+            expanded.value = objectiveFunc(expanded.raan, expanded.apogeeAlt);
+
+            if (expanded.value < reflected.value) {
+                simplex[2] = expanded;
+            } else {
+                simplex[2] = reflected;
+            }
+            continue;
+        }
+
+        // Contraction
+        const contracted = {
+            raan: centroid.raan + rho * (worst.raan - centroid.raan),
+            apogeeAlt: centroid.apogeeAlt + rho * (worst.apogeeAlt - centroid.apogeeAlt),
+            value: 0
+        };
+        contracted.value = objectiveFunc(contracted.raan, contracted.apogeeAlt);
+
+        if (contracted.value < worst.value) {
+            simplex[2] = contracted;
+            continue;
+        }
+
+        // Shrinkage
+        for (let i = 1; i < simplex.length; i++) {
+            simplex[i] = {
+                raan: best.raan + sigma * (simplex[i].raan - best.raan),
+                apogeeAlt: best.apogeeAlt + sigma * (simplex[i].apogeeAlt - best.apogeeAlt),
+                value: 0
+            };
+            simplex[i].value = objectiveFunc(simplex[i].raan, simplex[i].apogeeAlt);
+        }
+    }
+
+    // Return best result after max iterations
+    simplex.sort((a, b) => a.value - b.value);
+    const best = simplex[0];
+    console.log('Optimization reached max iterations');
+    console.log('Best RAAN:', best.raan, 'Best Apogee:', best.apogeeAlt, 'Closest approach:', best.value, 'km');
+    return { raan: best.raan, apogeeAlt: best.apogeeAlt, distance: best.value };
+}
+
+/**
+ * Multi-start optimization to find global minimum
+ * Tries multiple initial RAAN values to avoid local minima
+ */
+function optimizeApogeeToMoonMultiStart(loiDate: Date, omega: number, inclination: number, initialApogeeAlt: number): { raan: number, apogeeAlt: number, distance: number, trueAnomaly: number } {
+    const perigeeAlt = 180;
+
+    // Calculate Moon's distance at LOI time - this is the natural starting apogee
+    const moonPos = calculateMoonPositionAtDate(loiDate);
+    const moonDistance = Math.sqrt(moonPos.x * moonPos.x + moonPos.y * moonPos.y + moonPos.z * moonPos.z);
+    const moonApogeeAlt = moonDistance - EARTH_RADIUS; // Convert to altitude
+
+    // Multi-start optimization with apogee values centered around Moon's distance
+    const startingRAANs = [0, 45, 90, 135, 180, 225, 270, 315]; // 8 starting points
+
+    // Try apogee values around the Moon's distance (±5%, ±10%, ±15%)
+    const startingApogees = [
+        moonApogeeAlt * 0.85,  // -15%
+        moonApogeeAlt * 0.90,  // -10%
+        moonApogeeAlt * 0.95,  // -5%
+        moonApogeeAlt,         // Exactly at Moon's distance
+        moonApogeeAlt * 1.05,  // +5%
+        moonApogeeAlt * 1.10,  // +10%
+        moonApogeeAlt * 1.15   // +15%
+    ];
+
+    let bestResult = { raan: 0, apogeeAlt: moonApogeeAlt, distance: Infinity, trueAnomaly: 180 };
+
+    for (const startRaan of startingRAANs) {
+        for (const startApogee of startingApogees) {
+            const result = optimizeApogeeToMoon(loiDate, omega, inclination, startRaan, startApogee);
+
+            if (result.distance < bestResult.distance) {
+                bestResult.raan = result.raan;
+                bestResult.apogeeAlt = result.apogeeAlt;
+                bestResult.distance = result.distance;
+            }
+        }
+    }
+
+    // Normalize RAAN to 0-360 range
+    bestResult.raan = ((bestResult.raan % 360) + 360) % 360;
+
+    // Find the optimal true anomaly for the best result
+    const approachInfo = calculateClosestApproachToMoon(bestResult.raan, bestResult.apogeeAlt, perigeeAlt, loiDate, omega, inclination);
+    bestResult.trueAnomaly = approachInfo.trueAnomaly;
+
+    return bestResult;
 }
 
 // Color scheme
@@ -3103,6 +3440,7 @@ function updateRenderControlSlidersState(): void {
 function syncParamsToLaunchEvent(): void {
     if (params.appMode !== 'Plan') return;
     if (!launchEvent.exists) return;
+    if (isUpdatingFromCode) return; // Prevent circular updates during programmatic changes
 
     // Use centralized state manager
     stateManager.saveParamsToLaunchEvent();
@@ -4493,6 +4831,97 @@ function createLaunchEventGUI(): void {
     });
     addViewTimelineSwitchHandlers(apogeeController, 'input');
 
+    // Auto-optimize button (placed after controllers so they're in scope)
+    const autoOptimizeBtn = document.createElement('button');
+    autoOptimizeBtn.textContent = 'Auto Optimize RAAN & Apogee';
+    autoOptimizeBtn.title = 'Optimize RAAN and Apogee to minimize closest approach distance to Moon at LOI';
+    autoOptimizeBtn.style.cssText = `
+        width: 100%;
+        padding: 8px 12px;
+        margin-bottom: 8px;
+        background: #0078d4;
+        border: 1px solid #005a9e;
+        border-radius: 4px;
+        color: #fff;
+        font-size: 12px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: background 0.2s;
+        font-family: Arial, sans-serif;
+    `;
+
+    autoOptimizeBtn.addEventListener('mouseenter', () => {
+        autoOptimizeBtn.style.background = '#005a9e';
+    });
+
+    autoOptimizeBtn.addEventListener('mouseleave', () => {
+        autoOptimizeBtn.style.background = '#0078d4';
+    });
+
+    autoOptimizeBtn.addEventListener('click', () => {
+        // Run optimization
+        const loiDate = launchEvent.moonInterceptDate;
+        if (!loiDate) {
+            alert('Please set LOI date first');
+            return;
+        }
+
+        const result = optimizeApogeeToMoonMultiStart(
+            loiDate,
+            launchEvent.omega,
+            launchEvent.inclination,
+            launchEvent.apogeeAlt
+        );
+
+        // Prevent reactive effects from reverting our changes
+        isUpdatingFromCode = true;
+
+        // Update launch event
+        launchEvent.raan = result.raan;
+        launchEvent.apogeeAlt = result.apogeeAlt;
+
+        // Update GUI params to reflect launchEvent changes
+        guiParams.raan = result.raan;
+        guiParams.apogeeAlt = result.apogeeAlt;
+
+        // Recalculate TLI date based on optimal true anomaly
+        // Time from periapsis (TLI) to reach the optimal true anomaly at LOI
+        const timeToOptimalNu = calculateTimeToTrueAnomaly(result.trueAnomaly, launchEvent.perigeeAlt, result.apogeeAlt);
+        const newTLIDate = new Date(loiDate.getTime() - timeToOptimalNu * 1000);
+
+        // Update TLI date
+        launchEvent.date = newTLIDate;
+        guiParams.launchDate = newTLIDate.toISOString().slice(0, 16);
+        if (launchDateController) {
+            launchDateController.updateDisplay();
+        }
+
+        // Update controllers
+        raanController.updateDisplay();
+        apogeeController.updateDisplay();
+
+        // Mark dirty and update visualization
+        markDirtyAndUpdate();
+
+        // Re-enable reactive effects
+        isUpdatingFromCode = false;
+
+        alert(`Optimization complete!\n\nOptimal RAAN: ${result.raan.toFixed(2)}°\nOptimal Apogee: ${result.apogeeAlt.toFixed(1)} km\nOptimal True Anomaly: ${result.trueAnomaly.toFixed(1)}°\n\nClosest approach: ${result.distance.toFixed(1)} km\n\nTLI date adjusted to ${newTLIDate.toISOString().slice(0, 16)}\nto reach ν=${result.trueAnomaly.toFixed(1)}° at LOI`);
+    });
+
+    // Insert button into GUI
+    if (launchEventGUI && (launchEventGUI as any).$children) {
+        const guiElement = (launchEventGUI as any).domElement;
+        const childrenContainer = guiElement.querySelector('.children');
+        if (childrenContainer) {
+            // Create a wrapper for the button to match lil-gui styling
+            const buttonWrapper = document.createElement('div');
+            buttonWrapper.style.cssText = 'padding: 4px 8px;';
+            buttonWrapper.appendChild(autoOptimizeBtn);
+            childrenContainer.appendChild(buttonWrapper);
+        }
+    }
+
     // True anomaly is disabled because at launch the craft is always at perigee (ν = 0°)
     const trueAnomalyController = launchEventGUI.add(guiParams, 'trueAnomaly', 0, 360, 1).name('True Anomaly (°)').onChange(value => {
         launchEvent.trueAnomaly = value;
@@ -4517,13 +4946,10 @@ function createLaunchEventGUI(): void {
     function markDirtyAndUpdate() {
         draftState.isDirty = true;
 
-        // Sync params with launch event
-        params.chandrayaanInclination = launchEvent.inclination;
-        params.chandrayaanNodes = launchEvent.raan;
-        params.chandrayaanOmega = launchEvent.omega;
-        params.chandrayaanPerigeeAlt = launchEvent.perigeeAlt;
-        params.chandrayaanApogeeAlt = launchEvent.apogeeAlt;
-        params.chandrayaanTrueAnomaly = launchEvent.trueAnomaly;
+        // Sync launchEvent to BOTH params AND planGameParamSet
+        // This ensures the parameter set is always in sync with launchEvent
+        planGameParamSet.loadFromLaunchEvent(launchEvent);
+        planGameParamSet.copyTo(params);
 
         // Update GUI controllers
         chandrayaanControllers.inclination?.updateDisplay();
@@ -4560,6 +4986,20 @@ function saveLaunchEvent(): void {
     // Save a copy
     draftState.savedLaunchEvent = JSON.parse(JSON.stringify(launchEvent));
     draftState.isDirty = false;
+
+    // Sync launchEvent to planGameParamSet and params (ensure consistency)
+    if (params.appMode === 'Plan' || params.appMode === 'Game') {
+        planGameParamSet.loadFromLaunchEvent(launchEvent);
+        planGameParamSet.copyTo(params);
+
+        // Update all GUI displays to reflect saved values
+        chandrayaanControllers.inclination?.updateDisplay();
+        chandrayaanControllers.nodes?.updateDisplay();
+        chandrayaanControllers.omega?.updateDisplay();
+        chandrayaanControllers.perigeeAlt?.updateDisplay();
+        chandrayaanControllers.apogeeAlt?.updateDisplay();
+        chandrayaanControllers.trueAnomaly?.updateDisplay();
+    }
 
     // Invalidate cache so fresh calculations use current renderDate
     invalidateOrbitalParamsCache();
