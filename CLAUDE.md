@@ -77,23 +77,30 @@ cy3-orbit/
 ├── vite.config.js           # Vite build configuration
 ├── vitest.config.ts         # Testing configuration
 ├── *.test.ts                # Unit tests (97 tests)
-├── CLAUDE.md                # This file (developer documentation)
-├── ARCHITECTURE.md          # Reactive architecture documentation
-├── DEPLOYMENT.md            # GitHub Pages deployment guide
-├── LESSONS-LEARNED.md       # Bug regression documentation
-└── .github/workflows/       # CI/CD pipeline
-    └── deploy.yml           # Automated deployment to GitHub Pages
+├── CLAUDE.md                     # This file (developer documentation)
+├── ARCHITECTURE.md               # Event bus architecture documentation
+├── DEPLOYMENT.md                 # GitHub Pages deployment guide
+├── LESSONS-LEARNED.md            # Bug regression documentation
+├── TESTING.md                    # Testing strategy and CI/CD setup
+├── playwright.config.ts          # E2E test configuration (all tests)
+├── playwright.config.fast.ts    # Fast E2E tests for CI
+├── playwright.config.slow.ts    # Comprehensive E2E tests for releases
+└── .github/workflows/            # CI/CD pipeline
+    └── deploy.yml                # Automated deployment to GitHub Pages
 ```
 
 ##  Technology Stack
 
 - **Language**: TypeScript (compiled to JavaScript)
 - **3D Visualization**: Three.js
-- **State Management**: Custom reactive system (Vue-inspired)
+- **State Management**: Event bus pattern for coordinating state updates
 - **GUI**: lil-gui
 - **Astronomy**: astronomy-engine
 - **Build Tool**: Vite
-- **Testing**: Vitest (97 unit tests, 100% pass rate)
+- **Testing**:
+  - Vitest: Unit tests (orbital mechanics, utilities, calculations)
+  - Playwright: E2E tests (UI interactions, workflows, mode transitions)
+  - Two-tier strategy: Fast tests (3 min) for CI, Slow tests (5 min) for releases
 - **Deployment**: GitHub Actions → GitHub Pages
 
 ## Color Scheme
@@ -270,18 +277,50 @@ u = atan2(sin(u), cos(u))
 
 ### Development Workflow
 ```bash
+# Development
 npm run dev          # Start Vite dev server with HMR (port 3000/3001)
 npm run compile      # Compile TypeScript to JavaScript
-npm test             # Run 97 unit tests
-npm test:coverage    # Generate coverage report
 npm run build        # Production build for GitHub Pages
+
+# Testing
+npm test             # Run unit tests (Vitest)
+npm test:coverage    # Generate coverage report
+npm run test:e2e:fast    # Fast E2E tests for CI (3 min, 34 tests)
+npm run test:e2e:slow    # All E2E tests for releases (5 min, 49 tests)
+npm run test:ci          # Unit + Fast E2E (for pre-commit/CI)
+npm run test:release     # Unit + Slow E2E (for releases)
 ```
 
+### Testing Strategy
+
+The project uses a **two-tier testing approach** optimized for different stages of development:
+
+**Fast Tests (3 minutes)** - For CI and pre-commit:
+- All unit tests (Vitest)
+- Essential E2E tests covering core functionality
+- Excludes long-running optimization tests
+- Run with: `npm run test:ci`
+
+**Slow Tests (5 minutes)** - For releases:
+- All unit tests (Vitest)
+- Comprehensive E2E tests including optimization scenarios
+- Error handling edge cases and visual verification
+- Run with: `npm run test:release`
+
+**Test Coverage**:
+- Unit tests: Orbital mechanics, RA calculations, utilities, optimization algorithms
+- E2E tests: Mode transitions, timeline controls, parameter validation, capture detection
+- Total: ~41 unit tests + 49 E2E tests
+
+See [TESTING.md](TESTING.md) for detailed testing strategy, CI/CD setup, and best practices.
+
 ### Code Organization
-- **Reactive State Management**: Custom Vue-inspired system in reactive.ts
+- **Event Bus Pattern**: Explicit event emission for state updates in src/events.ts
+- **Setter Functions**: Dedicated update functions with validation in src/launchEventSetters.ts
 - **Centralized Functions**: RA↔Anomaly conversions in main.ts:806, main.ts:836
 - **Modular Architecture**: Clear separation between state, UI, and rendering
-- **Comprehensive Testing**: 97 tests covering orbital mechanics and utilities
+- **Type Safety**: Full TypeScript types in src/types.ts
+- **Comprehensive Testing**: Unit and E2E tests with two-tier CI/CD strategy
 
 ### Key Technical Details
 - ES6 modules with Vite bundling

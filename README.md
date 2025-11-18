@@ -185,45 +185,109 @@ Celestial Z = Three.js +Y
 This handles Three.js's Y-up convention while maintaining celestial semantics.
 
 ### Code Organization
-- `main.js`: Core visualization logic, orbital calculations, GUI setup, reactive state management
-- `reactive.js`: Vue-inspired reactive system for automatic state updates
+- `main.ts`: Core visualization logic, orbital calculations, GUI setup, event-driven state management
+- `src/events.ts`: Event bus for coordinating state updates between components
+- `src/launchEventSetters.ts`: Explicit setter functions for launch event parameters
+- `src/types.ts`: TypeScript type definitions for type safety
 - `index.html`: Layout, timeline controls, legend panel
 - `style.css`: UI styling, responsive design
-- `ARCHITECTURE.md`: Reactive architecture documentation
+- `ARCHITECTURE.md`: Event bus architecture documentation
 - `CLAUDE.md`: Developer documentation with implementation details
+- `TESTING.md`: Testing strategy and CI/CD setup guide
 
 ## Project Structure
 
 ```
 cy3-orbit/
-├── index.html          # Main HTML with UI components
-├── main.js            # Three.js visualization and orbital mechanics
-├── reactive.js        # Reactive state management system
-├── style.css          # Styling for all UI elements
-├── ARCHITECTURE.md    # Reactive architecture documentation
-├── CLAUDE.md          # Technical developer documentation
-└── README.md          # This file
+├── index.html                    # Main HTML with UI components
+├── main.ts                       # Three.js visualization and orbital mechanics
+├── src/
+│   ├── events.ts                 # Event bus for state management
+│   ├── launchEventSetters.ts    # Launch event update functions
+│   └── types.ts                  # TypeScript type definitions
+├── style.css                     # Styling for all UI elements
+├── *.test.ts                     # Unit tests (Vitest)
+├── e2e-*.test.ts                 # E2E tests (Playwright)
+├── playwright.config.ts          # E2E test configuration (all tests)
+├── playwright.config.fast.ts    # Fast E2E tests for CI
+├── playwright.config.slow.ts    # Comprehensive E2E tests for releases
+├── TESTING.md                    # Testing strategy documentation
+├── ARCHITECTURE.md               # Event bus architecture documentation
+├── CLAUDE.md                     # Technical developer documentation
+└── README.md                     # This file
 ```
 
 ## Dependencies
 
+### Runtime Dependencies
 - **Three.js** (0.152.2): 3D rendering
 - **lil-gui** (0.18): GUI controls
 - **astronomy-engine** (2.1.19): Lunar ephemeris calculations
-- **es-module-shims** (1.6.3): Import maps polyfill
 
-All dependencies loaded via CDN.
+### Development Dependencies
+- **TypeScript** (5.3.3): Type safety and compilation
+- **Vite** (5.4.21): Development server and build tool
+- **Vitest** (1.0.4): Unit testing framework
+- **Playwright** (1.56.1): E2E testing framework
+- **@vitest/coverage-v8**: Code coverage reporting
 
-## Usage
+## Development Setup
 
-Simply open `index.html` in a modern web browser. No build process required.
+### Quick Start
+```bash
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+
+# Build for production
+npm run build
+```
+
+### Running Tests
+```bash
+# Run unit tests
+npm test
+
+# Run unit tests with coverage
+npm run test:coverage
+
+# Run fast E2E tests (for CI/pre-commit)
+npm run test:e2e:fast
+
+# Run all E2E tests (for releases)
+npm run test:e2e:slow
+
+# Run all tests (unit + E2E)
+npm run test:all
+```
+
+### Test Categories
+The project uses a two-tier testing strategy:
+
+**Fast Tests** (3 minutes) - For CI and pre-commit:
+- All unit tests
+- Essential E2E tests covering core functionality
+- Run with: `npm run test:ci`
+
+**Slow Tests** (5 minutes) - For releases:
+- All unit tests
+- Comprehensive E2E tests including optimization tests
+- Run with: `npm run test:release`
+
+See [TESTING.md](TESTING.md) for detailed testing strategy and CI/CD setup.
 
 ## TODOs
 
 - [ ] Handle edge cases where changing the start date of the time window moves a planned launch event outside the 3-month time window (currently the launch date can fall outside the visible timeline range)
 
+## Documentation
+
+- **[TESTING.md](TESTING.md)**: Testing strategy, CI/CD setup, and best practices
+- **[ARCHITECTURE.md](ARCHITECTURE.md)**: Event bus architecture and design patterns
+- **[CLAUDE.md](CLAUDE.md)**: Detailed technical documentation and implementation notes
+
 ## Credits
 
 Built with Three.js and astronomy-engine.
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for reactive architecture documentation and [CLAUDE.md](CLAUDE.md) for detailed technical documentation and implementation notes.

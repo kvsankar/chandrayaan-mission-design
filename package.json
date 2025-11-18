@@ -14,6 +14,8 @@
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
     "test:e2e": "playwright test",
+    "test:e2e:fast": "playwright test --config=playwright.config.fast.ts",
+    "test:e2e:slow": "playwright test --config=playwright.config.slow.ts",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:workflow": "playwright test e2e-workflow",
@@ -22,7 +24,9 @@
     "test:e2e:errors": "playwright test e2e-error-handling",
     "test:e2e:visual": "playwright test e2e-visual-verification",
     "test:e2e:optimize": "playwright test e2e-optimize",
-    "test:all": "npm run test && npm run test:e2e"
+    "test:all": "npm run test && npm run test:e2e",
+    "test:ci": "npm run test && npm run test:e2e:fast",
+    "test:release": "npm run test && npm run test:e2e:slow"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",
