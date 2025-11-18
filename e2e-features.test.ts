@@ -7,7 +7,7 @@ test.describe('Feature-Specific Tests', () => {
         console.log('\n=== AUTO LOI TOGGLE TEST ===');
 
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         // Switch to Plan mode
         await page.click('button:has-text("Plan")');
@@ -71,7 +71,7 @@ test.describe('Feature-Specific Tests', () => {
         console.log('\n=== TIMELINE CONTROLS TEST ===');
 
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         // Create launch event first (needed for Game mode)
         await page.click('button:has-text("Plan")');
@@ -134,7 +134,7 @@ test.describe('Feature-Specific Tests', () => {
         console.log('\n=== CAPTURE DETECTION TEST ===');
 
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         // Switch to Plan mode and create optimized launch event
         await page.click('button:has-text("Plan")');
@@ -238,7 +238,7 @@ test.describe('Feature-Specific Tests', () => {
         console.log('\n=== VISIBILITY TOGGLES TEST ===');
 
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         console.log('\n--- Testing visibility toggles in Explore mode ---');
 
@@ -288,7 +288,7 @@ test.describe('Feature-Specific Tests', () => {
         console.log('\n=== MULTIPLE OPTIMIZATION SCENARIOS TEST ===');
 
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         const testScenarios = [
             {
@@ -424,7 +424,7 @@ test.describe('Feature-Specific Tests', () => {
         console.log('\n=== TIME PROGRESSION TEST ===');
 
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         // Switch to Game mode
         await page.click('button:has-text("Game")');

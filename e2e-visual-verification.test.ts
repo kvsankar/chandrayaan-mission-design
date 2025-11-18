@@ -10,7 +10,7 @@ test.describe('Visual Distance Verification Test', () => {
 
         // Navigate to app
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         // Listen to console logs
         const logs: string[] = [];

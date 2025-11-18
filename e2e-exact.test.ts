@@ -4,7 +4,7 @@ test.describe('Exact Parameter Match Test', () => {
     test('should match unit test results with exact same parameters', async ({ page }) => {
         // Navigate to app
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         // Listen to console logs
         const logs: string[] = [];

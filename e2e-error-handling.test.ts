@@ -5,7 +5,7 @@ test.describe('Error Handling and Edge Cases', () => {
         console.log('\n=== OPTIMIZATION WITHOUT LAUNCH EVENT TEST ===');
 
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         // Switch to Plan mode but don't create launch event
         await page.click('button:has-text("Plan")');
@@ -38,7 +38,7 @@ test.describe('Error Handling and Edge Cases', () => {
         console.log('\n=== OPTIMIZATION WITHOUT AUTO LOI TEST ===');
 
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         // Switch to Plan mode and create launch event
         await page.click('button:has-text("Plan")');
@@ -70,7 +70,7 @@ test.describe('Error Handling and Edge Cases', () => {
         console.log('\n=== MISSING LOI DATE TEST ===');
 
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         // Switch to Plan mode and create launch event
         await page.click('button:has-text("Plan")');
@@ -127,7 +127,7 @@ test.describe('Error Handling and Edge Cases', () => {
         console.log('\n=== INVALID PARAMETER VALUES TEST ===');
 
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         // Switch to Plan mode and create launch event
         await page.click('button:has-text("Plan")');
@@ -171,7 +171,7 @@ test.describe('Error Handling and Edge Cases', () => {
         console.log('\n=== RAPID OPTIMIZATION REQUESTS TEST ===');
 
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         // Setup launch event with Auto LOI
         await page.click('button:has-text("Plan")');
@@ -226,7 +226,7 @@ test.describe('Error Handling and Edge Cases', () => {
         console.log('\n=== MODE SWITCHING DURING OPTIMIZATION TEST ===');
 
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         // Setup launch event with Auto LOI
         await page.click('button:has-text("Plan")');
@@ -295,7 +295,7 @@ test.describe('Error Handling and Edge Cases', () => {
         console.log('\n=== EXTREME TIME VALUES TEST ===');
 
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         // Switch to Game mode
         await page.click('button:has-text("Game")');
@@ -344,7 +344,7 @@ test.describe('Error Handling and Edge Cases', () => {
         console.log('\n=== MULTIPLE LAUNCH EVENTS TEST ===');
 
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         await page.click('button:has-text("Plan")');
         await page.waitForTimeout(1000);
@@ -391,11 +391,11 @@ test.describe('Error Handling and Edge Cases', () => {
         console.log('\n=== PAGE RELOAD TEST ===');
 
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         console.log('\n--- Test reload in Explore mode ---');
         await page.reload();
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
         const exploreMode = await page.evaluate(() => (window as any).params.appMode);
         console.log('Mode after reload:', exploreMode);
         console.log('✓ Reloaded in Explore mode');
@@ -407,7 +407,7 @@ test.describe('Error Handling and Edge Cases', () => {
         await page.waitForTimeout(2000);
 
         await page.reload();
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         // After reload, app should start fresh in Explore mode
         const modeAfterReload = await page.evaluate(() => (window as any).params.appMode);
@@ -419,7 +419,7 @@ test.describe('Error Handling and Edge Cases', () => {
         await page.waitForTimeout(1000);
 
         await page.reload();
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         const modeAfterGameReload = await page.evaluate(() => (window as any).params.appMode);
         console.log('Mode after Game reload:', modeAfterGameReload);

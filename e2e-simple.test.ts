@@ -4,11 +4,22 @@ test.describe('Simple Auto Optimize Test', () => {
     test('should run auto optimize with default values', async ({ page }) => {
         // Navigate to app
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
-        // Listen to console logs
+        // Listen to console logs and errors
         const logs: string[] = [];
-        page.on('console', msg => logs.push(msg.text()));
+        const errors: string[] = [];
+        page.on('console', msg => {
+            logs.push(msg.text());
+            if (msg.type() === 'error') {
+                errors.push(msg.text());
+                console.log('BROWSER ERROR:', msg.text());
+            }
+        });
+        page.on('pageerror', error => {
+            errors.push(error.message);
+            console.log('PAGE ERROR:', error.message);
+        });
 
         // Switch to Plan mode
         await page.click('button:has-text("Plan")');
@@ -31,27 +42,23 @@ test.describe('Simple Auto Optimize Test', () => {
         const optimizeBtn = page.locator('button:has-text("Auto Optimize RAAN & Apogee")');
         await expect(optimizeBtn).toBeVisible({ timeout: 5000 });
 
-        // Set up dialog handler BEFORE clicking (to capture any alert)
+        // Set up dialog handler BEFORE clicking
         let dialogText = '';
-        page.on('dialog', async dialog => {
+        page.once('dialog', async dialog => {
             dialogText = dialog.message();
             console.log('Dialog received:', dialogText.substring(0, 100) + '...');
             await dialog.accept();
         });
 
-        // Click optimize button (might take a long time to run optimization)
+        // Click optimize button
         await optimizeBtn.click({force: true});
         console.log('Clicked Auto Optimize button, waiting for result...');
 
-        // Wait for dialog text to be populated (dialog handler will accept it)
-        let attempts = 0;
-        while (dialogText === '' && attempts < 360) { // 3 minutes max (360 * 0.5s)
-            await page.waitForTimeout(500);
-            attempts++;
-        }
+        // Wait for dialog to be captured (with short timeout since optimization should be fast)
+        await page.waitForTimeout(5000);
 
         if (dialogText === '') {
-            throw new Error('No dialog appeared after 3 minutes');
+            throw new Error('No dialog appeared after optimization');
         }
 
         const alertText = dialogText;

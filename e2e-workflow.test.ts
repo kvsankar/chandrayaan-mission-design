@@ -6,7 +6,7 @@ test.describe('Complete User Workflow Tests', () => {
 
         // Navigate to app
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         console.log('\n--- Step 1: Start in Explore mode ---');
 
@@ -229,7 +229,7 @@ test.describe('Complete User Workflow Tests', () => {
         console.log('\n=== LAUNCH EVENT LIFECYCLE TEST ===');
 
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         // Switch to Plan mode
         await page.click('button:has-text("Plan")');

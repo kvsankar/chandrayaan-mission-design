@@ -4149,7 +4149,8 @@ function createLaunchEventGUI(): void {
         // Re-enable reactive effects
         isUpdatingFromCode = false;
 
-        showAlert(`Optimization complete!\n\nOptimal RAAN: ${result.raan.toFixed(2)}°\nOptimal Apogee: ${result.apogeeAlt.toFixed(1)} km\nOptimal True Anomaly: ${result.trueAnomaly.toFixed(1)}°\n\nClosest approach: ${result.distance.toFixed(1)} km\n\nTLI date adjusted to ${newTLIDate.toISOString().slice(0, 16)}\nto reach ν=${result.trueAnomaly.toFixed(1)}° at LOI`, 'Optimization Complete');
+        // Use native alert for E2E testing compatibility
+        alert(`Optimization complete!\n\nOptimal RAAN: ${result.raan.toFixed(2)}°\nOptimal Apogee: ${result.apogeeAlt.toFixed(1)} km\nOptimal True Anomaly: ${result.trueAnomaly.toFixed(1)}°\n\nClosest approach: ${result.distance.toFixed(1)} km\n\nTLI date adjusted to ${newTLIDate.toISOString().slice(0, 16)}\nto reach ν=${result.trueAnomaly.toFixed(1)}° at LOI`);
     });
 
     // Insert button into GUI

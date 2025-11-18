@@ -8,7 +8,7 @@ test.describe('Mode Transition Tests', () => {
         console.log('\n=== PARAMETER ISOLATION TEST ===');
 
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         console.log('\n--- Step 1: Capture default Explore mode parameters ---');
 
@@ -104,7 +104,7 @@ test.describe('Mode Transition Tests', () => {
         console.log('\n=== RAPID MODE SWITCHING TEST ===');
 
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         // Create launch event in Plan mode
         await page.click('button:has-text("Plan")');
@@ -165,7 +165,7 @@ test.describe('Mode Transition Tests', () => {
         console.log('\n=== COMPLEX MODE TRANSITION TEST ===');
 
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         console.log('\n--- Capture initial Explore params ---');
         const exploreSnapshot = await page.evaluate(() => ({
@@ -257,7 +257,7 @@ test.describe('Mode Transition Tests', () => {
         console.log('\n=== OPTIMIZED VALUES PERSISTENCE TEST ===');
 
         await page.goto('http://localhost:3002');
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
 
         // Switch to Plan mode and create launch event
         await page.click('button:has-text("Plan")');
