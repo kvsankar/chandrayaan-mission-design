@@ -3328,36 +3328,10 @@ function setupTimeline(): void {
             // Update renderDate and all visualization (single source of truth)
             updateRenderDate();
         }
-
-        // Update Moon intercept date in Plan mode (real-time preview while dragging)
-        if (params.appMode === 'Plan' && launchEvent.exists) {
-            // Temporarily update intercept date for preview (will be finalized on 'change')
-            launchEvent.moonInterceptDate = new Date(timelineState.currentDate);
-        }
         });
     }
 
-    // Timeline slider change handler (fires when user releases slider)
-    if (timelineSlider) {
-        timelineSlider.addEventListener('change', () => {
-        if (params.appMode === 'Plan' && launchEvent.exists) {
-            // Finalize Moon intercept date to current timeline position
-            launchEvent.moonInterceptDate = new Date(timelineState.currentDate);
-
-            // Update the datetime-local input in the GUI (second one is Moon Intercept)
-            if (launchEventGUI) {
-                const formattedDate = formatDateForDisplay(launchEvent.moonInterceptDate);
-                const inputs = document.querySelectorAll('#launch-event-container input[type="datetime-local"]');
-                if (inputs.length >= 2) {
-                    (inputs[1] as HTMLInputElement).value = formattedDate;  // Second input is Moon Intercept Date
-                }
-            }
-
-            // Mark as dirty
-            draftState.isDirty = true;
-        }
-        });
-    }
+    // Timeline slider change handler removed - View timeline should not modify launch parameters
 
     // Play/Pause button
     if (playPauseBtn) playPauseBtn.addEventListener('click', () => {
