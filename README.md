@@ -8,7 +8,7 @@ An interactive 3D visualization of Chandrayaan-3's orbital mechanics, demonstrat
 
 ## Human Note
 
-This interactive animation was developed to educate astronomy and space enthusiasts about the Chandrayaan 3 mission design. This animation would be first used in the Bangalore Astronomical Society Astronomy Workshop for Enthusiasts (AWE) 2025.
+This interactive animation was developed to educate astronomy and space enthusiasts about the Chandrayaan 3 mission design. This animation would be first used in the [Bangalore Astronomical Society](https://bas.org.in/) Astronomy Workshop for Enthusiasts (AWE) 2025 at the [Jain School of Sciences](https://jainuniversity.ac.in/sos/) on 15th November2025.
 
 ## Features
 
