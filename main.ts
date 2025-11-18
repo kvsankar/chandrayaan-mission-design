@@ -1832,7 +1832,7 @@ function optimizeApogeeToMoon(loiDate: Date, omega: number, inclination: number,
  * Multi-start optimization to find global minimum
  * Tries multiple initial RAAN values to avoid local minima
  */
-function optimizeApogeeToMoonMultiStart(loiDate: Date, omega: number, inclination: number, initialApogeeAlt: number): { raan: number, apogeeAlt: number, distance: number, trueAnomaly: number } {
+function optimizeApogeeToMoonMultiStart(loiDate: Date, omega: number, inclination: number, _initialApogeeAlt: number): { raan: number, apogeeAlt: number, distance: number, trueAnomaly: number } {
     const perigeeAlt = 180;
 
     // Calculate Moon's distance at LOI time - this is the natural starting apogee
