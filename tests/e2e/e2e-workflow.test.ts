@@ -42,7 +42,7 @@ test.describe('Complete User Workflow Tests', () => {
 
         console.log('\n--- Step 4: Enable Auto LOI ---');
 
-        await page.click('text=Auto LOI');
+        await page.evaluate(() => { (window as any).setAutoLOI(true); });
         await page.waitForTimeout(1000);
 
         console.log('\n--- Step 5: Set optimization parameters ---');

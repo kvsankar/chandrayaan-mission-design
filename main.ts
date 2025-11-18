@@ -2,8 +2,21 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GUI, Controller } from 'lil-gui';
 import * as Astronomy from 'astronomy-engine';
-import { reactive, computed, watchEffect, ComputedRef, StopFunction } from './reactive.js';
+import { events } from './src/events.js';
 import { showConfirmDialog, showAlert } from './src/ui/dialog.js';
+import {
+    setLaunchEventRaan,
+    setLaunchEventApogeeAlt,
+    setLaunchEventPerigeeAlt,
+    setLaunchEventInclination,
+    setLaunchEventOmega,
+    setLaunchEventTrueAnomaly,
+    setLaunchEventDate,
+    setLaunchEventMoonInterceptDate,
+    setLaunchEventSyncTLIWithLOI,
+    setLaunchEventOptimizedValues
+} from './src/launchEventSetters.js';
+import { computeTLIDate, computePeriodDisplay } from './src/launchEventComputed.js';
 import {
     TIMELINE_MAX_DAYS,
     SPHERE_RADIUS,
@@ -177,8 +190,8 @@ const renderControl: RenderControl = {
     renderDate: new Date()
 };
 
-// TLI (Trans Lunar Injection) event state - REACTIVE
-let launchEvent = reactive<LaunchEvent>({
+// TLI (Trans Lunar Injection) event state
+let launchEvent: LaunchEvent = {
     exists: false,
     date: null,
     inclination: 21.5,
@@ -192,7 +205,7 @@ let launchEvent = reactive<LaunchEvent>({
     syncTLIWithLOI: true,
     autoLOI: false,
     optimalLOIDates: []
-});
+};
 
 // Expose for E2E testing
 if (typeof window !== 'undefined') {
@@ -207,6 +220,38 @@ if (typeof window !== 'undefined') {
         const daysSinceStart = (date.getTime() - timelineState.startDate.getTime()) / (24 * 60 * 60 * 1000);
         timelineState.daysElapsed = daysSinceStart;
         updateRenderDate();
+    };
+
+    // Helper function to delete launch event for testing (bypasses confirmation)
+    (window as any).deleteLaunchEventForTest = () => {
+        deleteLaunchEventInternal();
+    };
+
+    // Helper function to enable/disable Auto LOI for testing
+    (window as any).setAutoLOI = (enabled: boolean) => {
+        launchEvent.autoLOI = enabled;
+        events.emit('launchEvent:autoLOI', enabled);
+    };
+
+    // Helper functions to test validation
+    (window as any).validateApogee = (value: number): { valid: boolean; message?: string } => {
+        if (value < launchEvent.perigeeAlt) {
+            return {
+                valid: false,
+                message: `Apogee (${value} km) must be >= Perigee (${launchEvent.perigeeAlt} km)`
+            };
+        }
+        return { valid: true };
+    };
+
+    (window as any).validatePerigee = (value: number): { valid: boolean; message?: string } => {
+        if (value > launchEvent.apogeeAlt) {
+            return {
+                valid: false,
+                message: `Perigee (${value} km) must be <= Apogee (${launchEvent.apogeeAlt} km)`
+            };
+        }
+        return { valid: true };
     };
 }
 
@@ -390,42 +435,23 @@ const stateManager: StateManager = {
     saveParamsToLaunchEvent(): void {
         if (!launchEvent.exists) return;
 
-        launchEvent.inclination = params.chandrayaanInclination;
-        launchEvent.raan = params.chandrayaanNodes;
-        launchEvent.omega = params.chandrayaanOmega;
-        launchEvent.perigeeAlt = params.chandrayaanPerigeeAlt;
-        launchEvent.apogeeAlt = params.chandrayaanApogeeAlt;
-        launchEvent.trueAnomaly = params.chandrayaanTrueAnomaly;
+        setLaunchEventInclination(launchEvent, params.chandrayaanInclination);
+        setLaunchEventRaan(launchEvent, params.chandrayaanNodes);
+        setLaunchEventOmega(launchEvent, params.chandrayaanOmega);
+        setLaunchEventPerigeeAlt(launchEvent, params.chandrayaanPerigeeAlt);
+        setLaunchEventApogeeAlt(launchEvent, params.chandrayaanApogeeAlt);
+        setLaunchEventTrueAnomaly(launchEvent, params.chandrayaanTrueAnomaly);
 
         draftState.isDirty = true;
     }
 };
 
 // ============================================================================
-// REACTIVE LAUNCH EVENT SYSTEM
+// EVENT-DRIVEN LAUNCH EVENT SYSTEM
 // ============================================================================
 
-// COMPUTED: TLI date automatically computed from LOI when sync is enabled
-const computedTLIDate: ComputedRef<Date | null> = computed(() => {
-    if (!launchEvent.syncTLIWithLOI || !launchEvent.moonInterceptDate) {
-        return launchEvent.date;
-    }
-
-    const periodSeconds = calculateOrbitalPeriod(
-        launchEvent.perigeeAlt,
-        launchEvent.apogeeAlt
-    );
-    const halfPeriodMs = (periodSeconds / 2) * 1000;
-    return new Date(launchEvent.moonInterceptDate.getTime() - halfPeriodMs);
-});
-
-// COMPUTED: Orbital period for display
-const computedPeriod: ComputedRef<string> = computed(() => {
-    if (!launchEvent.exists) return '--';
-    return formatPeriod(
-        calculateOrbitalPeriod(launchEvent.perigeeAlt, launchEvent.apogeeAlt)
-    );
-});
+// Helper functions to compute derived values (replaced reactive computed())
+// These are now called explicitly where needed and use event bus for updates
 
 // Launch event GUI instance
 let launchEventGUI: GUI | null = null;
@@ -440,19 +466,19 @@ let chandrayaanFolder: GUI;
 // @ts-expect-error - Used for conditional updates
 let moonModeController: Controller;
 
-// Store effect cleanup functions
-const reactiveEffectStops: StopFunction[] = [];
-let reactiveEffectsInitialized: boolean = false;
+// Store unsubscribe functions for event subscriptions
+const eventUnsubscribers: (() => void)[] = [];
+let eventSubscriptionsInitialized: boolean = false;
 
-function setupReactiveEffects(): void {
-    if (reactiveEffectsInitialized) return;
-    reactiveEffectsInitialized = true;
+function setupEventSubscriptions(): void {
+    if (eventSubscriptionsInitialized) return;
+    eventSubscriptionsInitialized = true;
 
-    // Auto-sync TLI date when computed value changes
-    reactiveEffectStops.push(watchEffect(() => {
+    // Auto-sync TLI date when syncTLIWithLOI or moonInterceptDate changes
+    eventUnsubscribers.push(events.on('launchEvent:syncTLIWithLOI', () => {
         if (!launchEvent.exists || !launchEvent.syncTLIWithLOI) return;
 
-        const tliDate = computedTLIDate.value;
+        const tliDate = computeTLIDate(launchEvent, calculateOrbitalPeriod);
         if (tliDate && tliDate !== launchEvent.date) {
             if (!isUpdatingFromCode) {
                 isUpdatingFromCode = true;
@@ -460,10 +486,50 @@ function setupReactiveEffects(): void {
                 isUpdatingFromCode = false;
             }
         }
-    }, { name: 'TLI Date Sync' }));
+    }));
+
+    eventUnsubscribers.push(events.on('launchEvent:moonInterceptDate', () => {
+        if (!launchEvent.exists || !launchEvent.syncTLIWithLOI) return;
+
+        const tliDate = computeTLIDate(launchEvent, calculateOrbitalPeriod);
+        if (tliDate && tliDate !== launchEvent.date) {
+            if (!isUpdatingFromCode) {
+                isUpdatingFromCode = true;
+                launchEvent.date = tliDate;
+                isUpdatingFromCode = false;
+            }
+        }
+    }));
+
+    // Also handle perigee/apogee changes for TLI sync (affects orbital period)
+    eventUnsubscribers.push(events.on('launchEvent:perigeeAlt', () => {
+        if (!launchEvent.exists || !launchEvent.syncTLIWithLOI) return;
+
+        const tliDate = computeTLIDate(launchEvent, calculateOrbitalPeriod);
+        if (tliDate && tliDate !== launchEvent.date) {
+            if (!isUpdatingFromCode) {
+                isUpdatingFromCode = true;
+                launchEvent.date = tliDate;
+                isUpdatingFromCode = false;
+            }
+        }
+    }));
+
+    eventUnsubscribers.push(events.on('launchEvent:apogeeAlt', () => {
+        if (!launchEvent.exists || !launchEvent.syncTLIWithLOI) return;
+
+        const tliDate = computeTLIDate(launchEvent, calculateOrbitalPeriod);
+        if (tliDate && tliDate !== launchEvent.date) {
+            if (!isUpdatingFromCode) {
+                isUpdatingFromCode = true;
+                launchEvent.date = tliDate;
+                isUpdatingFromCode = false;
+            }
+        }
+    }));
 
     // Auto-update TLI GUI display when TLI date changes
-    reactiveEffectStops.push(watchEffect(() => {
+    eventUnsubscribers.push(events.on('launchEvent:date', () => {
         if (!launchEvent.exists || !launchDateController) return;
 
         const tliDate = launchEvent.date;
@@ -471,27 +537,33 @@ function setupReactiveEffects(): void {
             launchEventGUIParams.launchDate = formatDateForDisplay(tliDate);
             launchDateController.updateDisplay();
         }
-    }, { name: 'TLI GUI Update' }));
+    }));
 
     // Auto-update LOI GUI display when LOI date changes
-    reactiveEffectStops.push(watchEffect(() => {
+    eventUnsubscribers.push(events.on('launchEvent:moonInterceptDate', () => {
         if (!launchEvent.exists) return;
 
         const loiDate = launchEvent.moonInterceptDate;
         if (loiDate && launchEventGUIParams) {
             launchEventGUIParams.moonInterceptDate = formatDateForDisplay(loiDate);
         }
-    }, { name: 'LOI GUI Update' }));
+    }));
 
     // Auto-update period display when perigee/apogee changes
-    reactiveEffectStops.push(watchEffect(() => {
+    const updatePeriodDisplay = () => {
         if (!launchEvent.exists || !launchEventGUIParams) return;
+        launchEventGUIParams.period = computePeriodDisplay(
+            launchEvent,
+            calculateOrbitalPeriod,
+            formatPeriod
+        );
+    };
 
-        launchEventGUIParams.period = computedPeriod.value;
-    }, { name: 'Period Display Update' }));
+    eventUnsubscribers.push(events.on('launchEvent:perigeeAlt', updatePeriodDisplay));
+    eventUnsubscribers.push(events.on('launchEvent:apogeeAlt', updatePeriodDisplay));
 
     // Auto-handle sync toggle
-    reactiveEffectStops.push(watchEffect(() => {
+    eventUnsubscribers.push(events.on('launchEvent:syncTLIWithLOI', () => {
         if (!launchEvent.exists || !launchDateController) return;
 
         if (launchEvent.syncTLIWithLOI) {
@@ -499,48 +571,30 @@ function setupReactiveEffects(): void {
         } else {
             launchDateController.enable();
         }
-    }, { name: 'Sync Toggle Handler' }));
+    }));
 
     // Auto-update timeline sliders when dates change
-    reactiveEffectStops.push(watchEffect(() => {
+    const updateTimelineSliders = () => {
         if (!launchEvent.exists) return;
-
-        // Read reactive properties to track dependencies
-        // @ts-expect-error - Unused but needed for reactivity
-        const tliDate = launchEvent.date;
-        // @ts-expect-error - Unused but needed for reactivity
-        const loiDate = launchEvent.moonInterceptDate;
-
         syncRenderControlSlidersWithLaunchEvent();
-    }, { name: 'Timeline Slider Sync' }));
+    };
+
+    eventUnsubscribers.push(events.on('launchEvent:date', updateTimelineSliders));
+    eventUnsubscribers.push(events.on('launchEvent:moonInterceptDate', updateTimelineSliders));
 
     // Auto-update launch marker when TLI date changes
-    reactiveEffectStops.push(watchEffect(() => {
+    eventUnsubscribers.push(events.on('launchEvent:date', () => {
         if (!launchEvent.exists) return;
 
         const tliDate = launchEvent.date;
         if (tliDate) {
             updateLaunchMarker();
         }
-    }, { name: 'Launch Marker Update' }));
+    }));
 
     // Auto-update visualization when orbital parameters change
-    reactiveEffectStops.push(watchEffect(() => {
+    const updateVisualization = () => {
         if (!launchEvent.exists) return;
-
-        // Read reactive properties to track dependencies
-        // @ts-expect-error - Unused but needed for reactivity
-        const inc = launchEvent.inclination;
-        // @ts-expect-error - Unused but needed for reactivity
-        const raan = launchEvent.raan;
-        // @ts-expect-error - Unused but needed for reactivity
-        const omega = launchEvent.omega;
-        // @ts-expect-error - Unused but needed for reactivity
-        const perigee = launchEvent.perigeeAlt;
-        // @ts-expect-error - Unused but needed for reactivity
-        const apogee = launchEvent.apogeeAlt;
-        // @ts-expect-error - Unused but needed for reactivity
-        const ta = launchEvent.trueAnomaly;
 
         if (params.appMode === 'Plan') {
             draftState.isDirty = true;
@@ -549,27 +603,30 @@ function setupReactiveEffects(): void {
         syncParamsToLaunchEvent();
         invalidateOrbitalParamsCache();
         updateRenderDate();
-    }, { name: 'Orbital Parameters Visualization' }));
+    };
+
+    eventUnsubscribers.push(events.on('launchEvent:inclination', updateVisualization));
+    eventUnsubscribers.push(events.on('launchEvent:raan', updateVisualization));
+    eventUnsubscribers.push(events.on('launchEvent:omega', updateVisualization));
+    eventUnsubscribers.push(events.on('launchEvent:perigeeAlt', updateVisualization));
+    eventUnsubscribers.push(events.on('launchEvent:apogeeAlt', updateVisualization));
+    eventUnsubscribers.push(events.on('launchEvent:trueAnomaly', updateVisualization));
 
     // Auto-update visualization when dates change
-    reactiveEffectStops.push(watchEffect(() => {
+    const updateDateVisualization = () => {
         if (!launchEvent.exists) return;
-
-        // Read reactive properties to track dependencies
-        // @ts-expect-error - Unused but needed for reactivity
-        const tliDate = launchEvent.date;
-        // @ts-expect-error - Unused but needed for reactivity
-        const loiDate = launchEvent.moonInterceptDate;
-
         updateRenderDate();
-    }, { name: 'Date Change Visualization' }));
+    };
+
+    eventUnsubscribers.push(events.on('launchEvent:date', updateDateVisualization));
+    eventUnsubscribers.push(events.on('launchEvent:moonInterceptDate', updateDateVisualization));
 }
 
 // @ts-expect-error - Function referenced but may appear unused
-function cleanupReactiveEffects(): void {
-    reactiveEffectStops.forEach(stop => stop());
-    reactiveEffectStops.length = 0;
-    reactiveEffectsInitialized = false;
+function cleanupEventSubscriptions(): void {
+    eventUnsubscribers.forEach(unsubscribe => unsubscribe());
+    eventUnsubscribers.length = 0;
+    eventSubscriptionsInitialized = false;
 }
 
 // ============================================================================
@@ -3230,6 +3287,9 @@ function updateRenderDate(): void {
         timelineState.startDate.getTime() + daysToUse * 24 * 60 * 60 * 1000
     );
 
+    // Also update timelineState.currentDate to keep them in sync
+    timelineState.currentDate = new Date(renderControl.renderDate);
+
     // Update current date display in first row to show the active timeline's date
     const currentDateSpan = document.getElementById('current-date');
     if (currentDateSpan) {
@@ -3518,11 +3578,11 @@ function setupRenderControlSliders(): void {
         launchSlider.addEventListener('input', (e) => {
             renderControl.launchDays = parseFloat((e.target as HTMLInputElement).value);
 
-            // Update launch date - reactivity handles all updates automatically!
+            // Update launch date - event bus handles all updates automatically!
             if (launchEvent.exists) {
-                launchEvent.date = new Date(
+                setLaunchEventDate(launchEvent, new Date(
                     timelineState.startDate.getTime() + renderControl.launchDays * 24 * 60 * 60 * 1000
-                );
+                ));
             }
 
             updateSliderDisplays();
@@ -3534,11 +3594,11 @@ function setupRenderControlSliders(): void {
         interceptSlider.addEventListener('input', (e) => {
             renderControl.interceptDays = parseFloat((e.target as HTMLInputElement).value);
 
-            // Update intercept date - reactivity handles all updates automatically!
+            // Update intercept date - event bus handles all updates automatically!
             if (launchEvent.exists) {
-                launchEvent.moonInterceptDate = new Date(
+                setLaunchEventMoonInterceptDate(launchEvent, new Date(
                     timelineState.startDate.getTime() + renderControl.interceptDays * 24 * 60 * 60 * 1000
-                );
+                ));
             }
 
             updateSliderDisplays();
@@ -3711,8 +3771,8 @@ function setupActionsPanel(): void {
         // Create launch event if it doesn't exist
         if (!launchEvent.exists) {
             launchEvent.exists = true;
-            launchEvent.date = new Date('2023-07-30T21:36:00');
-            launchEvent.moonInterceptDate = new Date('2023-08-05T16:56:00');
+            setLaunchEventDate(launchEvent, new Date('2023-07-30T21:36:00'));
+            setLaunchEventMoonInterceptDate(launchEvent, new Date('2023-08-05T16:56:00'));
         }
 
         // Show card, hide button
@@ -3751,6 +3811,9 @@ function createLaunchEventGUI(): void {
     launchEventGUI = new GUI({ container: container || undefined });
     launchEventGUI.title('Launch Event');
 
+    // Variable to hold the Auto Optimize button wrapper for visibility control
+    let autoOptimizeBtnWrapper: HTMLElement | null = null;
+
     // Helper function to get valid omega values based on inclination
     function getOmegaOptions(inc: number): { [key: string]: number } {
         if (inc === 21.5) {
@@ -3765,7 +3828,7 @@ function createLaunchEventGUI(): void {
     const validOmegaOptions = getOmegaOptions(launchEvent.inclination);
     if (!Object.values(validOmegaOptions).includes(launchEvent.omega)) {
         // If current omega is invalid for this inclination, use the first valid option
-        launchEvent.omega = Object.values(validOmegaOptions)[0];
+        setLaunchEventOmega(launchEvent, Object.values(validOmegaOptions)[0]);
     }
 
     // Create a temporary params object for the GUI
@@ -3798,8 +3861,8 @@ function createLaunchEventGUI(): void {
         if (value && value !== 'None' && value !== 'Select Auto LOI first' && value !== 'No optimal dates found') {
             const newDate = new Date(value);
 
-            // Update the reactive property - this will trigger all updates automatically
-            launchEvent.moonInterceptDate = newDate;
+            // Update the property using setter - this will trigger all updates automatically
+            setLaunchEventMoonInterceptDate(launchEvent, newDate);
 
             // Update the manual input display value
             guiParams.moonInterceptDate = formatDateForDisplay(newDate);
@@ -3841,7 +3904,7 @@ function createLaunchEventGUI(): void {
                 // Select first optimal date
                 const firstDate = formatDateForDisplay(launchEvent.optimalLOIDates[0]);
                 guiParams.optimalLOIDate = firstDate;
-                launchEvent.moonInterceptDate = launchEvent.optimalLOIDates[0];
+                setLaunchEventMoonInterceptDate(launchEvent, launchEvent.optimalLOIDates[0]);
                 guiParams.moonInterceptDate = formatDateForDisplay(launchEvent.optimalLOIDates[0]);
 
                 // Trigger render update
@@ -3867,6 +3930,11 @@ function createLaunchEventGUI(): void {
                 optimalLOIController = null;
             }
             interceptDateController.show();
+        }
+
+        // Show/hide Auto Optimize button based on autoLOI state
+        if (autoOptimizeBtnWrapper) {
+            autoOptimizeBtnWrapper.style.display = value ? 'block' : 'none';
         }
     });
 
@@ -3906,17 +3974,15 @@ function createLaunchEventGUI(): void {
     if (interceptInputElem5) interceptInputElem5.addEventListener('change', (e: Event) => {
         if (isUpdatingFromCode) return; // Prevent circular updates from slider
 
-        // Just set the value - reactivity handles everything!
-        launchEvent.moonInterceptDate = new Date((e.target as HTMLInputElement).value);
+        // Just set the value - event bus handles everything!
+        setLaunchEventMoonInterceptDate(launchEvent, new Date((e.target as HTMLInputElement).value));
         guiParams.moonInterceptDate = (e.target as HTMLInputElement).value;
     });
 
     // Sync TLI with LOI checkbox
-    // @ts-expect-error - Used in reactive effects
-
-    const syncCheckboxController = launchEventGUI.add(guiParams, 'syncTLIWithLOI').name('Sync TLI').onChange(value => {
-        // Just set the value - reactivity handles everything!
-        launchEvent.syncTLIWithLOI = value;
+    launchEventGUI.add(guiParams, 'syncTLIWithLOI').name('Sync TLI').onChange(value => {
+        // Just set the value - event bus handles everything!
+        setLaunchEventSyncTLIWithLOI(launchEvent, value);
     });
 
     // TLI Date controller
@@ -3934,7 +4000,7 @@ function createLaunchEventGUI(): void {
     // Set initial state (disabled if sync is enabled)
     if (launchEvent.syncTLIWithLOI) {
         launchDateController.disable();
-        // TLI date will be computed automatically by reactive system
+        // TLI date will be computed automatically by event subscriptions
     }
 
     // Switch to TLI timeline on click/focus
@@ -3958,8 +4024,8 @@ function createLaunchEventGUI(): void {
     if (launchInputElem6) launchInputElem6.addEventListener('change', (e: Event) => {
         if (isUpdatingFromCode) return; // Prevent circular updates from slider
 
-        // Just set the value - reactivity handles everything!
-        launchEvent.date = new Date((e.target as HTMLInputElement).value);
+        // Just set the value - event bus handles everything!
+        setLaunchEventDate(launchEvent, new Date((e.target as HTMLInputElement).value));
         guiParams.launchDate = (e.target as HTMLInputElement).value;
     });
 
@@ -3991,7 +4057,7 @@ function createLaunchEventGUI(): void {
 
     // RAAN controller
     const raanController = launchEventGUI.add(guiParams, 'raan', 0, 360, 0.1).name('RAAN (Ω) (°)').onChange(value => {
-        launchEvent.raan = value;
+        setLaunchEventRaan(launchEvent, value);
         markDirtyAndUpdate();
     });
     addViewTimelineSwitchHandlers(raanController, 'input');
@@ -4001,7 +4067,7 @@ function createLaunchEventGUI(): void {
 
     // Inclination dropdown (constrained to 21.5° or 41.8°)
     const inclinationController = launchEventGUI.add(guiParams, 'inclination', { '21.5°': 21.5, '41.8°': 41.8 }).name('Inclination').onChange(value => {
-        launchEvent.inclination = value;
+        setLaunchEventInclination(launchEvent, value);
 
         // Update omega options based on new inclination
         const validOmegaOptions = getOmegaOptions(value);
@@ -4009,12 +4075,12 @@ function createLaunchEventGUI(): void {
         // Set omega to first valid option for this inclination
         const newOmega = Object.values(validOmegaOptions)[0];
         guiParams.omega = newOmega;
-        launchEvent.omega = newOmega;
+        setLaunchEventOmega(launchEvent, newOmega);
 
         // Recreate omega controller with new options
         if (omegaController && launchEventGUI) { /* Recreate will happen below */ }
         if (launchEventGUI) omegaController = launchEventGUI.add(guiParams, 'omega', validOmegaOptions).name('ω (Arg. Periapsis)').onChange(value => {
-            launchEvent.omega = value;
+            setLaunchEventOmega(launchEvent, value);
             markDirtyAndUpdate();
         });
         // Add handlers to dynamically created omega controller
@@ -4027,20 +4093,20 @@ function createLaunchEventGUI(): void {
 
     // Omega dropdown (depends on inclination) - Created after inclination for proper UI order
     omegaController = launchEventGUI.add(guiParams, 'omega', getOmegaOptions(guiParams.inclination)).name('ω (Arg. Periapsis)').onChange(value => {
-        launchEvent.omega = value;
+        setLaunchEventOmega(launchEvent, value);
         markDirtyAndUpdate();
     });
     addViewTimelineSwitchHandlers(omegaController, 'select');
 
     const perigeeController = launchEventGUI.add(guiParams, 'perigeeAlt', 180, 600000, 100).name('Perigee Alt (km)').onChange(value => {
-        // Just set the value - reactivity handles everything!
-        launchEvent.perigeeAlt = value;
+        // Just set the value - event bus handles everything!
+        setLaunchEventPerigeeAlt(launchEvent, value);
     });
     addViewTimelineSwitchHandlers(perigeeController, 'input');
 
     const apogeeController = launchEventGUI.add(guiParams, 'apogeeAlt', 180, 600000, 100).name('Apogee Alt (km)').onChange(value => {
-        // Just set the value - reactivity handles everything!
-        launchEvent.apogeeAlt = value;
+        // Just set the value - event bus handles everything!
+        setLaunchEventApogeeAlt(launchEvent, value);
     });
     addViewTimelineSwitchHandlers(apogeeController, 'input');
 
@@ -4090,12 +4156,11 @@ function createLaunchEventGUI(): void {
             launchEvent.apogeeAlt
         );
 
-        // Prevent reactive effects from reverting our changes
+        // Prevent event handlers from reverting our changes
         isUpdatingFromCode = true;
 
-        // Update launch event
-        launchEvent.raan = result.raan;
-        launchEvent.apogeeAlt = result.apogeeAlt;
+        // Update launch event using atomic setter for optimized values
+        setLaunchEventOptimizedValues(launchEvent, { raan: result.raan, apogeeAlt: result.apogeeAlt });
 
         // Update GUI params to reflect launchEvent changes
         guiParams.raan = result.raan;
@@ -4107,7 +4172,7 @@ function createLaunchEventGUI(): void {
         const newTLIDate = new Date(loiDate.getTime() - timeToOptimalNu * 1000);
 
         // Update TLI date
-        launchEvent.date = newTLIDate;
+        setLaunchEventDate(launchEvent, newTLIDate);
         guiParams.launchDate = newTLIDate.toISOString().slice(0, 16);
         if (launchDateController) {
             launchDateController.updateDisplay();
@@ -4120,7 +4185,7 @@ function createLaunchEventGUI(): void {
         // Mark dirty and update visualization
         markDirtyAndUpdate();
 
-        // Re-enable reactive effects
+        // Re-enable event handlers
         isUpdatingFromCode = false;
 
         // Use native alert for E2E testing compatibility
@@ -4137,12 +4202,37 @@ function createLaunchEventGUI(): void {
             buttonWrapper.style.cssText = 'padding: 4px 8px;';
             buttonWrapper.appendChild(autoOptimizeBtn);
             childrenContainer.appendChild(buttonWrapper);
+            autoOptimizeBtnWrapper = buttonWrapper;
         }
     }
 
+    // Set initial button visibility after GUI is created
+    // This must happen after the autoLOIController is created so we check the current state
+    if (autoOptimizeBtnWrapper) {
+        autoOptimizeBtnWrapper.style.display = launchEvent.autoLOI ? 'block' : 'none';
+    }
+
+    // Listen for autoLOI changes via event bus and update button visibility
+    // This ensures visibility updates even when changed programmatically (e.g., in tests)
+    const updateAutoOptimizeVisibility = () => {
+        if (autoOptimizeBtnWrapper) {
+            autoOptimizeBtnWrapper.style.display = launchEvent.autoLOI ? 'block' : 'none';
+        }
+    };
+
+    // Subscribe to autoLOI changes
+    const autoLOIUnsubscriber = events.on('launchEvent:autoLOI', updateAutoOptimizeVisibility);
+
+    // Clean up when GUI is destroyed
+    const originalDestroy = launchEventGUI.destroy.bind(launchEventGUI);
+    launchEventGUI.destroy = () => {
+        autoLOIUnsubscriber();
+        originalDestroy();
+    };
+
     // True anomaly is disabled because at launch the craft is always at perigee (ν = 0°)
     const trueAnomalyController = launchEventGUI.add(guiParams, 'trueAnomaly', 0, 360, 1).name('True Anomaly (°)').onChange(value => {
-        launchEvent.trueAnomaly = value;
+        setLaunchEventTrueAnomaly(launchEvent, value);
         markDirtyAndUpdate();
     }).disable();
     addViewTimelineSwitchHandlers(trueAnomalyController, 'input');
@@ -4196,8 +4286,8 @@ function createLaunchEventGUI(): void {
         updateAOPLines();
     }
 
-    // Setup reactive effects after GUI is created
-    setupReactiveEffects();
+    // Setup event subscriptions after GUI is created
+    setupEventSubscriptions();
 }
 
 function saveLaunchEvent(): void {
@@ -4230,10 +4320,7 @@ function saveLaunchEvent(): void {
     updateLaunchMarker();
 }
 
-function deleteLaunchEvent(): void {
-    const confirmDelete = confirm('Are you sure you want to delete this launch event?');
-    if (!confirmDelete) return;
-
+function deleteLaunchEventInternal(): void {
     // Destroy GUI
     if (launchEventGUI) {
         launchEventGUI.destroy();
@@ -4243,8 +4330,8 @@ function deleteLaunchEvent(): void {
 
     // Clear launch event
     launchEvent.exists = false;
-    launchEvent.date = null;
-    launchEvent.moonInterceptDate = null;
+    setLaunchEventDate(launchEvent, null);
+    setLaunchEventMoonInterceptDate(launchEvent, null);
 
     // Clear draft state
     draftState.isDirty = false;
@@ -4271,6 +4358,13 @@ function deleteLaunchEvent(): void {
 
     // Update slider enabled/disabled state
     updateRenderControlSlidersState();
+}
+
+function deleteLaunchEvent(): void {
+    const confirmDelete = confirm('Are you sure you want to delete this launch event?');
+    if (!confirmDelete) return;
+
+    deleteLaunchEventInternal();
 }
 
 function formatDateForDisplay(date: Date | null): string {

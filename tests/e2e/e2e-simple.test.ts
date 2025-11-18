@@ -30,7 +30,7 @@ test.describe('Simple Auto Optimize Test', () => {
         await page.waitForTimeout(2000);
 
         // Enable Auto LOI
-        await page.click('text=Auto LOI');
+        await page.evaluate(() => { (window as any).setAutoLOI(true); });
         await page.waitForTimeout(1000);
 
         // Set LOI date to test value

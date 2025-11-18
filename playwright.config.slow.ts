@@ -8,7 +8,7 @@ import { defineConfig, devices } from '@playwright/test';
  * visual verification, error handling edge cases, and feature-specific tests.
  */
 export default defineConfig({
-  testDir: './',
+  testDir: './tests/e2e',
   testMatch: /e2e-.+\.test\.ts/,
 
   /* Run tests in files in parallel */

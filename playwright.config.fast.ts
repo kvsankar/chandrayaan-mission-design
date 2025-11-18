@@ -8,7 +8,7 @@ import { defineConfig, devices } from '@playwright/test';
  * without long-running optimizations.
  */
 export default defineConfig({
-  testDir: './',
+  testDir: './tests/e2e',
   testMatch: /e2e-(simple|exact|behaviors|workflow|modes)\.test\.ts/,
 
   /* Run tests in files in parallel */

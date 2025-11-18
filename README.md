@@ -4,7 +4,7 @@ An interactive 3D visualization of Chandrayaan-3's orbital mechanics, demonstrat
 
 **🚀 [Live Demo](https://kvsankar.github.io/chandrayaan-mission-design/)**
 
-![Chandrayaan-3 Orbit Visualization](chandrayaan-mission-design.png)
+![Chandrayaan-3 Orbit Visualization](public/chandrayaan-mission-design.png)
 
 ## Human Note
 
@@ -284,9 +284,9 @@ See [TESTING.md](TESTING.md) for detailed testing strategy and CI/CD setup.
 
 ## Documentation
 
-- **[TESTING.md](TESTING.md)**: Testing strategy, CI/CD setup, and best practices
-- **[ARCHITECTURE.md](ARCHITECTURE.md)**: Event bus architecture and design patterns
-- **[CLAUDE.md](CLAUDE.md)**: Detailed technical documentation and implementation notes
+- **[TESTING.md](docs/TESTING.md)**: Testing strategy, CI/CD setup, and best practices
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)**: Event bus architecture and design patterns
+- **[CLAUDE.md](docs/CLAUDE.md)**: Detailed technical documentation and implementation notes
 
 ## Credits
 

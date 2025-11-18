@@ -227,9 +227,7 @@ test.describe('Plan Mode - Launch Event Parameters', () => {
         expect(finalParams).toEqual(initialParams);
     });
 
-    test.skip('should update launch event TLI date when TLI timeline slider moves', async ({ page }) => {
-        // SKIPPED: Reactive system prevents TLI slider from updating date
-        // Will be fixed when reactive system is removed
+    test('should update launch event TLI date when TLI timeline slider moves', async ({ page }) => {
         await page.goto('http://localhost:3002');
         await page.waitForLoadState('load');
 
@@ -305,9 +303,7 @@ test.describe('Plan Mode - Launch Event Parameters', () => {
         expect(finalDate).not.toBe(initialDate);
     });
 
-    test.skip('should update launch event inclination via GUI input', async ({ page }) => {
-        // SKIPPED: Reactive system reverts programmatic changes to inclination
-        // Will be fixed when reactive system is removed
+    test('should update launch event inclination via GUI input', async ({ page }) => {
         await page.goto('http://localhost:3002');
         await page.waitForLoadState('load');
 
@@ -332,9 +328,7 @@ test.describe('Plan Mode - Launch Event Parameters', () => {
         expect(updatedInclination).not.toBe(initialInclination);
     });
 
-    test.skip('should update launch event RAAN via GUI input', async ({ page }) => {
-        // SKIPPED: Reactive system reverts programmatic changes to RAAN
-        // Will be fixed when reactive system is removed
+    test('should update launch event RAAN via GUI input', async ({ page }) => {
         await page.goto('http://localhost:3002');
         await page.waitForLoadState('load');
 
@@ -357,9 +351,7 @@ test.describe('Plan Mode - Launch Event Parameters', () => {
         expect(Math.abs(updatedRaan - initialRaan)).toBeGreaterThan(1);  // Verify it changed
     });
 
-    test.skip('should update launch event omega via GUI input', async ({ page }) => {
-        // SKIPPED: Reactive system reverts programmatic changes to omega
-        // Will be fixed when reactive system is removed
+    test('should update launch event omega via GUI input', async ({ page }) => {
         await page.goto('http://localhost:3002');
         await page.waitForLoadState('load');
 
@@ -434,8 +426,10 @@ test.describe('Plan Mode - Launch Event Parameters', () => {
         await page.click('#add-launch-action-btn');
         await page.waitForTimeout(2000);
 
-        // Enable Auto LOI
-        await page.click('text=Auto LOI');
+        // Enable Auto LOI using helper function (clicking text doesn't trigger lil-gui onChange)
+        await page.evaluate(() => {
+            (window as any).setAutoLOI(true);
+        });
         await page.waitForTimeout(1000);
 
         // Verify Auto Optimize button is visible
@@ -601,7 +595,7 @@ test.describe('Game Mode - Timeline and Simulation', () => {
         await page.waitForTimeout(2000);
 
         // Enable Auto LOI
-        await page.click('text=Auto LOI');
+        await page.evaluate(() => { (window as any).setAutoLOI(true); });
         await page.waitForTimeout(1000);
 
         // Set optimization parameters

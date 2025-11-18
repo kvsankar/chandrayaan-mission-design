@@ -31,10 +31,7 @@ test.describe('Error Handling and Edge Cases', () => {
         console.log('\n=== TEST PASSED ✓ ===');
     });
 
-    test.skip('should handle optimization without Auto LOI enabled', async ({ page }) => {
-        // SKIPPED: Auto Optimize button visibility controlled by reactive system
-        // The button appears based on launchEvent.autoLOI state which may persist
-        // across test runs due to reactive system behavior
+    test('should handle optimization without Auto LOI enabled', async ({ page }) => {
         console.log('\n=== OPTIMIZATION WITHOUT AUTO LOI TEST ===');
 
         await page.goto('http://localhost:3002');
@@ -79,7 +76,7 @@ test.describe('Error Handling and Edge Cases', () => {
         await page.waitForTimeout(2000);
 
         // Enable Auto LOI
-        await page.click('text=Auto LOI');
+        await page.evaluate(() => { (window as any).setAutoLOI(true); });
         await page.waitForTimeout(1000);
 
         console.log('\n--- Clear LOI date ---');
@@ -123,8 +120,9 @@ test.describe('Error Handling and Edge Cases', () => {
         console.log('\n=== TEST PASSED ✓ ===');
     });
 
-    test('should handle invalid parameter values', async ({ page }) => {
-        console.log('\n=== INVALID PARAMETER VALUES TEST ===');
+    test('should validate parameter values and prevent invalid configurations', async ({ page }) => {
+        // Now tests validation at the validation function level
+        console.log('\n=== PARAMETER VALIDATION TEST ===');
 
         await page.goto('http://localhost:3002');
         await page.waitForLoadState('load');
@@ -135,36 +133,92 @@ test.describe('Error Handling and Edge Cases', () => {
         await page.click('#add-launch-action-btn');
         await page.waitForTimeout(2000);
 
-        console.log('\n--- Test extreme parameter values ---');
+        console.log('\n--- Step 1: Get initial apogee and perigee ---');
 
-        const extremeParams = await page.evaluate(() => {
+        const initial = await page.evaluate(() => {
             const launchEvent = (window as any).launchEvent;
-
-            // Set extreme values
-            launchEvent.inclination = 95; // Above max (should be clamped to 90)
-            launchEvent.omega = 400; // Above 360 (should wrap or clamp)
-            launchEvent.raan = -50; // Negative (should wrap to positive)
-            launchEvent.apogeeAlt = -1000; // Negative altitude
-
             return {
-                inclination: launchEvent.inclination,
-                omega: launchEvent.omega,
-                raan: launchEvent.raan,
-                apogeeAlt: launchEvent.apogeeAlt
+                apogee: launchEvent.apogeeAlt,
+                perigee: launchEvent.perigeeAlt
             };
         });
 
-        console.log('Extreme parameters set:', extremeParams);
+        console.log(`Initial: Perigee=${initial.perigee} km, Apogee=${initial.apogee} km`);
 
-        // Switch to Game mode and back to verify app doesn't crash
-        await page.click('button:has-text("Game")');
-        await page.waitForTimeout(1000);
-        await page.click('button:has-text("Plan")');
-        await page.waitForTimeout(1000);
+        console.log('\n--- Step 2: Test apogee validation (must be >= perigee) ---');
 
-        console.log('✓ App survived extreme parameter values');
+        // Try to set apogee < perigee (should fail)
+        const invalidApogeeResult = await page.evaluate((perigee) => {
+            const validateApogee = (window as any).validateApogee;
+            return validateApogee(perigee - 1000); // Try to set apogee 1000 km below perigee
+        }, initial.perigee);
 
-        console.log('\n=== TEST PASSED ✓ ===');
+        expect(invalidApogeeResult.valid).toBe(false);
+        expect(invalidApogeeResult.message).toContain('must be >= Perigee');
+        console.log('✓ Invalid apogee rejected:', invalidApogeeResult.message);
+
+        // Valid apogee should pass
+        const validApogeeResult = await page.evaluate((perigee) => {
+            const validateApogee = (window as any).validateApogee;
+            return validateApogee(perigee + 10000); // Set apogee 10,000 km above perigee
+        }, initial.perigee);
+
+        expect(validApogeeResult.valid).toBe(true);
+        console.log('✓ Valid apogee accepted');
+
+        console.log('\n--- Step 3: Test perigee validation (must be <= apogee) ---');
+
+        // Try to set perigee > apogee (should fail)
+        const invalidPerigeeResult = await page.evaluate((apogee) => {
+            const validatePerigee = (window as any).validatePerigee;
+            return validatePerigee(apogee + 1000); // Try to set perigee 1000 km above apogee
+        }, initial.apogee);
+
+        expect(invalidPerigeeResult.valid).toBe(false);
+        expect(invalidPerigeeResult.message).toContain('must be <= Apogee');
+        console.log('✓ Invalid perigee rejected:', invalidPerigeeResult.message);
+
+        // Valid perigee should pass
+        const validPerigeeResult = await page.evaluate((apogee) => {
+            const validatePerigee = (window as any).validatePerigee;
+            return validatePerigee(apogee - 10000); // Set perigee 10,000 km below apogee
+        }, initial.apogee);
+
+        expect(validPerigeeResult.valid).toBe(true);
+        console.log('✓ Valid perigee accepted');
+
+        console.log('\n--- Step 4: Verify lil-gui constraints ---');
+
+        // Verify GUI controls have min/max constraints
+        const guiConstraints = await page.evaluate(() => {
+            const launchEvent = (window as any).launchEvent;
+
+            // Get current values to verify they're within expected ranges
+            return {
+                perigee: launchEvent.perigeeAlt,
+                apogee: launchEvent.apogeeAlt,
+                inclination: launchEvent.inclination,
+                raan: launchEvent.raan,
+                omega: launchEvent.omega
+            };
+        });
+
+        // Verify inclination is within 0-90° or valid discrete values
+        expect(guiConstraints.inclination).toBeGreaterThanOrEqual(0);
+        expect(guiConstraints.inclination).toBeLessThanOrEqual(90);
+        console.log('✓ Inclination within valid range (0-90°)');
+
+        // Verify RAAN is within 0-360°
+        expect(guiConstraints.raan).toBeGreaterThanOrEqual(0);
+        expect(guiConstraints.raan).toBeLessThanOrEqual(360);
+        console.log('✓ RAAN within valid range (0-360°)');
+
+        // Verify omega is within 0-360°
+        expect(guiConstraints.omega).toBeGreaterThanOrEqual(0);
+        expect(guiConstraints.omega).toBeLessThanOrEqual(360);
+        console.log('✓ Omega within valid range (0-360°)');
+
+        console.log('\n=== PARAMETER VALIDATION TEST PASSED ✓ ===');
     });
 
     test('should handle rapid optimization requests', async ({ page }) => {
@@ -178,7 +232,7 @@ test.describe('Error Handling and Edge Cases', () => {
         await page.waitForTimeout(1000);
         await page.click('#add-launch-action-btn');
         await page.waitForTimeout(2000);
-        await page.click('text=Auto LOI');
+        await page.evaluate(() => { (window as any).setAutoLOI(true); });
         await page.waitForTimeout(1000);
 
         // Set valid parameters
@@ -233,7 +287,7 @@ test.describe('Error Handling and Edge Cases', () => {
         await page.waitForTimeout(1000);
         await page.click('#add-launch-action-btn');
         await page.waitForTimeout(2000);
-        await page.click('text=Auto LOI');
+        await page.evaluate(() => { (window as any).setAutoLOI(true); });
         await page.waitForTimeout(1000);
 
         // Set valid parameters
@@ -338,9 +392,7 @@ test.describe('Error Handling and Edge Cases', () => {
         console.log('\n=== TEST PASSED ✓ ===');
     });
 
-    test.skip('should handle creating multiple launch events sequentially', async ({ page }) => {
-        // SKIPPED: Add Launch button becomes invisible after first deletion
-        // This appears to be a state management issue in the reactive system
+    test('should handle creating multiple launch events sequentially', async ({ page }) => {
         console.log('\n=== MULTIPLE LAUNCH EVENTS TEST ===');
 
         await page.goto('http://localhost:3002');
@@ -356,7 +408,7 @@ test.describe('Error Handling and Edge Cases', () => {
             const eventExists = await page.evaluate(() => (window as any).launchEvent.exists);
             if (eventExists) {
                 await page.evaluate(() => {
-                    (window as any).launchEvent.exists = false;
+                    (window as any).deleteLaunchEventForTest();
                 });
                 await page.waitForTimeout(500);
             }

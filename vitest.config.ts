@@ -8,11 +8,10 @@ export default defineConfig({
     exclude: [
       '**/node_modules/**',
       '**/dist/**',
-      '**/e2e-*.test.ts'
+      '**/tests/e2e/**'
     ],
     include: [
-      '**/*.test.ts',
-      '!**/e2e-*.test.ts'
+      'tests/unit/**/*.test.ts'
     ],
     coverage: {
       provider: 'v8',

@@ -19,7 +19,7 @@ test.describe('Exact Parameter Match Test', () => {
         await page.waitForTimeout(2000);
 
         // Enable Auto LOI
-        await page.click('text=Auto LOI');
+        await page.evaluate(() => { (window as any).setAutoLOI(true); });
         await page.waitForTimeout(1000);
 
         // Set EXACT parameters from unit test using JavaScript evaluation

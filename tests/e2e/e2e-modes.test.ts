@@ -1,10 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Mode Transition Tests', () => {
-    test.skip('should maintain separate parameter sets for Explore vs Plan/Game modes', async ({ page }) => {
-        // SKIPPED: Reactive system syncs parameters from launch event to Explore mode
-        // When switching from Plan to Explore, some params (inclination, omega) get synced
-        // This is current app behavior, not a bug
+    test('should maintain separate parameter sets for Explore vs Plan/Game modes', async ({ page }) => {
         console.log('\n=== PARAMETER ISOLATION TEST ===');
 
         await page.goto('http://localhost:3002');
@@ -101,9 +98,10 @@ test.describe('Mode Transition Tests', () => {
     });
 
     test.skip('should handle rapid mode switching without corruption', async ({ page }) => {
-        // SKIPPED: Reactive system can revert apogeeAlt to default (370000) during rapid mode switching
-        // This is a race condition in the reactive system, not caused by recent changes
-        // The test sets apogeeAlt=375000 but after rapid switching it becomes 370000 (default)
+        // SKIPPED: Test exposes app limitation - rapid mode switching causes UI blocking
+        // Even with 500ms delays, switching between Plan/Game modes rapidly triggers async
+        // operations that block Playwright clicks. This is a real app responsiveness issue
+        // that would require refactoring the mode transition logic to be more resilient.
         console.log('\n=== RAPID MODE SWITCHING TEST ===');
 
         await page.goto('http://localhost:3002');
@@ -136,12 +134,22 @@ test.describe('Mode Transition Tests', () => {
 
         console.log('Initial Plan params:', initialParams);
 
+        // Clear draft state to prevent confirmation dialogs during rapid switching
+        await page.evaluate(() => {
+            const draftState = (window as any).draftState;
+            if (draftState) {
+                draftState.isDirty = false;
+                draftState.savedLaunchEvent = null;
+            }
+        });
+
         // Rapidly switch between modes
+        // Note: Using longer timeouts to allow async operations to complete
         for (let i = 0; i < 10; i++) {
             await page.click('button:has-text("Game")');
-            await page.waitForTimeout(200);
+            await page.waitForTimeout(500);
             await page.click('button:has-text("Plan")');
-            await page.waitForTimeout(200);
+            await page.waitForTimeout(500);
         }
 
         // Verify parameters are still intact
@@ -162,9 +170,7 @@ test.describe('Mode Transition Tests', () => {
         console.log('\n=== RAPID MODE SWITCHING TEST PASSED ✓ ===');
     });
 
-    test.skip('should handle Plan → Game → Plan → Explore → Plan transitions', async ({ page }) => {
-        // SKIPPED: Same issue as parameter isolation test
-        // Reactive system syncs some parameters from launch event when switching to Explore mode
+    test('should handle Plan → Game → Plan → Explore → Plan transitions', async ({ page }) => {
         console.log('\n=== COMPLEX MODE TRANSITION TEST ===');
 
         await page.goto('http://localhost:3002');
@@ -269,7 +275,7 @@ test.describe('Mode Transition Tests', () => {
         await page.waitForTimeout(2000);
 
         // Enable Auto LOI
-        await page.click('text=Auto LOI');
+        await page.evaluate(() => { (window as any).setAutoLOI(true); });
         await page.waitForTimeout(1000);
 
         // Set optimization parameters
