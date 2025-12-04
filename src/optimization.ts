@@ -73,8 +73,8 @@ function findMoonEquatorCrossings(startDate: Date, endDate: Date): Astronomy.Ast
  * @param endDate - End of search window
  * @returns Array of AstroTime objects when Moon crosses ascending node
  */
-// @ts-ignore - keeping for potential future use
-function findMoonNodeCrossings(startDate: Date, endDate: Date): Astronomy.AstroTime[] {
+// @ts-expect-error - keeping for potential future use
+function _findMoonNodeCrossings(startDate: Date, endDate: Date): Astronomy.AstroTime[] {
     const crossings: Astronomy.AstroTime[] = [];
     const t1 = Astronomy.MakeTime(startDate);
     const t2 = Astronomy.MakeTime(endDate);
@@ -304,7 +304,7 @@ export function optimizeApogeeToMoon(loiDate: Date, omega: number, inclination: 
     };
 
     // Initialize simplex (3 points for 2D optimization)
-    let simplex = [
+    const simplex = [
         { raan: initialRaan, apogeeAlt: initialApogeeAlt, value: objectiveFunc(initialRaan, initialApogeeAlt) },
         { raan: initialRaan + 10, apogeeAlt: initialApogeeAlt, value: objectiveFunc(initialRaan + 10, initialApogeeAlt) },
         { raan: initialRaan, apogeeAlt: initialApogeeAlt + 5000, value: objectiveFunc(initialRaan, initialApogeeAlt + 5000) }
@@ -414,7 +414,7 @@ export function optimizeApogeeToMoonMultiStart(loiDate: Date, omega: number, inc
         moonApogeeAlt * 1.15   // +15%
     ];
 
-    let bestResult = { raan: 0, apogeeAlt: moonApogeeAlt, distance: Infinity, trueAnomaly: 180 };
+    const bestResult = { raan: 0, apogeeAlt: moonApogeeAlt, distance: Infinity, trueAnomaly: 180 };
 
     for (const startRaan of startingRAANs) {
         for (const startApogee of startingApogees) {

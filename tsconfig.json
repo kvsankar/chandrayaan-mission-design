@@ -42,8 +42,9 @@
     "checkJs": false
   },
   "include": [
-    "*.ts",
-    "*.js"
+    "src/**/*.ts",
+    "src/**/*.js",
+    "src/types/**/*.d.ts"
   ],
   "exclude": [
     "node_modules",

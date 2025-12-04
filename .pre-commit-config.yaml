@@ -1,0 +1,39 @@
+repos:
+  # Common hooks for all files
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+        exclude: ^test-results/
+      - id: check-yaml
+      - id: check-json
+        exclude: ^tsconfig\.json$  # tsconfig.json uses JSONC (JSON with comments)
+      - id: check-added-large-files
+
+  - repo: local
+    hooks:
+      # ESLint
+      - id: eslint
+        name: ESLint
+        entry: bash -c 'npm run lint'
+        language: system
+        pass_filenames: false
+        files: ^src/.*\.(ts|js)$
+
+      # TypeScript compilation check
+      - id: typescript
+        name: TypeScript compilation
+        entry: bash -c 'npx tsc --noEmit'
+        language: system
+        pass_filenames: false
+        files: ^src/.*\.ts$
+
+      # Check code complexity - reject C grade (>10) and below
+      - id: complexity-check
+        name: Check code complexity (max 10, reject C grade)
+        entry: >
+          bash -c "npx eslint src/ --rule 'complexity: [error, 10]' --format stylish"
+        language: system
+        pass_filenames: false
+        files: ^src/.*\.ts$

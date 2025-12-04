@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
     "type-check": "tsc --noEmit",
     "compile": "tsc",
     "compile:watch": "tsc --watch",
@@ -29,13 +31,17 @@
     "test:release": "npm run test && npm run test:e2e:slow"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.1",
     "@playwright/test": "^1.56.1",
     "@types/node": "^24.10.1",
     "@types/three": "^0.152.0",
     "@vitest/coverage-v8": "^1.0.4",
     "@vitest/ui": "^1.0.4",
+    "eslint": "^9.39.1",
+    "globals": "^16.5.0",
     "happy-dom": "^12.10.3",
     "typescript": "^5.3.3",
+    "typescript-eslint": "^8.48.1",
     "vite": "^5.4.21",
     "vitest": "^1.0.4"
   },

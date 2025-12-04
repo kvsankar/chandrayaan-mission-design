@@ -99,6 +99,6 @@ export type LaunchEventEvents = {
     'launchEvent:moonInterceptDate': { moonInterceptDate: Date };
     'launchEvent:syncTLIWithLOI': { syncTLIWithLOI: boolean };
     'launchEvent:optimized': { raan: number; apogeeAlt: number };
-    'launchEvent:created': {};
-    'launchEvent:deleted': {};
+    'launchEvent:created': Record<string, never>;
+    'launchEvent:deleted': Record<string, never>;
 };

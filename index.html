@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chandrayaan-3 Orbit Visualization</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="src/style.css">
 </head>
 <body>
     <div id="container"></div>
@@ -15,6 +15,10 @@
         <button class="mode-tab" data-mode="Plan">Plan</button>
         <button class="mode-tab" data-mode="Game">Game</button>
     </div>
+
+    <!-- Collapse buttons for panels -->
+    <button id="gui-collapse-btn" title="Toggle RHS Panel">◀ RHS</button>
+    <button id="actions-collapse-btn" title="Toggle Actions Panel">◀ TLI</button>
 
     <!-- Actions Panel -->
     <div id="actions-panel">
@@ -93,7 +97,7 @@
                 </div>
             </div>
             <!-- Row 3: TLI timeline -->
-            <div class="timeline-row timeline-row-selector">
+            <div class="timeline-row timeline-row-selector" id="tli-timeline-row">
                 <span class="timeline-name" title="Trans Lunar Injection">TLI</span>
                 <input type="checkbox" id="launch-slider-active" name="active-slider" />
                 <div class="timeline-slider-wrapper">
@@ -102,7 +106,7 @@
                 </div>
             </div>
             <!-- Row 4: LOI timeline -->
-            <div class="timeline-row timeline-row-selector">
+            <div class="timeline-row timeline-row-selector" id="loi-timeline-row">
                 <span class="timeline-name" title="Lunar Orbit Insertion">LOI</span>
                 <input type="checkbox" id="intercept-slider-active" name="active-slider" />
                 <div class="timeline-slider-wrapper">
@@ -137,6 +141,18 @@
         </div>
     </div>
 
+    <!-- Floating Timeline Overlay -->
+    <div id="floating-timeline-overlay" style="display: none;">
+        <div class="floating-timeline-header">
+            <span id="floating-timeline-label">TLI Date</span>
+            <button id="floating-timeline-close" title="Close (ESC)">✕</button>
+        </div>
+        <div class="floating-timeline-slider-wrapper">
+            <input type="range" id="floating-timeline-slider" min="0" max="90" value="0" step="0.1" />
+            <span id="floating-timeline-display">Day 0.0</span>
+        </div>
+    </div>
+
     <!-- Capture Message -->
     <div id="capture-message" style="display: none;">
         🎯 Spacecraft captured by the Moon! Mission successful!
@@ -154,7 +170,7 @@
         </div>
     </div>
 
-    <script type="module" src="main.ts"></script>
+    <script type="module" src="src/main.ts"></script>
     <script>
         function toggleLegend() {
             const content = document.getElementById('legend-content');

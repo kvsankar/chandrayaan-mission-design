@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GUI, Controller } from 'lil-gui';
 import * as Astronomy from 'astronomy-engine';
-import { events } from './src/events.js';
-import { showConfirmDialog, showAlert } from './src/ui/dialog.js';
+import { events } from './events.js';
+import { showConfirmDialog, showAlert } from './ui/dialog.js';
 import {
     setLaunchEventRaan,
     setLaunchEventApogeeAlt,
@@ -15,8 +15,8 @@ import {
     setLaunchEventMoonInterceptDate,
     setLaunchEventSyncTLIWithLOI,
     setLaunchEventOptimizedValues
-} from './src/launchEventSetters.js';
-import { computeTLIDate, computePeriodDisplay } from './src/launchEventComputed.js';
+} from './launchEventSetters.js';
+import { computeTLIDate, computePeriodDisplay } from './launchEventComputed.js';
 import {
     TIMELINE_MAX_DAYS,
     SPHERE_RADIUS,
@@ -44,7 +44,7 @@ import {
     ZOOM_SPACECRAFT_MAX_SCALE,
     ARIES_MARKER_BASE_SIZE,
     COLORS
-} from './src/constants.js';
+} from './constants.js';
 import type {
     AppMode,
     MoonMode,
@@ -63,12 +63,12 @@ import type {
     Cache,
     UpdateFunctionsMap,
     StateManager
-} from './src/types.js';
+} from './types.js';
 import {
     findOptimalLOIDates,
     calculateTimeToTrueAnomaly,
     optimizeApogeeToMoonMultiStart
-} from './src/optimization.js';
+} from './optimization.js';
 
 // ============================================================================
 // Three.js Scene Objects
@@ -190,8 +190,15 @@ const renderControl: RenderControl = {
     renderDate: new Date()
 };
 
+// Game mode timeline state - separate from Plan mode
+const gameModeState = {
+    isFirstEntry: true,  // Track if this is the first time entering Game mode
+    savedTimelineDays: 0, // Save Game mode's timeline position separately
+    savedIsPlaying: false // Save play state for Game mode
+};
+
 // TLI (Trans Lunar Injection) event state
-let launchEvent: LaunchEvent = {
+const launchEvent: LaunchEvent = {
     exists: false,
     date: null,
     inclination: 21.5,
@@ -383,6 +390,72 @@ const planGameParamSet = new ParameterSet('Plan/Game', {
 // Track which parameter set is currently active
 let currentParamSet: ParameterSet = exploreParamSet;
 
+// Helper functions for GUI updates (extracted to reduce complexity)
+function updateLunarGUIDisplays(): void {
+    lunarControllers.inclination?.updateDisplay();
+    lunarControllers.nodes?.updateDisplay();
+    lunarControllers.moonRA?.updateDisplay();
+}
+
+function updateChandrayaanGUIDisplays(): void {
+    chandrayaanControllers.inclination?.updateDisplay();
+    chandrayaanControllers.nodes?.updateDisplay();
+    chandrayaanControllers.omega?.updateDisplay();
+    chandrayaanControllers.perigeeAlt?.updateDisplay();
+    chandrayaanControllers.apogeeAlt?.updateDisplay();
+    chandrayaanControllers.trueAnomaly?.updateDisplay();
+}
+
+// Helper functions for mode switching (extracted to reduce complexity)
+function enableLunarControls(): void {
+    lunarControllers.inclination?.enable();
+    lunarControllers.nodes?.enable();
+    lunarControllers.moonRA?.enable();
+    lunarControllers.moonTrueAnomaly?.enable();
+}
+
+function disableLunarControls(): void {
+    lunarControllers.inclination?.disable();
+    lunarControllers.nodes?.disable();
+    lunarControllers.moonRA?.disable();
+    lunarControllers.moonTrueAnomaly?.disable();
+}
+
+function enableChandrayaanControls(): void {
+    chandrayaanControllers.inclination?.enable();
+    chandrayaanControllers.nodes?.enable();
+    chandrayaanControllers.omega?.enable();
+    chandrayaanControllers.perigeeAlt?.enable();
+    chandrayaanControllers.apogeeAlt?.enable();
+    chandrayaanControllers.ra?.enable();
+    chandrayaanControllers.trueAnomaly?.enable();
+}
+
+function disableChandrayaanControls(): void {
+    chandrayaanControllers.inclination?.disable();
+    chandrayaanControllers.nodes?.disable();
+    chandrayaanControllers.omega?.disable();
+    chandrayaanControllers.perigeeAlt?.disable();
+    chandrayaanControllers.apogeeAlt?.disable();
+    chandrayaanControllers.ra?.disable();
+    chandrayaanControllers.trueAnomaly?.disable();
+}
+
+function setSyncButtonsEnabled(enabled: boolean): void {
+    if (chandrayaanControllers.syncInclinationBtn) chandrayaanControllers.syncInclinationBtn.disabled = !enabled;
+    if (chandrayaanControllers.syncRaanBtn) chandrayaanControllers.syncRaanBtn.disabled = !enabled;
+    if (chandrayaanControllers.syncAopBtn) chandrayaanControllers.syncAopBtn.disabled = !enabled;
+    if (chandrayaanControllers.syncApogeeBtn) chandrayaanControllers.syncApogeeBtn.disabled = !enabled;
+    if (chandrayaanControllers.syncRABtn) chandrayaanControllers.syncRABtn.disabled = !enabled;
+}
+
+function hideTimelineRows(): void {
+    const launchRow = document.querySelector('.timeline-row-selector:nth-child(3)');
+    const interceptRow = document.querySelector('.timeline-row-selector:nth-child(4)');
+    if (launchRow) (launchRow as HTMLElement).style.display = 'none';
+    if (interceptRow) (interceptRow as HTMLElement).style.display = 'none';
+}
+
 // State Manager - handles switching between completely isolated parameter sets
 const stateManager: StateManager = {
     activateExploreParams(): void {
@@ -420,16 +493,8 @@ const stateManager: StateManager = {
     },
 
     updateAllGUIDisplays(): void {
-        if (lunarControllers.inclination) lunarControllers.inclination?.updateDisplay();
-        if (lunarControllers.nodes) lunarControllers.nodes?.updateDisplay();
-        if (lunarControllers.moonRA) lunarControllers.moonRA?.updateDisplay();
-
-        if (chandrayaanControllers.inclination) chandrayaanControllers.inclination?.updateDisplay();
-        if (chandrayaanControllers.nodes) chandrayaanControllers.nodes?.updateDisplay();
-        if (chandrayaanControllers.omega) chandrayaanControllers.omega?.updateDisplay();
-        if (chandrayaanControllers.perigeeAlt) chandrayaanControllers.perigeeAlt?.updateDisplay();
-        if (chandrayaanControllers.apogeeAlt) chandrayaanControllers.apogeeAlt?.updateDisplay();
-        if (chandrayaanControllers.trueAnomaly) chandrayaanControllers.trueAnomaly?.updateDisplay();
+        updateLunarGUIDisplays();
+        updateChandrayaanGUIDisplays();
     },
 
     saveParamsToLaunchEvent(): void {
@@ -442,7 +507,9 @@ const stateManager: StateManager = {
         setLaunchEventApogeeAlt(launchEvent, params.chandrayaanApogeeAlt);
         setLaunchEventTrueAnomaly(launchEvent, params.chandrayaanTrueAnomaly);
 
-        draftState.isDirty = true;
+        // Note: isDirty is set by GUI onChange handlers (via markDirtyAndUpdate),
+        // not here, because this function is called both for user changes and
+        // programmatic updates
     }
 };
 
@@ -463,8 +530,8 @@ const lunarControllers: LunarControllers = {};
 const chandrayaanControllers: ChandrayaanControllers = {};
 let lunarFolder: GUI;
 let chandrayaanFolder: GUI;
-// @ts-expect-error - Used for conditional updates
-let moonModeController: Controller;
+// @ts-expect-error - Reserved for future conditional updates
+let _moonModeController: Controller;
 
 // Store unsubscribe functions for event subscriptions
 const eventUnsubscribers: (() => void)[] = [];
@@ -482,7 +549,7 @@ function setupEventSubscriptions(): void {
         if (tliDate && tliDate !== launchEvent.date) {
             if (!isUpdatingFromCode) {
                 isUpdatingFromCode = true;
-                launchEvent.date = tliDate;
+                setLaunchEventDate(launchEvent, tliDate);
                 isUpdatingFromCode = false;
             }
         }
@@ -495,7 +562,7 @@ function setupEventSubscriptions(): void {
         if (tliDate && tliDate !== launchEvent.date) {
             if (!isUpdatingFromCode) {
                 isUpdatingFromCode = true;
-                launchEvent.date = tliDate;
+                setLaunchEventDate(launchEvent, tliDate);
                 isUpdatingFromCode = false;
             }
         }
@@ -509,7 +576,7 @@ function setupEventSubscriptions(): void {
         if (tliDate && tliDate !== launchEvent.date) {
             if (!isUpdatingFromCode) {
                 isUpdatingFromCode = true;
-                launchEvent.date = tliDate;
+                setLaunchEventDate(launchEvent, tliDate);
                 isUpdatingFromCode = false;
             }
         }
@@ -522,7 +589,7 @@ function setupEventSubscriptions(): void {
         if (tliDate && tliDate !== launchEvent.date) {
             if (!isUpdatingFromCode) {
                 isUpdatingFromCode = true;
-                launchEvent.date = tliDate;
+                setLaunchEventDate(launchEvent, tliDate);
                 isUpdatingFromCode = false;
             }
         }
@@ -596,11 +663,12 @@ function setupEventSubscriptions(): void {
     const updateVisualization = () => {
         if (!launchEvent.exists) return;
 
-        if (params.appMode === 'Plan') {
-            draftState.isDirty = true;
-        }
+        // Note: Don't set draftState.isDirty here - this event handler is triggered
+        // by both user changes AND programmatic updates. The isDirty flag should only
+        // be set in GUI onChange handlers where we know the user made the change.
 
-        syncParamsToLaunchEvent();
+        // Don't call syncParamsToLaunchEvent() here - that would create circular event emission
+        // The launchEvent already has the updated values (that's why this event fired)
         invalidateOrbitalParamsCache();
         updateRenderDate();
     };
@@ -622,8 +690,8 @@ function setupEventSubscriptions(): void {
     eventUnsubscribers.push(events.on('launchEvent:moonInterceptDate', updateDateVisualization));
 }
 
-// @ts-expect-error - Function referenced but may appear unused
-function cleanupEventSubscriptions(): void {
+// @ts-expect-error - Reserved for cleanup on unmount
+function _cleanupEventSubscriptions(): void {
     eventUnsubscribers.forEach(unsubscribe => unsubscribe());
     eventUnsubscribers.length = 0;
     eventSubscriptionsInitialized = false;
@@ -1176,6 +1244,7 @@ function init(): void {
     setupModeTabs();
     setupActionsPanel();
     setupTimeline();
+    setupCollapsiblePanels();
     updateOrbitalElements();
 
     window.addEventListener('resize', onWindowResize, false);
@@ -1761,50 +1830,43 @@ function updateChandrayaanOrbit(): void {
 }
 
 // Calculate and update distance between craft and Moon
-function updateCraftMoonDistance(): void {
-    let distanceKm;
-
-    // Use real positions if available (Game/Plan modes with ephemeris)
+function calculateCraftMoonDistanceKm(): number {
     if (realPositionsCache.moonPositionKm && realPositionsCache.craftPositionKm) {
         const moonPos = realPositionsCache.moonPositionKm;
         const craftPos = realPositionsCache.craftPositionKm;
-
-        // Calculate actual 3D distance in km
         const dx = craftPos.x - moonPos.x;
         const dy = craftPos.y - moonPos.y;
         const dz = craftPos.z - moonPos.z;
-        distanceKm = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    } else {
-        // Fallback to visualization-based distance (Explore mode)
-        const distance = chandrayaan.position.distanceTo(moon.position);
-        distanceKm = distance / SCALE_FACTOR;
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+    // Fallback to visualization-based distance (Explore mode)
+    return chandrayaan.position.distanceTo(moon.position) / SCALE_FACTOR;
+}
+
+function checkCaptureState(distanceKm: number): void {
+    if (params.appMode !== 'Game' || !launchEvent.exists) return;
+
+    // Reset capture if we've gone back in time
+    if (captureState.isCaptured && captureState.captureDate) {
+        if (getRenderDate() < captureState.captureDate) {
+            resetCaptureState();
+        }
     }
 
-    // Update display
+    // Check for new capture
+    const threshold = launchEvent.captureDistance || 2000;
+    if (!captureState.isCaptured && distanceKm <= threshold) {
+        captureState.isCaptured = true;
+        captureState.captureDate = new Date(getRenderDate());
+        showCaptureMessage();
+    }
+}
+
+function updateCraftMoonDistance(): void {
+    const distanceKm = calculateCraftMoonDistanceKm();
     params.craftMoonDistance = distanceKm.toFixed(1) + ' km';
-
-    if (chandrayaanControllers.craftMoonDistance) {
-        chandrayaanControllers.craftMoonDistance?.updateDisplay();
-    }
-
-    // Check for capture (only in Game mode with launch event)
-    if (params.appMode === 'Game' && launchEvent.exists) {
-        // If we've gone back in time before the capture, reset capture state
-        if (captureState.isCaptured && captureState.captureDate) {
-            const currentTime = getRenderDate();
-            if (currentTime < captureState.captureDate) {
-                resetCaptureState();
-            }
-        }
-
-        // Check for new capture using launch event's capture distance
-        const threshold = launchEvent.captureDistance || 2000; // Default to 2000 km if not set
-        if (!captureState.isCaptured && distanceKm <= threshold) {
-            captureState.isCaptured = true;
-            captureState.captureDate = new Date(getRenderDate());
-            showCaptureMessage();
-        }
-    }
+    chandrayaanControllers.craftMoonDistance?.updateDisplay();
+    checkCaptureState(distanceKm);
 }
 
 // Show capture message when spacecraft is captured by Moon
@@ -2087,7 +2149,7 @@ function createAOPLines(): void {
 
     // Line 1: From origin to ascending node (on orbital plane)
     // Ascending node is at angle 0 in the orbital plane
-    let nodeDir = new THREE.Vector3(lineLength, 0, 0);
+    const nodeDir = new THREE.Vector3(lineLength, 0, 0);
     nodeDir.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
     nodeDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
 
@@ -2109,7 +2171,7 @@ function createAOPLines(): void {
 
     // Line 2: From origin to periapsis
     // Periapsis is at angle omega in the orbital plane
-    let periapsisDir = new THREE.Vector3(lineLength, 0, 0);
+    const periapsisDir = new THREE.Vector3(lineLength, 0, 0);
     periapsisDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), omega); // Rotate by omega first
     periapsisDir.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
     periapsisDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
@@ -2135,7 +2197,7 @@ function createAOPLines(): void {
     const segments = 64;
     for (let i = 0; i <= segments; i++) {
         const angle = (i / segments) * omega; // From 0 to omega
-        let point = new THREE.Vector3(
+        const point = new THREE.Vector3(
             lineLength * Math.cos(angle),
             0,
             -lineLength * Math.sin(angle)
@@ -2164,7 +2226,7 @@ function createAOPLines(): void {
     // Edge vertices along the arc
     for (let i = 0; i <= segments; i++) {
         const angle = (i / segments) * omega;
-        let point = new THREE.Vector3(
+        const point = new THREE.Vector3(
             lineLength * Math.cos(angle),
             yOffset,
             -lineLength * Math.sin(angle)
@@ -2222,7 +2284,7 @@ function createAOPLabel(omega: number, inc: number, raan: number, radius: number
 
     // Position at midpoint of arc in orbital plane
     const midAngle = omega / 2;
-    let labelPos = new THREE.Vector3(
+    const labelPos = new THREE.Vector3(
         radius * Math.cos(midAngle),
         5,
         -radius * Math.sin(midAngle)
@@ -2252,7 +2314,7 @@ function updateAOPLines(): void {
     const raan = THREE.MathUtils.degToRad(params.chandrayaanNodes);
 
     // Line 1: From origin to ascending node
-    let nodeDir = new THREE.Vector3(lineLength, 0, 0);
+    const nodeDir = new THREE.Vector3(lineLength, 0, 0);
     nodeDir.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
     nodeDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
 
@@ -2273,7 +2335,7 @@ function updateAOPLines(): void {
     scene.add(aopLine1);
 
     // Line 2: From origin to periapsis
-    let periapsisDir = new THREE.Vector3(lineLength, 0, 0);
+    const periapsisDir = new THREE.Vector3(lineLength, 0, 0);
     periapsisDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), omega);
     periapsisDir.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
     periapsisDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
@@ -2299,7 +2361,7 @@ function updateAOPLines(): void {
     const segments = 64;
     for (let i = 0; i <= segments; i++) {
         const angle = (i / segments) * omega;
-        let point = new THREE.Vector3(
+        const point = new THREE.Vector3(
             lineLength * Math.cos(angle),
             0,
             -lineLength * Math.sin(angle)
@@ -2328,7 +2390,7 @@ function updateAOPLines(): void {
     // Edge vertices along the arc
     for (let i = 0; i <= segments; i++) {
         const angle = (i / segments) * omega;
-        let point = new THREE.Vector3(
+        const point = new THREE.Vector3(
             lineLength * Math.cos(angle),
             yOffset,
             -lineLength * Math.sin(angle)
@@ -2401,255 +2463,187 @@ function updateMoonFromRealPosition(): void {
     updateMoonRADisplay();
 }
 
-function switchAppMode(mode: AppMode): void {
+// Mode-specific setup functions (extracted to reduce complexity)
+function setupExploreMode(): void {
+    stateManager.activateExploreParams();
+    lunarFolder.show();
+    chandrayaanFolder.show();
+    enableLunarControls();
+    enableChandrayaanControls();
+    setSyncButtonsEnabled(true);
+    chandrayaanControllers.restrictOrbitalParams?.show();
+
     const timelinePanel = document.getElementById('timeline-panel');
-    // Used in function scope
+    if (timelinePanel) {
+        timelinePanel.style.display = 'none';
+        timelinePanel.classList.remove('plan-mode');
+    }
+
+    const launchContainer = document.getElementById('launch-event-container');
+    const addLaunchBtn = document.getElementById('add-launch-action-btn');
+    if (launchContainer) launchContainer.style.display = 'none';
+    if (addLaunchBtn) addLaunchBtn.style.display = 'none';
 
     const actionsPanel = document.getElementById('actions-panel');
+    if (actionsPanel) {
+        actionsPanel.classList.remove('visible');
+        actionsPanel.classList.remove('disabled');
+    }
 
-    // Reset capture state when switching modes
-    resetCaptureState();
+    updateLunarOrbitCircle();
+    updateLunarNodePositions();
+    updateMoonPosition();
+    updateChandrayaanOrbit();
+    updateChandrayaanPeriodDisplay();
 
-    if (mode === 'Explore') {
-        // Explore mode: Show all manual controls, hide timeline, force Gamed Moon mode, hide actions panel
+    if (lunarOrbitEllipse) lunarOrbitEllipse.visible = false;
+    hideTimelineRows();
+}
 
-        // Activate Set A (completely isolated from Plan/Game params)
-        stateManager.activateExploreParams();
+function setupPlanMode(): void {
+    stateManager.activatePlanGameParams();
+    lunarFolder.show();
+    chandrayaanFolder.show();
+    disableLunarControls();
+    disableChandrayaanControls();
+    setSyncButtonsEnabled(false);
+    chandrayaanControllers.restrictOrbitalParams?.hide();
 
-        lunarFolder.show();
-        chandrayaanFolder.show();
+    const actionsPanel = document.getElementById('actions-panel');
+    if (actionsPanel) {
+        actionsPanel.classList.add('visible');
+        actionsPanel.classList.remove('disabled');
+    }
 
-        // Enable all lunar controls
-        lunarControllers.inclination?.enable();
-        lunarControllers.nodes?.enable();
-        lunarControllers.moonRA?.enable();
-        lunarControllers.moonTrueAnomaly?.enable();
+    const timelinePanel = document.getElementById('timeline-panel');
+    if (timelinePanel) {
+        timelinePanel.style.display = 'block';
+        timelinePanel.classList.remove('disabled');
+        timelinePanel.classList.add('plan-mode');
+    }
 
-        // Enable all chandrayaan controls
-        chandrayaanControllers.inclination?.enable();
-        chandrayaanControllers.nodes?.enable();
-        chandrayaanControllers.omega?.enable();
-        chandrayaanControllers.perigeeAlt?.enable();
-        chandrayaanControllers.apogeeAlt?.enable();
-        chandrayaanControllers.ra?.enable();
-        chandrayaanControllers.trueAnomaly?.enable();
+    updateMoonFromRealPosition();
+    updateChandrayaanPeriodDisplay();
+    setupPlanModeLaunchEvent();
 
-        // Enable sync buttons in Explore mode (now inline buttons, controlled via DOM)
-        if (chandrayaanControllers.syncInclinationBtn) chandrayaanControllers.syncInclinationBtn.disabled = false;
-        if (chandrayaanControllers.syncRaanBtn) chandrayaanControllers.syncRaanBtn.disabled = false;
-        if (chandrayaanControllers.syncAopBtn) chandrayaanControllers.syncAopBtn.disabled = false;
-        if (chandrayaanControllers.syncApogeeBtn) chandrayaanControllers.syncApogeeBtn.disabled = false;
-        if (chandrayaanControllers.syncRABtn) chandrayaanControllers.syncRABtn.disabled = false;
+    const viewCheckbox = document.getElementById('timeline-slider-active');
+    if (viewCheckbox) (viewCheckbox as HTMLInputElement).disabled = false;
+    updateRenderControlSlidersState();
+}
 
-        // Show restrict checkbox only in Explore mode
-        chandrayaanControllers.restrictOrbitalParams?.show();
+function setupPlanModeLaunchEvent(): void {
+    if (launchEvent.exists) {
+        const addBtn = document.getElementById('add-launch-action-btn');
+        if (addBtn) addBtn.style.display = 'none';
+        const container = document.getElementById('launch-event-container');
+        if (container) container.style.display = 'block';
+        createLaunchEventGUI();
+        if (launchEvent.moonInterceptDate) updateTimelineSliderFromInterceptDate();
+        updateLaunchMarker();
+        syncRenderControlSlidersWithLaunchEvent();
+    } else {
+        const addBtn = document.getElementById('add-launch-action-btn');
+        if (addBtn) addBtn.style.display = 'block';
+        const container = document.getElementById('launch-event-container');
+        if (container) container.style.display = 'none';
+    }
+}
 
-        // Hide timeline panel
-        if (timelinePanel) timelinePanel.style.display = 'none';
+function setupGameMode(): void {
+    stateManager.activatePlanGameParams();
+    lunarFolder.show();
+    chandrayaanFolder.show();
+    disableLunarControls();
+    disableChandrayaanControls();
+    setSyncButtonsEnabled(false);
+    chandrayaanControllers.restrictOrbitalParams?.hide();
 
-        // Hide launch event container and Add Launch button completely in Explore mode
-        const launchContainer = document.getElementById('launch-event-container');
-        const addLaunchBtn = document.getElementById('add-launch-action-btn');
-        if (launchContainer) launchContainer.style.display = 'none';
-        if (addLaunchBtn) if (addLaunchBtn) addLaunchBtn.style.display = 'none';
+    const timelinePanel = document.getElementById('timeline-panel');
+    if (timelinePanel) {
+        timelinePanel.style.display = 'block';
+        timelinePanel.classList.remove('disabled');
+        timelinePanel.classList.remove('plan-mode');
+    }
 
-        // Hide actions panel completely in Explore mode
-        if (actionsPanel) {
+    setupGameModeActionsPanel();
+    setupGameModeTimeline();
+
+    updateMoonFromRealPosition();
+    syncGUIWithLaunchEvent();
+    updateChandrayaanPeriodDisplay();
+    updateLaunchMarker();
+    hideTimelineRows();
+    setupGameModeViewCheckbox();
+}
+
+function setupGameModeActionsPanel(): void {
+    const actionsPanel = document.getElementById('actions-panel');
+    if (actionsPanel) {
+        if (launchEvent.exists) {
+            actionsPanel.classList.add('visible');
+            actionsPanel.classList.add('disabled');
+        } else {
             actionsPanel.classList.remove('visible');
             actionsPanel.classList.remove('disabled');
         }
+    }
+}
 
-        // Update visuals with Set A params
-        updateLunarOrbitCircle();
-        updateLunarNodePositions();
-        updateMoonPosition();
-        updateChandrayaanOrbit();
-        updateChandrayaanPeriodDisplay();
-
-        // Hide lunar orbit ellipse in Explore mode
-        if (lunarOrbitEllipse) lunarOrbitEllipse.visible = false;
-
-        // Hide Launch and Intercept timeline rows in Explore mode
-        const launchRow = document.querySelector('.timeline-row-selector:nth-child(3)');
-        const interceptRow = document.querySelector('.timeline-row-selector:nth-child(4)');
-        if (launchRow) (launchRow as HTMLElement).style.display = 'none';
-        if (interceptRow) (interceptRow as HTMLElement).style.display = 'none';
-
-    } else if (mode === 'Plan') {
-        // Plan mode: Show all controls but disabled (read-only), show actions panel for editing, show timeline, force Real Moon mode
-
-        // Activate Set B (completely isolated from Explore params)
-        stateManager.activatePlanGameParams();
-
-        lunarFolder.show();
-        chandrayaanFolder.show();
-
-        // Disable all lunar controls (read-only display - controlled by Real ephemeris)
-        lunarControllers.inclination?.disable();
-        lunarControllers.nodes?.disable();
-        lunarControllers.moonRA?.disable();
-        lunarControllers.moonTrueAnomaly?.disable();
-
-        // Disable all chandrayaan controls (read-only display - controlled by launch event)
-        chandrayaanControllers.inclination?.disable();
-        chandrayaanControllers.nodes?.disable();
-        chandrayaanControllers.omega?.disable();
-        chandrayaanControllers.perigeeAlt?.disable();
-        chandrayaanControllers.apogeeAlt?.disable();
-        chandrayaanControllers.ra?.disable();
-        chandrayaanControllers.trueAnomaly?.disable();
-
-        // Disable sync buttons in Plan mode (now inline buttons, controlled via DOM)
-        if (chandrayaanControllers.syncInclinationBtn) chandrayaanControllers.syncInclinationBtn.disabled = true;
-        if (chandrayaanControllers.syncRaanBtn) chandrayaanControllers.syncRaanBtn.disabled = true;
-        if (chandrayaanControllers.syncAopBtn) chandrayaanControllers.syncAopBtn.disabled = true;
-        if (chandrayaanControllers.syncApogeeBtn) chandrayaanControllers.syncApogeeBtn.disabled = true;
-        if (chandrayaanControllers.syncRABtn) chandrayaanControllers.syncRABtn.disabled = true;
-
-        // Hide restrict checkbox in Plan mode
-        chandrayaanControllers.restrictOrbitalParams?.hide();
-
-        // Show actions panel (enabled)
-        if (actionsPanel) {
-            actionsPanel.classList.add('visible');
-            actionsPanel.classList.remove('disabled');
-        }
-
-        // Show timeline panel
-        if (timelinePanel) {
-            timelinePanel.style.display = 'block';
-            timelinePanel.classList.remove('disabled');
-        }
-
-        // Update moon position from current date using Real ephemeris
-        updateMoonFromRealPosition();
-
-        // Update period display
-        updateChandrayaanPeriodDisplay();
-
-        // Show/hide Add Launch button and launch event container based on launch event existence
-        if (launchEvent.exists) {
-            const elem_add_launch_action_btn = document.getElementById('add-launch-action-btn');
-            if (elem_add_launch_action_btn) elem_add_launch_action_btn.style.display = 'none';
-            const elem_launch_event_container = document.getElementById('launch-event-container');
-            if (elem_launch_event_container) elem_launch_event_container.style.display = 'block';
-            createLaunchEventGUI();
-
-            // Sync timeline slider with intercept date if it exists
-            if (launchEvent.moonInterceptDate) {
-                updateTimelineSliderFromInterceptDate();
-            }
-
-            // Update launch marker on timeline
-            updateLaunchMarker();
-
-            // Sync render control sliders with launch event
-            syncRenderControlSlidersWithLaunchEvent();
-        } else {
-            // No launch event: show Add Launch button, hide container
-            const elem_add_launch_action_btn = document.getElementById('add-launch-action-btn');
-            if (elem_add_launch_action_btn) elem_add_launch_action_btn.style.display = 'block';
-            const elem_launch_event_container = document.getElementById('launch-event-container');
-            if (elem_launch_event_container) elem_launch_event_container.style.display = 'none';
-        }
-
-        // Show Launch and Intercept timeline rows in Plan mode
-        const launchRowPlan = document.querySelector('.timeline-row-selector:nth-child(3)');
-        const interceptRowPlan = document.querySelector('.timeline-row-selector:nth-child(4)');
-        if (launchRowPlan) (launchRowPlan as HTMLElement).style.display = 'flex';
-        if (interceptRowPlan) (interceptRowPlan as HTMLElement).style.display = 'flex';
-
-        // In Plan mode, View checkbox should be enabled (user can switch between timelines)
-        const viewCheckboxPlan = document.getElementById('timeline-slider-active');
-        if (viewCheckboxPlan) {
-            (viewCheckboxPlan as HTMLInputElement).disabled = false;
-        }
-
-        // Update disabled state of Launch and Intercept sliders
-        updateRenderControlSlidersState();
-
-    } else if (mode === 'Game') {
-        // Game mode: Show controls but disabled, show timeline, force Real Moon mode, show actions panel disabled
-        // Note: Game mode uses Set B (same as Plan mode - complete isolation from Explore)
-
-        // Activate Set B (same params as Plan mode)
-        stateManager.activatePlanGameParams();
-
-        lunarFolder.show();
-        chandrayaanFolder.show();
-
-        // Disable all lunar controls (read-only display)
-        lunarControllers.inclination?.disable();
-        lunarControllers.nodes?.disable();
-        lunarControllers.moonRA?.disable();
-        lunarControllers.moonTrueAnomaly?.disable();
-
-        // Disable all chandrayaan controls (show but grayed out)
-        chandrayaanControllers.inclination?.disable();
-        chandrayaanControllers.nodes?.disable();
-        chandrayaanControllers.omega?.disable();
-        chandrayaanControllers.perigeeAlt?.disable();
-        chandrayaanControllers.apogeeAlt?.disable();
-        chandrayaanControllers.ra?.disable();
-        chandrayaanControllers.trueAnomaly?.disable();
-
-        // Disable sync buttons in Game mode (now inline buttons, controlled via DOM)
-        if (chandrayaanControllers.syncInclinationBtn) chandrayaanControllers.syncInclinationBtn.disabled = true;
-        if (chandrayaanControllers.syncRaanBtn) chandrayaanControllers.syncRaanBtn.disabled = true;
-        if (chandrayaanControllers.syncAopBtn) chandrayaanControllers.syncAopBtn.disabled = true;
-        if (chandrayaanControllers.syncApogeeBtn) chandrayaanControllers.syncApogeeBtn.disabled = true;
-        if (chandrayaanControllers.syncRABtn) chandrayaanControllers.syncRABtn.disabled = true;
-
-        // Hide restrict checkbox in Game mode
-        chandrayaanControllers.restrictOrbitalParams?.hide();
-
-        // Show timeline panel
-        if (timelinePanel) {
-            timelinePanel.style.display = 'block';
-            timelinePanel.classList.remove('disabled');
-        }
-
-        // Show actions panel but disabled
-        if (actionsPanel) {
-            actionsPanel.classList.add('visible');
-            actionsPanel.classList.add('disabled');
-        }
-
-        // Update moon position from current date when switching to Game mode
-        updateMoonFromRealPosition();
-
-        // Sync GUI controls with launch event if it exists
-        syncGUIWithLaunchEvent();
-
-        // Update period display
-        updateChandrayaanPeriodDisplay();
-
-        // Update launch marker on timeline
-        updateLaunchMarker();
-
-        // Hide Launch and Intercept timeline rows in Game mode
-        const launchRowGame = document.querySelector('.timeline-row-selector:nth-child(3)');
-        const interceptRowGame = document.querySelector('.timeline-row-selector:nth-child(4)');
-        if (launchRowGame) (launchRowGame as HTMLElement).style.display = 'none';
-        if (interceptRowGame) (interceptRowGame as HTMLElement).style.display = 'none';
-
-        // In Game mode, View checkbox should be checked and disabled
-        const viewCheckbox = document.getElementById('timeline-slider-active');
-        if (viewCheckbox) {
-            (viewCheckbox as HTMLInputElement).checked = true;
-            (viewCheckbox as HTMLInputElement).disabled = true;
-        }
-        renderControl.activeSlider = 'timeline';
-
-        // Update active timeline indicator
-        const activeIndicator = document.getElementById('active-timeline-indicator');
-        if (activeIndicator) {
-            activeIndicator.textContent = 'View';
-        }
+function setupGameModeTimeline(): void {
+    if (gameModeState.isFirstEntry) {
+        timelineState.daysElapsed = 0;
+        timelineState.isPlaying = false;
+        gameModeState.isFirstEntry = false;
+    } else {
+        timelineState.daysElapsed = gameModeState.savedTimelineDays;
+        timelineState.isPlaying = gameModeState.savedIsPlaying;
     }
 
-    // Update renderDate to reflect the active timeline for this mode
-    // This ensures getRenderDate() returns correct date after mode switch
+    const slider = document.getElementById('timeline-slider');
+    if (slider) (slider as HTMLInputElement).value = String(timelineState.daysElapsed);
+
+    const display = document.getElementById('timeline-slider-display');
+    if (display) display.textContent = `Day ${timelineState.daysElapsed.toFixed(1)}`;
+
+    const playPauseBtn = document.getElementById('play-pause-btn');
+    if (playPauseBtn) playPauseBtn.textContent = timelineState.isPlaying ? '⏸ Pause' : '▶ Play';
+
+    timelineState.currentDate = new Date(
+        timelineState.startDate.getTime() + timelineState.daysElapsed * 24 * 60 * 60 * 1000
+    );
+}
+
+function setupGameModeViewCheckbox(): void {
+    const viewCheckbox = document.getElementById('timeline-slider-active');
+    if (viewCheckbox) {
+        (viewCheckbox as HTMLInputElement).checked = true;
+        (viewCheckbox as HTMLInputElement).disabled = true;
+    }
+    renderControl.activeSlider = 'timeline';
+
+    const activeIndicator = document.getElementById('active-timeline-indicator');
+    if (activeIndicator) activeIndicator.textContent = 'View';
+}
+
+function switchAppMode(mode: AppMode): void {
+    // Save Game mode timeline state when leaving Game mode
+    if (params.appMode === 'Game' && mode !== 'Game') {
+        gameModeState.savedTimelineDays = timelineState.daysElapsed;
+        gameModeState.savedIsPlaying = timelineState.isPlaying;
+    }
+
+    resetCaptureState();
+
+    if (mode === 'Explore') {
+        setupExploreMode();
+    } else if (mode === 'Plan') {
+        setupPlanMode();
+    } else if (mode === 'Game') {
+        setupGameMode();
+    }
+
+    // Update mode parameter AFTER all mode-specific logic has run
+    params.appMode = mode;
     updateRenderDate();
 }
 
@@ -2702,40 +2696,31 @@ function updateChandrayaanRADisplay(): void {
 }
 
 // Update render control sliders state (enable/disable based on launch event existence)
-function updateRenderControlSlidersState(): void {
-    const launchSlider = document.getElementById('launch-slider');
-    const interceptSlider = document.getElementById('intercept-slider');
-    const launchCheckbox = document.getElementById('launch-slider-active');
-    const interceptCheckbox = document.getElementById('intercept-slider-active');
+function setSliderDisabled(id: string, disabled: boolean): void {
+    const elem = document.getElementById(id);
+    if (elem) (elem as HTMLInputElement).disabled = disabled;
+}
+
+function fallbackToViewTimeline(): void {
+    if (renderControl.activeSlider !== 'launch' && renderControl.activeSlider !== 'intercept') return;
+
     const viewCheckbox = document.getElementById('timeline-slider-active');
-
-    if (launchEvent.exists) {
-        // Enable Launch and Intercept sliders
-        if (launchSlider) (launchSlider as HTMLInputElement).disabled = false;
-        if (interceptSlider) (interceptSlider as HTMLInputElement).disabled = false;
-        if (launchCheckbox) (launchCheckbox as HTMLInputElement).disabled = false;
-        if (interceptCheckbox) (interceptCheckbox as HTMLInputElement).disabled = false;
-    } else {
-        // Disable Launch and Intercept sliders
-        if (launchSlider) (launchSlider as HTMLInputElement).disabled = true;
-        if (interceptSlider) (interceptSlider as HTMLInputElement).disabled = true;
-        if (launchCheckbox) (launchCheckbox as HTMLInputElement).disabled = true;
-        if (interceptCheckbox) (interceptCheckbox as HTMLInputElement).disabled = true;
-
-        // If either Launch or Intercept was selected, fallback to View
-        if (renderControl.activeSlider === 'launch' || renderControl.activeSlider === 'intercept') {
-            if (viewCheckbox) {
-                (viewCheckbox as HTMLInputElement).checked = true;
-                renderControl.activeSlider = 'timeline';
-
-                // Update active timeline indicator
-                const activeIndicator = document.getElementById('active-timeline-indicator');
-                if (activeIndicator) {
-                    activeIndicator.textContent = 'View';
-                }
-            }
-        }
+    if (viewCheckbox) {
+        (viewCheckbox as HTMLInputElement).checked = true;
+        renderControl.activeSlider = 'timeline';
+        const activeIndicator = document.getElementById('active-timeline-indicator');
+        if (activeIndicator) activeIndicator.textContent = 'View';
     }
+}
+
+function updateRenderControlSlidersState(): void {
+    const disabled = !launchEvent.exists;
+    setSliderDisabled('launch-slider', disabled);
+    setSliderDisabled('intercept-slider', disabled);
+    setSliderDisabled('launch-slider-active', disabled);
+    setSliderDisabled('intercept-slider-active', disabled);
+
+    if (disabled) fallbackToViewTimeline();
 }
 
 // Sync params to launch event in Plan mode (when GUI controls change)
@@ -2769,12 +2754,7 @@ function syncGUIWithLaunchEvent(): void {
     params.chandrayaanTrueAnomaly = orbitalParams.trueAnomaly;
 
     // Update GUI display
-    chandrayaanControllers.inclination?.updateDisplay();
-    chandrayaanControllers.nodes?.updateDisplay();
-    chandrayaanControllers.omega?.updateDisplay();
-    chandrayaanControllers.perigeeAlt?.updateDisplay();
-    chandrayaanControllers.apogeeAlt?.updateDisplay();
-    chandrayaanControllers.trueAnomaly?.updateDisplay();
+    updateChandrayaanGUIDisplays();
 
     // Only update period display if perigee or apogee changed
     if (perigeeChanged || apogeeChanged) {
@@ -3310,15 +3290,21 @@ function updateRenderDate(): void {
         updateMoonFromRealPosition();
     }
 
-    // Update Chandrayaan orbit in all modes
-    // In Explore: uses Set A (manual params)
-    // In Plan/Game: uses Set B (launch event params if exists)
-    updateChandrayaanOrbit();
+    // Note: Do NOT update Chandrayaan orbit here! updateChandrayaanOrbit() recreates
+    // the entire geometry (hundreds of points, materials, etc.) which causes massive
+    // memory leaks when called 60 times per second. The orbit is updated when:
+    // 1. Orbital parameters change (via GUI onChange handlers)
+    // 2. Mode switching
+    // 3. Launch event creation/modification
+    // The spacecraft position updates happen inside updateChandrayaanOrbit() when
+    // it's called from those appropriate places.
 
-    // Sync GUI with launch event only in Plan/Game modes
-    if ((params.appMode === 'Game' || params.appMode === 'Plan') && launchEvent.exists) {
-        syncGUIWithLaunchEvent();
-    }
+    // Note: Do NOT sync GUI here - this function is called every animation frame (60 fps)
+    // and syncing GUI every frame causes massive performance issues.
+    // GUI syncing happens when:
+    // 1. Switching modes (in switchAppMode)
+    // 2. When launch event is created/modified (via event handlers)
+    // 3. When timeline sliders change dates (in timeline handlers)
 }
 
 function setupTimeline(): void {
@@ -3750,8 +3736,7 @@ function setupModeTabs(): void {
             modeTabs.forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
 
-            // Switch mode
-            params.appMode = newMode;
+            // Switch mode (switchAppMode will update params.appMode)
             switchAppMode(newMode);
         });
     });
@@ -3759,10 +3744,8 @@ function setupModeTabs(): void {
 
 // Setup actions panel
 function setupActionsPanel(): void {
-    // Used in function scope
-
-    // @ts-expect-error - Used in conditional logic
-    const actionsPanel = document.getElementById('actions-panel');
+    // @ts-expect-error - Reserved for future conditional logic
+    const _actionsPanel = document.getElementById('actions-panel');
     const addLaunchBtn = document.getElementById('add-launch-action-btn');
     const launchEventContainer = document.getElementById('launch-event-container');
 
@@ -3798,7 +3781,162 @@ function setupActionsPanel(): void {
     });
 }
 
+// Helper to setup date input attributes and title
+function setupDateInputElement(controller: Controller, title: string): void {
+    const input = controller.domElement.querySelector('input');
+    if (input) {
+        input.type = 'datetime-local';
+        input.title = title;
+    }
+    const nameElem = controller.domElement.querySelector('.name');
+    if (nameElem) (nameElem as HTMLElement).title = title;
+}
+
+// Helper to add timeline switch handlers to a date controller
+function addDateControllerTimelineHandlers(
+    controller: Controller,
+    timelineType: 'LOI' | 'TLI',
+    getDate: () => Date
+): void {
+    const input = controller.domElement.querySelector('input');
+    if (!input) return;
+
+    const switchToTimeline = () => {
+        if (params.appMode === 'Plan') {
+            showFloatingTimeline(timelineType, getDate());
+        } else {
+            const checkboxId = timelineType === 'LOI' ? 'intercept-slider-active' : 'launch-slider-active';
+            const checkbox = document.getElementById(checkboxId);
+            if (checkbox && !(checkbox as HTMLInputElement).disabled) {
+                (checkbox as HTMLInputElement).checked = true;
+                checkbox.dispatchEvent(new Event('change'));
+            }
+        }
+    };
+
+    input.addEventListener('focus', switchToTimeline);
+    input.addEventListener('click', switchToTimeline);
+
+    input.addEventListener('blur', () => {
+        if (params.appMode === 'Plan' && floatingTimelineType === timelineType) {
+            setTimeout(() => {
+                const overlay = document.getElementById('floating-timeline-overlay');
+                const slider = document.getElementById('floating-timeline-slider');
+                if (overlay && !overlay.matches(':hover') && slider && !slider.matches(':active')) {
+                    hideFloatingTimeline();
+                }
+            }, 100);
+        }
+    });
+}
+
 // Create launch event GUI using lil-gui
+// Helper function to get valid omega values based on inclination
+function getOmegaOptions(inc: number): { [key: string]: number } {
+    if (inc === 21.5) {
+        return { '178°': 178 };
+    } else if (inc === 41.8) {
+        return { '198°': 198, '203°': 203 };
+    }
+    return { '178°': 178 }; // default
+}
+
+// Helper to ensure omega is valid for current inclination
+function validateAndSetOmega(): void {
+    const validOmegaOptions = getOmegaOptions(launchEvent.inclination);
+    if (!Object.values(validOmegaOptions).includes(launchEvent.omega)) {
+        setLaunchEventOmega(launchEvent, Object.values(validOmegaOptions)[0]);
+    }
+}
+
+// Helper function to switch to View timeline when clicking on orbital parameter fields
+function switchToViewTimeline(): void {
+    // Hide floating timeline if it's showing
+    if (params.appMode === 'Plan' && floatingTimelineType) {
+        hideFloatingTimeline();
+    }
+
+    const viewCheckbox = document.getElementById('timeline-slider-active');
+    if (viewCheckbox && !(viewCheckbox as HTMLInputElement).disabled) {
+        (viewCheckbox as HTMLInputElement).checked = true;
+        viewCheckbox.dispatchEvent(new Event('change'));
+    }
+}
+
+// Helper to add both click, focus, and input handlers to a controller
+function addViewTimelineSwitchHandlers(controller: Controller, selector: string): void {
+    const element = controller.domElement.querySelector(selector);
+    if (element) {
+        element.addEventListener('focus', switchToViewTimeline);
+        element.addEventListener('click', switchToViewTimeline);
+        element.addEventListener('input', switchToViewTimeline);
+    }
+
+    // Also attach to the slider element if it exists (for lil-gui number controllers)
+    const slider = controller.domElement.querySelector('.slider');
+    if (slider) {
+        slider.addEventListener('mousedown', switchToViewTimeline);
+        slider.addEventListener('touchstart', switchToViewTimeline);
+    }
+}
+
+// Helper to check if a LOI date value from dropdown is valid (not a placeholder)
+function isValidLOIDateValue(value: string): boolean {
+    return Boolean(value && value !== 'None' && value !== 'Select Auto LOI first' && value !== 'No optimal dates found');
+}
+
+// Helper to insert a button into lil-gui
+function insertButtonIntoGUI(gui: GUI, button: HTMLElement): HTMLElement | null {
+    const guiElement = (gui as any).domElement;
+    const childrenContainer = guiElement?.querySelector('.children');
+    if (!childrenContainer) return null;
+    const buttonWrapper = document.createElement('div');
+    buttonWrapper.style.cssText = 'padding: 4px 8px;';
+    buttonWrapper.appendChild(button);
+    childrenContainer.appendChild(buttonWrapper);
+    return buttonWrapper;
+}
+
+// Helper to run the auto-optimization and return results (or null if no LOI date)
+function runAutoOptimization(): { raan: number; apogeeAlt: number; trueAnomaly: number; distance: number; newTLIDate: Date } | null {
+    const loiDate = launchEvent.moonInterceptDate;
+    if (!loiDate) {
+        showAlert('Please set LOI date first', 'Missing LOI Date');
+        return null;
+    }
+    const result = optimizeApogeeToMoonMultiStart(loiDate, launchEvent.omega, launchEvent.inclination, launchEvent.apogeeAlt);
+    const timeToOptimalNu = calculateTimeToTrueAnomaly(result.trueAnomaly, launchEvent.perigeeAlt, result.apogeeAlt);
+    const newTLIDate = new Date(loiDate.getTime() - timeToOptimalNu * 1000);
+    return { ...result, newTLIDate };
+}
+
+// Helper function for marking launch event as dirty and updating visualization
+function markDirtyAndUpdate(): void {
+    draftState.isDirty = true;
+
+    // Sync launchEvent to BOTH params AND planGameParamSet
+    planGameParamSet.loadFromLaunchEvent(launchEvent);
+    planGameParamSet.copyTo(params);
+
+    // Update GUI controllers
+    updateChandrayaanGUIDisplays();
+
+    // Invalidate cache so fresh calculations use current renderDate
+    invalidateOrbitalParamsCache();
+
+    // Update orbital period display (depends on perigee/apogee which may have changed)
+    updateChandrayaanPeriodDisplay();
+
+    // Update visualization based on ACTIVE timeline
+    updateRenderDate();
+
+    // Update orbital geometry (nodes, planes, angle visualizations)
+    updateChandrayaanNodePositions();
+    updateChandrayaanOrbitCircle();
+    updateRAANLines();
+    updateAOPLines();
+}
+
 function createLaunchEventGUI(): void {
     const container = document.getElementById('launch-event-container');
 
@@ -3814,22 +3952,8 @@ function createLaunchEventGUI(): void {
     // Variable to hold the Auto Optimize button wrapper for visibility control
     let autoOptimizeBtnWrapper: HTMLElement | null = null;
 
-    // Helper function to get valid omega values based on inclination
-    function getOmegaOptions(inc: number): { [key: string]: number } {
-        if (inc === 21.5) {
-            return { '178°': 178 };
-        } else if (inc === 41.8) {
-            return { '198°': 198, '203°': 203 };
-        }
-        return { '178°': 178 }; // default
-    }
-
     // Validate and set initial omega based on inclination
-    const validOmegaOptions = getOmegaOptions(launchEvent.inclination);
-    if (!Object.values(validOmegaOptions).includes(launchEvent.omega)) {
-        // If current omega is invalid for this inclination, use the first valid option
-        setLaunchEventOmega(launchEvent, Object.values(validOmegaOptions)[0]);
-    }
+    validateAndSetOmega();
 
     // Create a temporary params object for the GUI
     const guiParams: any = {
@@ -3858,81 +3982,67 @@ function createLaunchEventGUI(): void {
 
     // Helper function to handle optimal LOI selection
     const handleOptimalLOIChange = (value: string) => {
-        if (value && value !== 'None' && value !== 'Select Auto LOI first' && value !== 'No optimal dates found') {
-            const newDate = new Date(value);
+        if (!isValidLOIDateValue(value)) return;
+        const newDate = new Date(value);
+        setLaunchEventMoonInterceptDate(launchEvent, newDate);
+        guiParams.moonInterceptDate = formatDateForDisplay(newDate);
+        updateRenderDate();
+    };
 
-            // Update the property using setter - this will trigger all updates automatically
-            setLaunchEventMoonInterceptDate(launchEvent, newDate);
+    // Helper to enable Auto LOI mode
+    const enableAutoLOIMode = () => {
+        const searchStart = timelineState.startDate;
+        const searchEnd = new Date(timelineState.startDate.getTime() + TIMELINE_MAX_DAYS * 24 * 60 * 60 * 1000);
+        launchEvent.optimalLOIDates = findOptimalLOIDates(searchStart, searchEnd);
 
-            // Update the manual input display value
-            guiParams.moonInterceptDate = formatDateForDisplay(newDate);
+        if (optimalLOIController) {
+            optimalLOIController.destroy();
+            optimalLOIController = null;
+        }
 
-            // Trigger render update
+        const options: Record<string, string> = {};
+        if (launchEvent.optimalLOIDates.length === 0) {
+            options['No optimal dates found'] = 'None';
+            guiParams.optimalLOIDate = 'None';
+        } else {
+            launchEvent.optimalLOIDates.forEach((date) => {
+                const formatted = formatDateForDisplay(date);
+                options[formatted] = formatted;
+            });
+            const firstDate = formatDateForDisplay(launchEvent.optimalLOIDates[0]);
+            guiParams.optimalLOIDate = firstDate;
+            setLaunchEventMoonInterceptDate(launchEvent, launchEvent.optimalLOIDates[0]);
+            guiParams.moonInterceptDate = formatDateForDisplay(launchEvent.optimalLOIDates[0]);
             updateRenderDate();
         }
+
+        optimalLOIController = launchEventGUI.add(guiParams, 'optimalLOIDate', options).name('Optimal LOI').onChange(handleOptimalLOIChange);
+        const autoLOIElement = autoLOIController.domElement;
+        const optimalLOIElement = optimalLOIController.domElement;
+        if (autoLOIElement && optimalLOIElement && autoLOIElement.parentElement) {
+            autoLOIElement.parentElement.insertBefore(optimalLOIElement, autoLOIElement.nextSibling);
+        }
+        optimalLOIController.show();
+        interceptDateController.hide();
+    };
+
+    // Helper to disable Auto LOI mode
+    const disableAutoLOIMode = () => {
+        if (optimalLOIController) {
+            optimalLOIController.destroy();
+            optimalLOIController = null;
+        }
+        interceptDateController.show();
     };
 
     // Create Automatic LOI checkbox
     const autoLOIController = launchEventGUI.add(guiParams, 'autoLOI').name('Auto LOI').onChange((value: boolean) => {
         launchEvent.autoLOI = value;
-
         if (value) {
-            // Calculate optimal LOI dates when enabled
-            // Search the full timeline window
-            const searchStart = timelineState.startDate;
-            const searchEnd = new Date(timelineState.startDate.getTime() + TIMELINE_MAX_DAYS * 24 * 60 * 60 * 1000);
-
-            launchEvent.optimalLOIDates = findOptimalLOIDates(searchStart, searchEnd);
-
-            // Destroy existing dropdown if it exists
-            if (optimalLOIController) {
-                optimalLOIController.destroy();
-                optimalLOIController = null;
-            }
-
-            // Build options object for lil-gui
-            const options: Record<string, string> = {};
-            if (launchEvent.optimalLOIDates.length === 0) {
-                options['No optimal dates found'] = 'None';
-                guiParams.optimalLOIDate = 'None';
-            } else {
-                launchEvent.optimalLOIDates.forEach((date) => {
-                    const formatted = formatDateForDisplay(date);
-                    options[formatted] = formatted;
-                });
-
-                // Select first optimal date
-                const firstDate = formatDateForDisplay(launchEvent.optimalLOIDates[0]);
-                guiParams.optimalLOIDate = firstDate;
-                setLaunchEventMoonInterceptDate(launchEvent, launchEvent.optimalLOIDates[0]);
-                guiParams.moonInterceptDate = formatDateForDisplay(launchEvent.optimalLOIDates[0]);
-
-                // Trigger render update
-                updateRenderDate();
-            }
-
-            // Create new dropdown with proper options
-            optimalLOIController = launchEventGUI.add(guiParams, 'optimalLOIDate', options).name('Optimal LOI').onChange(handleOptimalLOIChange);
-
-            // Move dropdown to appear right after the checkbox
-            const autoLOIElement = autoLOIController.domElement;
-            const optimalLOIElement = optimalLOIController.domElement;
-            if (autoLOIElement && optimalLOIElement && autoLOIElement.parentElement) {
-                autoLOIElement.parentElement.insertBefore(optimalLOIElement, autoLOIElement.nextSibling);
-            }
-
-            optimalLOIController.show();
-            interceptDateController.hide();
+            enableAutoLOIMode();
         } else {
-            // Destroy dropdown when unchecked
-            if (optimalLOIController) {
-                optimalLOIController.destroy();
-                optimalLOIController = null;
-            }
-            interceptDateController.show();
+            disableAutoLOIMode();
         }
-
-        // Show/hide Auto Optimize button based on autoLOI state
         if (autoOptimizeBtnWrapper) {
             autoOptimizeBtnWrapper.style.display = value ? 'block' : 'none';
         }
@@ -3940,41 +4050,13 @@ function createLaunchEventGUI(): void {
 
     // Create LOI Date manual input (appears after checkbox)
     const interceptDateController = launchEventGUI.add(guiParams, 'moonInterceptDate').name('LOI Date').listen();
-    const interceptInputElem = interceptDateController.domElement.querySelector('input');
-
-    if (interceptInputElem) interceptInputElem.type = 'datetime-local';
-
-    const interceptInputElem2 = interceptDateController.domElement.querySelector('input');
-    if (interceptInputElem2) interceptInputElem2.title = 'Lunar Orbit Insertion';
-    const interceptNameElem = interceptDateController.domElement.querySelector('.name');
-
-    if (interceptNameElem) (interceptNameElem as HTMLElement).title = 'Lunar Orbit Insertion';
-
-    // Switch to LOI timeline on click/focus
-    const switchToLOITimeline = () => {
-        const interceptCheckbox = document.getElementById('intercept-slider-active');
-        if (interceptCheckbox && !(interceptCheckbox as HTMLInputElement).disabled) {
-            (interceptCheckbox as HTMLInputElement).checked = true;
-            interceptCheckbox.dispatchEvent(new Event('change'));
-        }
-    };
-        // @ts-expect-error - Declared for querySelector
-    const elem = interceptDateController.domElement.querySelector('input');
-
-    const interceptInputElem3 = interceptDateController.domElement.querySelector('input');
-
-
-    if (interceptInputElem3) interceptInputElem3.addEventListener('focus', switchToLOITimeline);
-
-    const interceptInputElem4 = interceptDateController.domElement.querySelector('input');
-    if (interceptInputElem4) interceptInputElem4.addEventListener('click', switchToLOITimeline);
+    setupDateInputElement(interceptDateController, 'Lunar Orbit Insertion');
+    addDateControllerTimelineHandlers(interceptDateController, 'LOI', () => launchEvent.moonInterceptDate);
 
     // Add change handler for LOI date input
-    const interceptInputElem5 = interceptDateController.domElement.querySelector('input');
-    if (interceptInputElem5) interceptInputElem5.addEventListener('change', (e: Event) => {
-        if (isUpdatingFromCode) return; // Prevent circular updates from slider
-
-        // Just set the value - event bus handles everything!
+    const interceptInput = interceptDateController.domElement.querySelector('input');
+    if (interceptInput) interceptInput.addEventListener('change', (e: Event) => {
+        if (isUpdatingFromCode) return;
         setLaunchEventMoonInterceptDate(launchEvent, new Date((e.target as HTMLInputElement).value));
         guiParams.moonInterceptDate = (e.target as HTMLInputElement).value;
     });
@@ -3987,73 +4069,19 @@ function createLaunchEventGUI(): void {
 
     // TLI Date controller
     launchDateController = launchEventGUI.add(guiParams, 'launchDate').name('TLI Date').listen();
-    const launchInputElem = launchDateController.domElement.querySelector('input');
-
-    if (launchInputElem) launchInputElem.type = 'datetime-local';
-
-    const launchInputElem2 = launchDateController.domElement.querySelector('input');
-    if (launchInputElem2) launchInputElem2.title = 'Trans Lunar Injection';
-    const launchNameElem = launchDateController.domElement.querySelector('.name');
-
-    if (launchNameElem) (launchNameElem as HTMLElement).title = 'Trans Lunar Injection';
+    setupDateInputElement(launchDateController, 'Trans Lunar Injection');
+    addDateControllerTimelineHandlers(launchDateController, 'TLI', () => launchEvent.date);
 
     // Set initial state (disabled if sync is enabled)
-    if (launchEvent.syncTLIWithLOI) {
-        launchDateController.disable();
-        // TLI date will be computed automatically by event subscriptions
-    }
+    if (launchEvent.syncTLIWithLOI) launchDateController.disable();
 
-    // Switch to TLI timeline on click/focus
-    const switchToTLITimeline = () => {
-        const launchCheckbox = document.getElementById('launch-slider-active');
-        if (launchCheckbox && !(launchCheckbox as HTMLInputElement).disabled) {
-            (launchCheckbox as HTMLInputElement).checked = true;
-            launchCheckbox.dispatchEvent(new Event('change'));
-        }
-    };
-
-    const launchInputElem3 = launchDateController.domElement.querySelector('input');
-    if (launchInputElem3) launchInputElem3.addEventListener('focus', switchToTLITimeline);
-
-    const launchInputElem4 = launchDateController.domElement.querySelector('input');
-    if (launchInputElem4) launchInputElem4.addEventListener('click', switchToTLITimeline);
-
-
-
-    const launchInputElem6 = launchDateController.domElement.querySelector('input');
-    if (launchInputElem6) launchInputElem6.addEventListener('change', (e: Event) => {
-        if (isUpdatingFromCode) return; // Prevent circular updates from slider
-
-        // Just set the value - event bus handles everything!
+    // Add change handler for TLI date input
+    const launchInput = launchDateController.domElement.querySelector('input');
+    if (launchInput) launchInput.addEventListener('change', (e: Event) => {
+        if (isUpdatingFromCode) return;
         setLaunchEventDate(launchEvent, new Date((e.target as HTMLInputElement).value));
         guiParams.launchDate = (e.target as HTMLInputElement).value;
     });
-
-    // Helper function to switch to View timeline when clicking on orbital parameter fields
-    function switchToViewTimeline() {
-        const viewCheckbox = document.getElementById('timeline-slider-active');
-        if (viewCheckbox && !(viewCheckbox as HTMLInputElement).disabled) {
-            (viewCheckbox as HTMLInputElement).checked = true;
-            viewCheckbox.dispatchEvent(new Event('change'));
-        }
-    }
-
-    // Helper to add both click, focus, and input handlers to a controller
-    function addViewTimelineSwitchHandlers(controller: any, selector: any): void {
-        const element = controller.domElement.querySelector(selector);
-        if (element) {
-            element.addEventListener('focus', switchToViewTimeline);
-            element.addEventListener('click', switchToViewTimeline);
-            element.addEventListener('input', switchToViewTimeline); // For typing in input
-        }
-
-        // Also attach to the slider element if it exists (for lil-gui number controllers)
-        const slider = controller.domElement.querySelector('.slider');
-        if (slider) {
-            slider.addEventListener('mousedown', switchToViewTimeline);
-            slider.addEventListener('touchstart', switchToViewTimeline);
-        }
-    }
 
     // RAAN controller
     const raanController = launchEventGUI.add(guiParams, 'raan', 0, 360, 0.1).name('RAAN (Ω) (°)').onChange(value => {
@@ -4078,8 +4106,7 @@ function createLaunchEventGUI(): void {
         setLaunchEventOmega(launchEvent, newOmega);
 
         // Recreate omega controller with new options
-        if (omegaController && launchEventGUI) { /* Recreate will happen below */ }
-        if (launchEventGUI) omegaController = launchEventGUI.add(guiParams, 'omega', validOmegaOptions).name('ω (Arg. Periapsis)').onChange(value => {
+        omegaController = launchEventGUI.add(guiParams, 'omega', validOmegaOptions).name('ω (Arg. Periapsis)').onChange(value => {
             setLaunchEventOmega(launchEvent, value);
             markDirtyAndUpdate();
         });
@@ -4099,14 +4126,14 @@ function createLaunchEventGUI(): void {
     addViewTimelineSwitchHandlers(omegaController, 'select');
 
     const perigeeController = launchEventGUI.add(guiParams, 'perigeeAlt', 180, 600000, 100).name('Perigee Alt (km)').onChange(value => {
-        // Just set the value - event bus handles everything!
         setLaunchEventPerigeeAlt(launchEvent, value);
+        markDirtyAndUpdate();
     });
     addViewTimelineSwitchHandlers(perigeeController, 'input');
 
     const apogeeController = launchEventGUI.add(guiParams, 'apogeeAlt', 180, 600000, 100).name('Apogee Alt (km)').onChange(value => {
-        // Just set the value - event bus handles everything!
         setLaunchEventApogeeAlt(launchEvent, value);
+        markDirtyAndUpdate();
     });
     addViewTimelineSwitchHandlers(apogeeController, 'input');
 
@@ -4142,72 +4169,36 @@ function createLaunchEventGUI(): void {
     });
 
     autoOptimizeBtn.addEventListener('click', () => {
-        // Run optimization
-        const loiDate = launchEvent.moonInterceptDate;
-        if (!loiDate) {
-            showAlert('Please set LOI date first', 'Missing LOI Date');
-            return;
-        }
-
-        const result = optimizeApogeeToMoonMultiStart(
-            loiDate,
-            launchEvent.omega,
-            launchEvent.inclination,
-            launchEvent.apogeeAlt
-        );
+        const result = runAutoOptimization();
+        if (!result) return;
 
         // Prevent event handlers from reverting our changes
         isUpdatingFromCode = true;
 
-        // Update launch event using atomic setter for optimized values
+        // Update launch event and GUI params
         setLaunchEventOptimizedValues(launchEvent, { raan: result.raan, apogeeAlt: result.apogeeAlt });
-
-        // Update GUI params to reflect launchEvent changes
         guiParams.raan = result.raan;
         guiParams.apogeeAlt = result.apogeeAlt;
 
-        // Recalculate TLI date based on optimal true anomaly
-        // Time from periapsis (TLI) to reach the optimal true anomaly at LOI
-        const timeToOptimalNu = calculateTimeToTrueAnomaly(result.trueAnomaly, launchEvent.perigeeAlt, result.apogeeAlt);
-        const newTLIDate = new Date(loiDate.getTime() - timeToOptimalNu * 1000);
-
         // Update TLI date
-        setLaunchEventDate(launchEvent, newTLIDate);
-        guiParams.launchDate = newTLIDate.toISOString().slice(0, 16);
-        if (launchDateController) {
-            launchDateController.updateDisplay();
-        }
+        setLaunchEventDate(launchEvent, result.newTLIDate);
+        guiParams.launchDate = result.newTLIDate.toISOString().slice(0, 16);
+        launchDateController?.updateDisplay();
 
-        // Update controllers
+        // Update controllers and visualization
         raanController.updateDisplay();
         apogeeController.updateDisplay();
-
-        // Mark dirty and update visualization
         markDirtyAndUpdate();
 
-        // Re-enable event handlers
         isUpdatingFromCode = false;
 
-        // Use native alert for E2E testing compatibility
-        alert(`Optimization complete!\n\nOptimal RAAN: ${result.raan.toFixed(2)}°\nOptimal Apogee: ${result.apogeeAlt.toFixed(1)} km\nOptimal True Anomaly: ${result.trueAnomaly.toFixed(1)}°\n\nClosest approach: ${result.distance.toFixed(1)} km\n\nTLI date adjusted to ${newTLIDate.toISOString().slice(0, 16)}\nto reach ν=${result.trueAnomaly.toFixed(1)}° at LOI`);
+        alert(`Optimization complete!\n\nOptimal RAAN: ${result.raan.toFixed(2)}°\nOptimal Apogee: ${result.apogeeAlt.toFixed(1)} km\nOptimal True Anomaly: ${result.trueAnomaly.toFixed(1)}°\n\nClosest approach: ${result.distance.toFixed(1)} km\n\nTLI date adjusted to ${result.newTLIDate.toISOString().slice(0, 16)}\nto reach ν=${result.trueAnomaly.toFixed(1)}° at LOI`);
     });
 
     // Insert button into GUI
-    if (launchEventGUI && (launchEventGUI as any).$children) {
-        const guiElement = (launchEventGUI as any).domElement;
-        const childrenContainer = guiElement.querySelector('.children');
-        if (childrenContainer) {
-            // Create a wrapper for the button to match lil-gui styling
-            const buttonWrapper = document.createElement('div');
-            buttonWrapper.style.cssText = 'padding: 4px 8px;';
-            buttonWrapper.appendChild(autoOptimizeBtn);
-            childrenContainer.appendChild(buttonWrapper);
-            autoOptimizeBtnWrapper = buttonWrapper;
-        }
-    }
+    autoOptimizeBtnWrapper = insertButtonIntoGUI(launchEventGUI, autoOptimizeBtn);
 
-    // Set initial button visibility after GUI is created
-    // This must happen after the autoLOIController is created so we check the current state
+    // Set initial button visibility
     if (autoOptimizeBtnWrapper) {
         autoOptimizeBtnWrapper.style.display = launchEvent.autoLOI ? 'block' : 'none';
     }
@@ -4250,42 +4241,6 @@ function createLaunchEventGUI(): void {
     launchEventGUI.add(guiParams, 'save').name('💾 Save');
     launchEventGUI.add(guiParams, 'delete').name('🗑️ Delete');
 
-    // Helper functions
-    function markDirtyAndUpdate() {
-        draftState.isDirty = true;
-
-        // Sync launchEvent to BOTH params AND planGameParamSet
-        // This ensures the parameter set is always in sync with launchEvent
-        planGameParamSet.loadFromLaunchEvent(launchEvent);
-        planGameParamSet.copyTo(params);
-
-        // Update GUI controllers
-        chandrayaanControllers.inclination?.updateDisplay();
-        chandrayaanControllers.nodes?.updateDisplay();
-        chandrayaanControllers.omega?.updateDisplay();
-        chandrayaanControllers.perigeeAlt?.updateDisplay();
-        chandrayaanControllers.apogeeAlt?.updateDisplay();
-        chandrayaanControllers.trueAnomaly?.updateDisplay();
-
-        // Invalidate cache so fresh calculations use current renderDate
-        invalidateOrbitalParamsCache();
-
-        // Update orbital period display (depends on perigee/apogee which may have changed)
-        updateChandrayaanPeriodDisplay();
-
-        // Update visualization based on ACTIVE timeline (respects which checkbox is selected)
-        // updateRenderDate() sets renderControl.renderDate which becomes the source of truth
-        // All render functions will pull from getRenderDate() automatically
-        updateRenderDate();
-
-        // Update orbital geometry (nodes, planes, angle visualizations)
-        // These depend on orbital parameters (inclination, RAAN, omega) which may have changed
-        updateChandrayaanNodePositions();
-        updateChandrayaanOrbitCircle();
-        updateRAANLines();
-        updateAOPLines();
-    }
-
     // Setup event subscriptions after GUI is created
     setupEventSubscriptions();
 }
@@ -4301,12 +4256,7 @@ function saveLaunchEvent(): void {
         planGameParamSet.copyTo(params);
 
         // Update all GUI displays to reflect saved values
-        chandrayaanControllers.inclination?.updateDisplay();
-        chandrayaanControllers.nodes?.updateDisplay();
-        chandrayaanControllers.omega?.updateDisplay();
-        chandrayaanControllers.perigeeAlt?.updateDisplay();
-        chandrayaanControllers.apogeeAlt?.updateDisplay();
-        chandrayaanControllers.trueAnomaly?.updateDisplay();
+        updateChandrayaanGUIDisplays();
     }
 
     // Invalidate cache so fresh calculations use current renderDate
@@ -4490,9 +4440,205 @@ function animate(): void {
     renderer.render(scene, camera);
 }
 
+// Floating Timeline Logic
+let floatingTimelineType: 'TLI' | 'LOI' | null = null;
+
+function showFloatingTimeline(type: 'TLI' | 'LOI', currentDate: Date): void {
+    const overlay = document.getElementById('floating-timeline-overlay');
+    const label = document.getElementById('floating-timeline-label');
+    const slider = document.getElementById('floating-timeline-slider') as HTMLInputElement;
+    const display = document.getElementById('floating-timeline-display');
+    const timelinePanel = document.getElementById('timeline-panel');
+
+    if (!overlay || !label || !slider || !display) return;
+
+    floatingTimelineType = type;
+
+    // Set label
+    label.textContent = type === 'TLI' ? 'TLI Date' : 'LOI Date';
+
+    // Calculate days elapsed from start date
+    const startDate = timelineState.startDate;
+    const daysElapsed = (currentDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
+
+    // Update slider
+    slider.value = String(daysElapsed);
+    if (display) display.textContent = `Day ${daysElapsed.toFixed(1)}`;
+
+    // Show overlay
+    overlay.style.display = 'block';
+
+    // Disable main timeline
+    if (timelinePanel) timelinePanel.classList.add('floating-active');
+}
+
+function hideFloatingTimeline(): void {
+    const overlay = document.getElementById('floating-timeline-overlay');
+    const timelinePanel = document.getElementById('timeline-panel');
+
+    if (overlay) overlay.style.display = 'none';
+    if (timelinePanel) timelinePanel.classList.remove('floating-active');
+
+    floatingTimelineType = null;
+}
+
+function setupCollapsiblePanels(): void {
+    // Setup GUI (RHS) panel collapse button
+    const guiCollapseBtn = document.getElementById('gui-collapse-btn');
+    const gui = document.querySelector('.lil-gui') as HTMLElement;
+    const actionsPanel = document.getElementById('actions-panel');
+    const actionsCollapseBtn = document.getElementById('actions-collapse-btn');
+
+    if (guiCollapseBtn && gui) {
+        let guiCollapsed = false;
+
+        guiCollapseBtn.addEventListener('click', () => {
+            guiCollapsed = !guiCollapsed;
+
+            if (guiCollapsed) {
+                gui.classList.add('collapsed');
+                guiCollapseBtn.classList.add('collapsed');
+                guiCollapseBtn.innerHTML = '▶ RHS';
+
+                // Move actions panel to the right when RHS is collapsed
+                if (actionsPanel) actionsPanel.classList.add('rhs-collapsed');
+                if (actionsCollapseBtn) actionsCollapseBtn.classList.add('rhs-collapsed');
+            } else {
+                gui.classList.remove('collapsed');
+                guiCollapseBtn.classList.remove('collapsed');
+                guiCollapseBtn.innerHTML = '◀ RHS';
+
+                // Move actions panel back when RHS is expanded
+                if (actionsPanel) actionsPanel.classList.remove('rhs-collapsed');
+                if (actionsCollapseBtn) actionsCollapseBtn.classList.remove('rhs-collapsed');
+            }
+        });
+    }
+
+    // Setup Actions panel collapse button
+    if (actionsCollapseBtn && actionsPanel) {
+        let actionsCollapsed = false;
+
+        actionsCollapseBtn.addEventListener('click', () => {
+            actionsCollapsed = !actionsCollapsed;
+
+            if (actionsCollapsed) {
+                actionsPanel.classList.add('collapsed');
+                actionsCollapseBtn.classList.add('collapsed');
+                actionsCollapseBtn.innerHTML = '▶ TLI';
+            } else {
+                actionsPanel.classList.remove('collapsed');
+                actionsCollapseBtn.classList.remove('collapsed');
+                actionsCollapseBtn.innerHTML = '◀ TLI';
+            }
+        });
+
+        // Show/hide actions collapse button based on actions panel visibility
+        // Use both class and style observation to catch all visibility changes
+        const observer = new MutationObserver(() => {
+            const isVisible = actionsPanel.classList.contains('visible') &&
+                             actionsPanel.style.display !== 'none';
+
+            if (isVisible) {
+                actionsCollapseBtn.classList.add('visible');
+            } else {
+                actionsCollapseBtn.classList.remove('visible');
+                // Only remove collapsed class if it's present to avoid triggering observer infinitely
+                if (actionsPanel.classList.contains('collapsed')) {
+                    actionsPanel.classList.remove('collapsed');
+                }
+                actionsCollapseBtn.classList.remove('collapsed');
+                actionsCollapseBtn.innerHTML = '◀ TLI';
+                actionsCollapsed = false;
+            }
+        });
+
+        observer.observe(actionsPanel, {
+            attributes: true,
+            attributeFilter: ['class', 'style']
+        });
+
+        // Also check initial state
+        if (actionsPanel.classList.contains('visible')) {
+            actionsCollapseBtn.classList.add('visible');
+        }
+    }
+}
+
+function setupFloatingTimeline(): void {
+    const overlay = document.getElementById('floating-timeline-overlay');
+    const closeBtn = document.getElementById('floating-timeline-close');
+    const slider = document.getElementById('floating-timeline-slider') as HTMLInputElement;
+    const display = document.getElementById('floating-timeline-display');
+
+    if (!overlay || !closeBtn || !slider || !display) return;
+
+    // Close button handler
+    closeBtn.addEventListener('click', hideFloatingTimeline);
+
+    // ESC key handler
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && overlay.style.display === 'block') {
+            hideFloatingTimeline();
+        }
+    });
+
+    // Click outside to close
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+            hideFloatingTimeline();
+        }
+    });
+
+    // Slider input handler
+    slider.addEventListener('input', () => {
+        const days = parseFloat(slider.value);
+        if (display) display.textContent = `Day ${days.toFixed(1)}`;
+
+        // Calculate new date
+        const startDate = timelineState.startDate;
+        const newDate = new Date(startDate.getTime() + days * 24 * 60 * 60 * 1000);
+
+        // Update the appropriate date in launch event
+        if (floatingTimelineType === 'TLI') {
+            setLaunchEventDate(launchEvent, newDate);
+        } else if (floatingTimelineType === 'LOI') {
+            setLaunchEventMoonInterceptDate(launchEvent, newDate);
+
+            // If sync is enabled, TLI date will be auto-computed by event handlers
+            // The launchDateController will update via event subscription
+        }
+
+        // Trigger visualization update in Plan mode
+        if (params.appMode === 'Plan' && launchEvent.exists) {
+            // When dragging LOI slider, show Moon at LOI date
+            // When dragging TLI slider, show Moon at TLI date
+            const dateForRendering = floatingTimelineType === 'LOI' ? launchEvent.moonInterceptDate : launchEvent.date;
+            if (dateForRendering) {
+                renderControl.renderDate = dateForRendering;
+            }
+
+            // Invalidate cache so getChandrayaanParams() recalculates with new render date
+            invalidateOrbitalParamsCache();
+
+            // Update visualizations directly without syncing (which would cause infinite loop)
+            updateChandrayaanOrbit();
+
+            // Update Moon position based on the new render date
+            if (params.moonMode === 'Real') {
+                updateMoonFromRealPosition();
+            }
+        }
+    });
+}
+
 // Initialize when DOM is loaded
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', () => {
+        init();
+        setupFloatingTimeline();
+    });
 } else {
     init();
+    setupFloatingTimeline();
 }
