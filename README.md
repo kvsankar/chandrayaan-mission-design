@@ -10,7 +10,7 @@ An interactive 3D visualization of Chandrayaan-3's orbital mechanics, demonstrat
 
 This interactive animation was developed to educate astronomy and space enthusiasts about the Chandrayaan 3 mission design. This animation was first used in the [Bangalore Astronomical Society](https://bas.org.in/) Astronomy Workshop for Enthusiasts (AWE) 2025 at the [Jain School of Sciences](https://jainuniversity.ac.in/sos/) on 15th November2025.
 
-The animation has three modes: Explore, Plan, and Game. The Explore mode teaches about the geometry of lunar and spacecraft orbits. The Plan lets you plan a direc transfer lunar trajectory. I am yet to add support for the ascent orbit, earth bound orbit raising maneuvers, lunar capture, lunar orbit lowering maneuers, and the descent orbit. However, the Plan mode considers constraints to the Argument of Perigee (AoP) and inclination. The Game mode lets you play the mission. 
+The animation has three modes: Explore, Plan, and Game. The Explore mode teaches about the geometry of lunar and spacecraft orbits. The Plan lets you plan a direc transfer lunar trajectory. I am yet to add support for the ascent orbit, earth bound orbit raising maneuvers, lunar capture, lunar orbit lowering maneuers, and the descent orbit. However, the Plan mode considers constraints to the Argument of Perigee (AoP) and inclination. The Game mode lets you play the mission.
 
 ## Features
 

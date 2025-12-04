@@ -36,3 +36,7 @@ coverage/
 
 # Vite cache
 .vite/
+
+# Claude conversations and retrospectives
+claude-conversations/
+docs/retrospectives/
