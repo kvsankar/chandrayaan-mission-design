@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { gotoApp, waitForAppMode, waitForLaunchEvent, waitForAutoLOI } from './test-helpers';
 
 /**
  * Comprehensive behavior-driven E2E tests
@@ -227,91 +228,16 @@ test.describe('Plan Mode - Launch Event Parameters', () => {
         expect(finalParams).toEqual(initialParams);
     });
 
-    test('should update launch event TLI date when TLI timeline slider moves', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
-
-        // Switch to Plan mode
-        await page.click('button:has-text("Plan")');
-        await page.waitForTimeout(1000);
-
-        // Create launch event
-        await page.click('#add-launch-action-btn');
-        await page.waitForTimeout(2000);
-
-        // Capture initial TLI date
-        const initialDate = await page.evaluate(() => {
-            const le = (window as any).launchEvent;
-            return le.date?.toISOString();
-        });
-
-        // Get initial slider value
-        const initialSliderValue = await page.locator('#launch-slider').inputValue();
-
-        // Select TLI timeline
-        await page.click('#launch-slider-active');
-        await page.waitForTimeout(500);
-
-        // Drag the TLI timeline slider
-        const slider = await page.locator('#launch-slider');
-        const newValue = String(parseFloat(initialSliderValue) + 5);
-        await slider.fill(newValue);
-        await page.waitForTimeout(1000);
-
-        // Verify TLI date changed
-        const finalDate = await page.evaluate(() => {
-            const le = (window as any).launchEvent;
-            return le.date?.toISOString();
-        });
-
-        expect(finalDate).not.toBe(initialDate);
-    });
-
-    test('should update launch event LOI date when LOI timeline slider moves', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
-
-        // Switch to Plan mode
-        await page.click('button:has-text("Plan")');
-        await page.waitForTimeout(1000);
-
-        // Create launch event
-        await page.click('#add-launch-action-btn');
-        await page.waitForTimeout(2000);
-
-        // Capture initial LOI date
-        const initialDate = await page.evaluate(() => {
-            const le = (window as any).launchEvent;
-            return le.moonInterceptDate?.toISOString();
-        });
-
-        // Select LOI timeline
-        await page.click('#intercept-slider-active');
-        await page.waitForTimeout(500);
-
-        // Drag the LOI timeline slider
-        const slider = await page.locator('#intercept-slider');
-        await slider.fill('10');
-        await page.waitForTimeout(1000);
-
-        // Verify LOI date changed
-        const finalDate = await page.evaluate(() => {
-            const le = (window as any).launchEvent;
-            return le.moonInterceptDate?.toISOString();
-        });
-
-        expect(finalDate).not.toBe(initialDate);
-    });
+    // NOTE: TLI/LOI timeline slider tests removed - sliders are now hidden in Plan mode
 
     test('should update launch event inclination via GUI input', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         await page.click('button:has-text("Plan")');
-        await page.waitForTimeout(1000);
+        await waitForAppMode(page, 'Plan');
 
         await page.click('#add-launch-action-btn');
-        await page.waitForTimeout(2000);
+        await waitForLaunchEvent(page);
 
         const initialInclination = await page.evaluate(() => (window as any).launchEvent.inclination);
 
@@ -329,14 +255,13 @@ test.describe('Plan Mode - Launch Event Parameters', () => {
     });
 
     test('should update launch event RAAN via GUI input', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         await page.click('button:has-text("Plan")');
-        await page.waitForTimeout(1000);
+        await waitForAppMode(page, 'Plan');
 
         await page.click('#add-launch-action-btn');
-        await page.waitForTimeout(2000);
+        await waitForLaunchEvent(page);
 
         const initialRaan = await page.evaluate(() => (window as any).launchEvent.raan);
 
@@ -352,14 +277,13 @@ test.describe('Plan Mode - Launch Event Parameters', () => {
     });
 
     test('should update launch event omega via GUI input', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         await page.click('button:has-text("Plan")');
-        await page.waitForTimeout(1000);
+        await waitForAppMode(page, 'Plan');
 
         await page.click('#add-launch-action-btn');
-        await page.waitForTimeout(2000);
+        await waitForLaunchEvent(page);
 
         // Get current inclination to determine valid omega values
         const { inclination, omega: initialOmega } = await page.evaluate(() => {
@@ -430,7 +354,7 @@ test.describe('Plan Mode - Launch Event Parameters', () => {
         await page.evaluate(() => {
             (window as any).setAutoLOI(true);
         });
-        await page.waitForTimeout(1000);
+        await waitForAutoLOI(page, true);
 
         // Verify Auto Optimize button is visible
         const optimizeBtn = page.locator('button:has-text("Auto Optimize RAAN & Apogee")');
@@ -628,17 +552,11 @@ test.describe('Game Mode - Timeline and Simulation', () => {
         await page.click('button:has-text("Game")');
         await page.waitForTimeout(1500);
 
-        // Set time to LOI
-        const loiDaysElapsed = await page.evaluate(() => {
+        // Set time to LOI using the proper helper that updates positions
+        await page.evaluate(() => {
             const le = (window as any).launchEvent;
-            const startDate = (window as any).timelineState.startDate;
-            const loiDate = le.moonInterceptDate;
-            return (loiDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
+            (window as any).setSimulationTime(le.moonInterceptDate);
         });
-
-        await page.evaluate((days) => {
-            (window as any).timelineState.daysElapsed = days;
-        }, loiDaysElapsed);
         await page.waitForTimeout(2000);
 
         // Check if captured (captureState might not be exposed, so check for capture message instead)

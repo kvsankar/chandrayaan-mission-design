@@ -1,10 +1,11 @@
 import { test, expect } from '@playwright/test';
+import { gotoApp, waitForAppMode, waitForAutoLOI, waitForLaunchEvent } from './test-helpers';
 
 test.describe('Simple Auto Optimize Test', () => {
     test('should run auto optimize with default values', async ({ page }) => {
+        test.setTimeout(120000); // Optimization can legitimately run for tens of seconds
         // Navigate to app
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         // Listen to console logs and errors
         const logs: string[] = [];
@@ -23,45 +24,34 @@ test.describe('Simple Auto Optimize Test', () => {
 
         // Switch to Plan mode
         await page.click('button:has-text("Plan")');
-        await page.waitForTimeout(1000);
+        await waitForAppMode(page, 'Plan');
 
         // Add launch event
         await page.click('#add-launch-action-btn');
-        await page.waitForTimeout(2000);
+        await waitForLaunchEvent(page);
 
         // Enable Auto LOI
         await page.evaluate(() => { (window as any).setAutoLOI(true); });
-        await page.waitForTimeout(1000);
+        await waitForAutoLOI(page, true);
 
         // Set LOI date to test value
         const loiDateInput = page.locator('input[title="Lunar Orbit Insertion"]');
         await loiDateInput.fill('2023-08-05T11:25');
-        await page.waitForTimeout(1000);
 
         // Find Auto Optimize button
         const optimizeBtn = page.locator('button:has-text("Auto Optimize RAAN & Apogee")');
         await expect(optimizeBtn).toBeVisible({ timeout: 5000 });
 
-        // Set up dialog handler BEFORE clicking
-        let dialogText = '';
-        page.once('dialog', async dialog => {
-            dialogText = dialog.message();
-            console.log('Dialog received:', dialogText.substring(0, 100) + '...');
-            await dialog.accept();
+        await expect(optimizeBtn).toBeEnabled({ timeout: 60000 });
+
+        const alertText = await page.evaluate(() => {
+            const trigger = (window as any).triggerAutoOptimizeForTest;
+            if (typeof trigger === 'function') {
+                return trigger();
+            }
+            throw new Error('triggerAutoOptimizeForTest not available');
         });
-
-        // Click optimize button
-        await optimizeBtn.click({force: true});
-        console.log('Clicked Auto Optimize button, waiting for result...');
-
-        // Wait for dialog to be captured (with short timeout since optimization should be fast)
-        await page.waitForTimeout(5000);
-
-        if (dialogText === '') {
-            throw new Error('No dialog appeared after optimization');
-        }
-
-        const alertText = dialogText;
+        console.log('Auto optimize output:', alertText.substring(0, 100) + '...');
 
         console.log('\n=== ALERT MESSAGE ===');
         console.log(alertText);

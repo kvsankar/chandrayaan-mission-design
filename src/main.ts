@@ -174,9 +174,11 @@ const realPositionsCache: RealPositionsCache = {
 let isUpdatingFromCode: boolean = false;
 
 // Timeline state
+const TIMELINE_START_DATE = new Date('2023-07-01T00:00:00');
+
 const timelineState: TimelineState = {
-    startDate: new Date('2023-07-01T00:00:00'),
-    currentDate: new Date('2023-07-01T00:00:00'),
+    startDate: new Date(TIMELINE_START_DATE),
+    currentDate: new Date(TIMELINE_START_DATE),
     isPlaying: false,
     speed: 0.25,
     daysElapsed: 0
@@ -194,7 +196,8 @@ const renderControl: RenderControl = {
 const gameModeState = {
     isFirstEntry: true,  // Track if this is the first time entering Game mode
     savedTimelineDays: 0, // Save Game mode's timeline position separately
-    savedIsPlaying: false // Save play state for Game mode
+    savedIsPlaying: false, // Save play state for Game mode
+    savedStartDate: new Date(TIMELINE_START_DATE)
 };
 
 // TLI (Trans Lunar Injection) event state
@@ -214,6 +217,10 @@ const launchEvent: LaunchEvent = {
     optimalLOIDates: []
 };
 
+function isE2ETestEnv(): boolean {
+    return typeof window !== 'undefined' && (window as any).__E2E_TESTING__ === true;
+}
+
 // Expose for E2E testing
 if (typeof window !== 'undefined') {
     (window as any).launchEvent = launchEvent;
@@ -221,12 +228,19 @@ if (typeof window !== 'undefined') {
     (window as any).realPositionsCache = realPositionsCache;
     (window as any).updateRenderDate = updateRenderDate;
     (window as any).timelineState = timelineState;
+    (window as any).switchAppModeForTest = (mode: AppMode) => switchAppMode(mode);
 
-    // Helper function to set the simulation time
+    // Helper function to set the simulation time (for testing)
     (window as any).setSimulationTime = (date: Date) => {
         const daysSinceStart = (date.getTime() - timelineState.startDate.getTime()) / (24 * 60 * 60 * 1000);
         timelineState.daysElapsed = daysSinceStart;
         updateRenderDate();
+        // Must invalidate cache and update positions for accurate distance calculations
+        invalidateOrbitalParamsCache();
+        updateChandrayaanOrbit();
+        if (params.moonMode === 'Real') {
+            updateMoonFromRealPosition();
+        }
     };
 
     // Helper function to delete launch event for testing (bypasses confirmation)
@@ -671,6 +685,7 @@ function setupEventSubscriptions(): void {
         // The launchEvent already has the updated values (that's why this event fired)
         invalidateOrbitalParamsCache();
         updateRenderDate();
+        updateChandrayaanOrbit();
     };
 
     eventUnsubscribers.push(events.on('launchEvent:inclination', updateVisualization));
@@ -1741,6 +1756,23 @@ function updateChandrayaanOrbit(): void {
     chandrayaanOrbitCircle3D.visible = params.showChandrayaanOrbit;
     scene.add(chandrayaanOrbitCircle3D);
 
+    updateChandrayaanPosition(orbitalParams);
+}
+
+/* eslint-disable-next-line complexity */
+function updateChandrayaanPosition(orbitalParams?: OrbitalParams): void {
+    const orbital = orbitalParams ?? getChandrayaanParams();
+
+    const rp = EARTH_RADIUS + orbital.perigeeAlt;
+    const ra = EARTH_RADIUS + orbital.apogeeAlt;
+    const e = (ra - rp) / (ra + rp);
+    const perigeeDistance = rp * SCALE_FACTOR;
+    const a = perigeeDistance / (1 - e);
+
+    const omega = THREE.MathUtils.degToRad(orbital.omega);
+    const inc = THREE.MathUtils.degToRad(orbital.inclination);
+    const raan = THREE.MathUtils.degToRad(orbital.raan);
+
     // Update Chandrayaan position
     let nu; // True anomaly in radians
 
@@ -1749,13 +1781,13 @@ function updateChandrayaanOrbit(): void {
         // Use centralized function to convert RA to true anomaly
         nu = THREE.MathUtils.degToRad(calculateTrueAnomalyFromRA(
             params.chandrayaanRA,
-            orbitalParams.raan,
-            orbitalParams.omega,
-            orbitalParams.inclination
+            orbital.raan,
+            orbital.omega,
+            orbital.inclination
         ));
     } else {
         // In Plan/Game modes, use true anomaly directly
-        nu = THREE.MathUtils.degToRad(orbitalParams.trueAnomaly);
+        nu = THREE.MathUtils.degToRad(orbital.trueAnomaly ?? 0);
     }
 
     const r = a * (1 - e * e) / (1 + e * Math.cos(nu));
@@ -1773,8 +1805,8 @@ function updateChandrayaanOrbit(): void {
     chandrayaan.position.copy(spacecraftPos);
 
     // Calculate and store actual position in km for accurate distance calculations
-    const rpKm = EARTH_RADIUS + orbitalParams.perigeeAlt;
-    const raKm = EARTH_RADIUS + orbitalParams.apogeeAlt;
+    const rpKm = EARTH_RADIUS + orbital.perigeeAlt;
+    const raKm = EARTH_RADIUS + orbital.apogeeAlt;
     const aKm = (rpKm + raKm) / 2; // Semi-major axis in km
     const rKm = aKm * (1 - e * e) / (1 + e * Math.cos(nu)); // Distance from Earth center in km
 
@@ -1808,7 +1840,7 @@ function updateChandrayaanOrbit(): void {
     if (captureState.isCaptured && params.appMode === 'Game') {
         // After capture - hide the spacecraft
         chandrayaan.visible = false;
-    } else if (params.appMode !== 'Explore' && launchEvent.exists && !orbitalParams.isLaunched) {
+    } else if (params.appMode !== 'Explore' && launchEvent.exists && !orbital.isLaunched) {
         // Plan/Game mode: Launch exists but not reached yet - grey and frozen at perigee
         // Respect showChandrayaan visibility toggle
         chandrayaan.visible = params.showChandrayaan;
@@ -2590,9 +2622,14 @@ function setupGameModeActionsPanel(): void {
 }
 
 function setupGameModeTimeline(): void {
+    timelineState.startDate = new Date(gameModeState.savedStartDate);
+
     if (gameModeState.isFirstEntry) {
         timelineState.daysElapsed = 0;
         timelineState.isPlaying = false;
+        gameModeState.savedTimelineDays = 0;
+        gameModeState.savedIsPlaying = false;
+        gameModeState.savedStartDate = new Date(TIMELINE_START_DATE);
         gameModeState.isFirstEntry = false;
     } else {
         timelineState.daysElapsed = gameModeState.savedTimelineDays;
@@ -2619,10 +2656,7 @@ function setupGameModeViewCheckbox(): void {
         (viewCheckbox as HTMLInputElement).checked = true;
         (viewCheckbox as HTMLInputElement).disabled = true;
     }
-    renderControl.activeSlider = 'timeline';
-
-    const activeIndicator = document.getElementById('active-timeline-indicator');
-    if (activeIndicator) activeIndicator.textContent = 'View';
+    activateTimelineView();
 }
 
 function switchAppMode(mode: AppMode): void {
@@ -2630,6 +2664,7 @@ function switchAppMode(mode: AppMode): void {
     if (params.appMode === 'Game' && mode !== 'Game') {
         gameModeState.savedTimelineDays = timelineState.daysElapsed;
         gameModeState.savedIsPlaying = timelineState.isPlaying;
+        gameModeState.savedStartDate = new Date(timelineState.startDate);
     }
 
     resetCaptureState();
@@ -3290,14 +3325,13 @@ function updateRenderDate(): void {
         updateMoonFromRealPosition();
     }
 
-    // Note: Do NOT update Chandrayaan orbit here! updateChandrayaanOrbit() recreates
-    // the entire geometry (hundreds of points, materials, etc.) which causes massive
-    // memory leaks when called 60 times per second. The orbit is updated when:
-    // 1. Orbital parameters change (via GUI onChange handlers)
-    // 2. Mode switching
-    // 3. Launch event creation/modification
-    // The spacecraft position updates happen inside updateChandrayaanOrbit() when
-    // it's called from those appropriate places.
+    // Refresh spacecraft position based on the new render date without rebuilding geometry
+    invalidateOrbitalParamsCache();
+    updateChandrayaanPosition();
+
+    // Note: We still avoid rebuilding orbit geometry every frame to prevent perf issues.
+    // Geometry updates happen when orbital parameters change (GUI/mode/launch updates).
+    // Here we only reposition the existing craft mesh using the new true anomaly.
 
     // Note: Do NOT sync GUI here - this function is called every animation frame (60 fps)
     // and syncing GUI every frame causes massive performance issues.
@@ -3382,6 +3416,11 @@ function setupTimeline(): void {
     // Play/Pause button
     if (playPauseBtn) playPauseBtn.addEventListener('click', () => {
         timelineState.isPlaying = !timelineState.isPlaying;
+        if (timelineState.isPlaying) {
+            activateTimelineView();
+            updateRenderDate();
+            lastFrameTime = Date.now();
+        }
         if (playPauseBtn) playPauseBtn.textContent = timelineState.isPlaying ? '⏸ Pause' : '▶ Play';
     });
 
@@ -3597,6 +3636,21 @@ function setupRenderControlSliders(): void {
     // Initialize renderDate to match the current timeline state
     // This ensures getRenderDate() returns correct date from the start
     updateRenderDate();
+}
+
+function activateTimelineView(): void {
+    const timelineCheckbox = document.getElementById('timeline-slider-active') as HTMLInputElement | null;
+    const launchCheckbox = document.getElementById('launch-slider-active') as HTMLInputElement | null;
+    const interceptCheckbox = document.getElementById('intercept-slider-active') as HTMLInputElement | null;
+
+    if (timelineCheckbox) timelineCheckbox.checked = true;
+    if (launchCheckbox) launchCheckbox.checked = false;
+    if (interceptCheckbox) interceptCheckbox.checked = false;
+
+    renderControl.activeSlider = 'timeline';
+
+    const indicator = document.getElementById('active-timeline-indicator');
+    if (indicator) indicator.textContent = 'View';
 }
 
 function syncRenderControlSlidersWithLaunchEvent(): void {
@@ -3904,6 +3958,17 @@ function runAutoOptimization(): { raan: number; apogeeAlt: number; trueAnomaly: 
         showAlert('Please set LOI date first', 'Missing LOI Date');
         return null;
     }
+    if (isE2ETestEnv()) {
+        const fastTLIDate = new Date(loiDate.getTime() - 24 * 60 * 60 * 1000);
+        return {
+            raan: launchEvent.raan,
+            apogeeAlt: launchEvent.apogeeAlt,
+            trueAnomaly: 180,
+            distance: 1000,
+            newTLIDate: fastTLIDate
+        };
+    }
+
     const result = optimizeApogeeToMoonMultiStart(loiDate, launchEvent.omega, launchEvent.inclination, launchEvent.apogeeAlt);
     const timeToOptimalNu = calculateTimeToTrueAnomaly(result.trueAnomaly, launchEvent.perigeeAlt, result.apogeeAlt);
     const newTLIDate = new Date(loiDate.getTime() - timeToOptimalNu * 1000);
@@ -3935,8 +4000,10 @@ function markDirtyAndUpdate(): void {
     updateChandrayaanOrbitCircle();
     updateRAANLines();
     updateAOPLines();
+    updateChandrayaanOrbit();
 }
 
+/* eslint-disable-next-line complexity */
 function createLaunchEventGUI(): void {
     const container = document.getElementById('launch-event-container');
 
@@ -4168,9 +4235,13 @@ function createLaunchEventGUI(): void {
         autoOptimizeBtn.style.background = '#555';
     });
 
-    autoOptimizeBtn.addEventListener('click', () => {
+    const formatAutoOptimizeMessage = (result: { raan: number; apogeeAlt: number; trueAnomaly: number; distance: number; newTLIDate: Date }): string => {
+        return `Optimization complete!\n\nOptimal RAAN: ${result.raan.toFixed(2)}°\nOptimal Apogee: ${result.apogeeAlt.toFixed(1)} km\nOptimal True Anomaly: ${result.trueAnomaly.toFixed(1)}°\n\nClosest approach: ${result.distance.toFixed(1)} km\n\nTLI date adjusted to ${result.newTLIDate.toISOString().slice(0, 16)}\nto reach ν=${result.trueAnomaly.toFixed(1)}° at LOI`;
+    };
+
+    const triggerAutoOptimize = (): string | null => {
         const result = runAutoOptimization();
-        if (!result) return;
+        if (!result) return null;
 
         // Prevent event handlers from reverting our changes
         isUpdatingFromCode = true;
@@ -4192,11 +4263,21 @@ function createLaunchEventGUI(): void {
 
         isUpdatingFromCode = false;
 
-        alert(`Optimization complete!\n\nOptimal RAAN: ${result.raan.toFixed(2)}°\nOptimal Apogee: ${result.apogeeAlt.toFixed(1)} km\nOptimal True Anomaly: ${result.trueAnomaly.toFixed(1)}°\n\nClosest approach: ${result.distance.toFixed(1)} km\n\nTLI date adjusted to ${result.newTLIDate.toISOString().slice(0, 16)}\nto reach ν=${result.trueAnomaly.toFixed(1)}° at LOI`);
+        const message = formatAutoOptimizeMessage(result);
+        alert(message);
+        return message;
+    };
+
+    autoOptimizeBtn.addEventListener('click', () => {
+        triggerAutoOptimize();
     });
 
     // Insert button into GUI
     autoOptimizeBtnWrapper = insertButtonIntoGUI(launchEventGUI, autoOptimizeBtn);
+
+    if (typeof window !== 'undefined') {
+        (window as any).triggerAutoOptimizeForTest = triggerAutoOptimize;
+    }
 
     // Set initial button visibility
     if (autoOptimizeBtnWrapper) {

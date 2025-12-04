@@ -1,11 +1,11 @@
 import { test, expect } from '@playwright/test';
+import { gotoApp, waitForAppMode, waitForAutoLOI, waitForLaunchEvent } from './test-helpers';
 
 test.describe('Mode Transition Tests', () => {
     test('should maintain separate parameter sets for Explore vs Plan/Game modes', async ({ page }) => {
         console.log('\n=== PARAMETER ISOLATION TEST ===');
 
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         console.log('\n--- Step 1: Capture default Explore mode parameters ---');
 
@@ -22,10 +22,10 @@ test.describe('Mode Transition Tests', () => {
         console.log('\n--- Step 2: Switch to Plan mode and create launch event ---');
 
         await page.click('button:has-text("Plan")');
-        await page.waitForTimeout(1000);
+        await waitForAppMode(page, 'Plan');
 
         await page.click('#add-launch-action-btn');
-        await page.waitForTimeout(2000);
+        await waitForLaunchEvent(page);
 
         // Get Plan mode parameters (will be defaults from launch event)
         const planParams1 = await page.evaluate(() => {
@@ -43,7 +43,7 @@ test.describe('Mode Transition Tests', () => {
         console.log('\n--- Step 3: Switch back to Explore and verify isolation ---');
 
         await page.click('button:has-text("Explore")');
-        await page.waitForTimeout(1000);
+        await waitForAppMode(page, 'Explore');
 
         const exploreParams2 = await page.evaluate(() => ({
             inclination: (window as any).params.chandrayaanInclination,
@@ -59,7 +59,7 @@ test.describe('Mode Transition Tests', () => {
         console.log('\n--- Step 4: Return to Plan and verify parameters unchanged ---');
 
         await page.click('button:has-text("Plan")');
-        await page.waitForTimeout(1000);
+        await waitForAppMode(page, 'Plan');
 
         const planParams2 = await page.evaluate(() => {
             const le = (window as any).launchEvent;
@@ -78,7 +78,7 @@ test.describe('Mode Transition Tests', () => {
         console.log('\n--- Step 5: Switch to Game and verify same as Plan ---');
 
         await page.click('button:has-text("Game")');
-        await page.waitForTimeout(1000);
+        await waitForAppMode(page, 'Game');
 
         const gameParams = await page.evaluate(() => {
             const le = (window as any).launchEvent;
@@ -104,14 +104,13 @@ test.describe('Mode Transition Tests', () => {
         // that would require refactoring the mode transition logic to be more resilient.
         console.log('\n=== RAPID MODE SWITCHING TEST ===');
 
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         // Create launch event in Plan mode
         await page.click('button:has-text("Plan")');
-        await page.waitForTimeout(1000);
+        await waitForAppMode(page, 'Plan');
         await page.click('#add-launch-action-btn');
-        await page.waitForTimeout(2000);
+        await waitForLaunchEvent(page);
 
         // Set known parameters
         await page.evaluate(() => {
@@ -202,7 +201,7 @@ test.describe('Mode Transition Tests', () => {
 
         console.log('\n--- Transition: Plan → Game ---');
         await page.click('button:has-text("Game")');
-        await page.waitForTimeout(1000);
+        await waitForAppMode(page, 'Game');
 
         const gameCheck1 = await page.evaluate(() => {
             const le = (window as any).launchEvent;
@@ -218,7 +217,7 @@ test.describe('Mode Transition Tests', () => {
 
         console.log('\n--- Transition: Game → Plan ---');
         await page.click('button:has-text("Plan")');
-        await page.waitForTimeout(1000);
+        await waitForAppMode(page, 'Plan');
 
         const planCheck1 = await page.evaluate(() => {
             const le = (window as any).launchEvent;
@@ -234,7 +233,7 @@ test.describe('Mode Transition Tests', () => {
 
         console.log('\n--- Transition: Plan → Explore ---');
         await page.click('button:has-text("Explore")');
-        await page.waitForTimeout(1000);
+        await waitForAppMode(page, 'Explore');
 
         const exploreCheck = await page.evaluate(() => ({
             inclination: (window as any).params.chandrayaanInclination,
@@ -245,7 +244,7 @@ test.describe('Mode Transition Tests', () => {
 
         console.log('\n--- Transition: Explore → Plan ---');
         await page.click('button:has-text("Plan")');
-        await page.waitForTimeout(1000);
+        await waitForAppMode(page, 'Plan');
 
         const planCheck2 = await page.evaluate(() => {
             const le = (window as any).launchEvent;
@@ -264,19 +263,19 @@ test.describe('Mode Transition Tests', () => {
 
     test('should preserve optimized values through mode switches', async ({ page }) => {
         console.log('\n=== OPTIMIZED VALUES PERSISTENCE TEST ===');
+        page.on('dialog', dialog => dialog.accept());
 
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         // Switch to Plan mode and create launch event
         await page.click('button:has-text("Plan")');
-        await page.waitForTimeout(1000);
+        await waitForAppMode(page, 'Plan');
         await page.click('#add-launch-action-btn');
-        await page.waitForTimeout(2000);
+        await waitForLaunchEvent(page);
 
         // Enable Auto LOI
         await page.evaluate(() => { (window as any).setAutoLOI(true); });
-        await page.waitForTimeout(1000);
+        await waitForAutoLOI(page, true);
 
         // Set optimization parameters
         const equatorCrossing = '2023-08-05T11:25:58.258Z';
@@ -288,28 +287,16 @@ test.describe('Mode Transition Tests', () => {
             launchEvent.apogeeAlt = 370000;
         }, equatorCrossing);
 
-        // Set up dialog handler
-        let dialogText = '';
-        page.on('dialog', async dialog => {
-            dialogText = dialog.message();
-            await dialog.accept();
-        });
-
-        // Run optimization
         const optimizeBtn = page.locator('button:has-text("Auto Optimize RAAN & Apogee")');
         await expect(optimizeBtn).toBeVisible({ timeout: 5000 });
-        await optimizeBtn.click({ force: true });
 
-        // Wait for optimization
-        let attempts = 0;
-        while (dialogText === '' && attempts < 360) {
-            await page.waitForTimeout(500);
-            attempts++;
-        }
-
-        if (dialogText === '') {
-            throw new Error('Optimization did not complete');
-        }
+        const dialogText = await page.evaluate(() => {
+            const trigger = (window as any).triggerAutoOptimizeForTest;
+            if (typeof trigger === 'function') {
+                return trigger();
+            }
+            throw new Error('triggerAutoOptimizeForTest not available');
+        });
 
         // Extract optimized values
         const raanMatch = dialogText.match(/Optimal RAAN: ([\d.]+)/);
@@ -322,6 +309,13 @@ test.describe('Mode Transition Tests', () => {
         const optimizedApogee = parseFloat(apogeeMatch![1]);
 
         console.log('Optimized values:', { raan: optimizedRaan, apogee: optimizedApogee });
+        await page.evaluate(() => {
+            const draftState = (window as any).draftState;
+            if (draftState) {
+                draftState.isDirty = false;
+                draftState.savedLaunchEvent = null;
+            }
+        });
 
         // Test multiple mode switches
         const transitions = [
@@ -336,8 +330,10 @@ test.describe('Mode Transition Tests', () => {
 
         for (const mode of transitions) {
             console.log(`\n--- Switching to ${mode} mode ---`);
-            await page.click(`button:has-text("${mode}")`);
-            await page.waitForTimeout(800);
+            await page.evaluate((targetMode) => {
+                (window as any).switchAppModeForTest(targetMode);
+            }, mode);
+            await waitForAppMode(page, mode as 'Explore' | 'Plan' | 'Game');
 
             // Only check launch event params in Plan/Game modes
             if (mode !== 'Explore') {

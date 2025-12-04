@@ -1,20 +1,20 @@
 import { test, expect } from '@playwright/test';
+import { gotoApp, waitForAppMode, waitForAutoLOI, waitForLaunchEvent } from './test-helpers';
 
 test.describe('Feature-Specific Tests', () => {
     test('should handle Auto LOI toggle functionality', async ({ page }) => {
         // Now using setAutoLOI() helper which emits events properly
         console.log('\n=== AUTO LOI TOGGLE TEST ===');
 
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         // Switch to Plan mode
         await page.click('button:has-text("Plan")');
-        await page.waitForTimeout(1000);
+        await waitForAppMode(page, 'Plan');
 
         // Create launch event
         await page.click('#add-launch-action-btn');
-        await page.waitForTimeout(2000);
+        await waitForLaunchEvent(page);
 
         console.log('\n--- Step 1: Verify Auto LOI checkbox exists and is initially unchecked ---');
 
@@ -33,7 +33,7 @@ test.describe('Feature-Specific Tests', () => {
         await page.evaluate(() => {
             (window as any).setAutoLOI(true);
         });
-        await page.waitForTimeout(1000);
+        await waitForAutoLOI(page, true);
 
         const autoLOIEnabled = await page.evaluate(() => {
             return (window as any).launchEvent.autoLOI;
@@ -53,7 +53,7 @@ test.describe('Feature-Specific Tests', () => {
         await page.evaluate(() => {
             (window as any).setAutoLOI(false);
         });
-        await page.waitForTimeout(500);
+        await waitForAutoLOI(page, false);
 
         const autoLOIDisabled = await page.evaluate(() => {
             return (window as any).launchEvent.autoLOI;
@@ -73,18 +73,21 @@ test.describe('Feature-Specific Tests', () => {
     test('should handle timeline controls and time slider', async ({ page }) => {
         console.log('\n=== TIMELINE CONTROLS TEST ===');
 
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         // Create launch event first (needed for Game mode)
         await page.click('button:has-text("Plan")');
-        await page.waitForTimeout(1000);
+        await waitForAppMode(page, 'Plan');
         await page.click('#add-launch-action-btn');
-        await page.waitForTimeout(2000);
+        await waitForLaunchEvent(page);
 
         // Switch to Game mode
-        await page.click('button:has-text("Game")');
-        await page.waitForTimeout(1500);
+        await page.evaluate(() => {
+            (window as any).switchAppModeForTest('Game');
+        });
+        const modeAfterSwitch = await page.evaluate(() => (window as any).params.appMode);
+        console.log('Mode after switch:', modeAfterSwitch);
+        expect(modeAfterSwitch).toBe('Game');
 
         console.log('\n--- Step 1: Get initial timeline state ---');
 
@@ -106,7 +109,12 @@ test.describe('Feature-Specific Tests', () => {
             (window as any).setSimulationTime(date);
         }, testDate.toISOString());
 
-        await page.waitForTimeout(1000);
+        await page.waitForFunction(targetTime => {
+            const timeline = (window as any).timelineState;
+            if (!timeline) return false;
+            const current = new Date(timeline.currentDate).getTime();
+            return Math.abs(current - new Date(targetTime as string).getTime()) < 500;
+        }, testDate.toISOString());
 
         const updatedState = await page.evaluate(() => {
             const timeline = (window as any).timelineState;
@@ -134,20 +142,20 @@ test.describe('Feature-Specific Tests', () => {
     });
 
     test('should detect Moon capture in Game mode', async ({ page }) => {
+        test.setTimeout(180000); // Optimization + simulation update can take a while
         console.log('\n=== CAPTURE DETECTION TEST ===');
 
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         // Switch to Plan mode and create optimized launch event
         await page.click('button:has-text("Plan")');
-        await page.waitForTimeout(1000);
+        await waitForAppMode(page, 'Plan');
         await page.click('#add-launch-action-btn');
-        await page.waitForTimeout(2000);
+        await waitForLaunchEvent(page);
 
         // Enable Auto LOI
         await page.evaluate(() => { (window as any).setAutoLOI(true); });
-        await page.waitForTimeout(1000);
+        await waitForAutoLOI(page, true);
 
         // Set optimization parameters for close approach
         const equatorCrossing = '2023-08-05T11:25:58.258Z';
@@ -159,33 +167,30 @@ test.describe('Feature-Specific Tests', () => {
             launchEvent.apogeeAlt = 370000;
         }, equatorCrossing);
 
-        // Run optimization
-        let dialogText = '';
-        page.on('dialog', async dialog => {
-            dialogText = dialog.message();
-            await dialog.accept();
-        });
-
         const optimizeBtn = page.locator('button:has-text("Auto Optimize RAAN & Apogee")');
         await expect(optimizeBtn).toBeVisible({ timeout: 5000 });
-        await optimizeBtn.click({ force: true });
 
-        // Wait for optimization
-        let attempts = 0;
-        while (dialogText === '' && attempts < 360) {
-            await page.waitForTimeout(500);
-            attempts++;
-        }
-
-        if (dialogText === '') {
-            throw new Error('Optimization did not complete');
-        }
-
+        const dialogText = await page.evaluate(() => {
+            const trigger = (window as any).triggerAutoOptimizeForTest;
+            if (typeof trigger === 'function') {
+                return trigger();
+            }
+            throw new Error('triggerAutoOptimizeForTest not available');
+        });
         console.log('Optimization result:', dialogText);
 
+        await page.evaluate(() => {
+            const draftState = (window as any).draftState;
+            if (draftState) {
+                draftState.isDirty = false;
+                draftState.savedLaunchEvent = null;
+            }
+        });
+
         // Switch to Game mode
-        await page.click('button:has-text("Game")');
-        await page.waitForTimeout(2000);
+        await page.evaluate(() => {
+            (window as any).switchAppModeForTest('Game');
+        });
 
         // Set time to LOI
         await page.evaluate((loiDateStr) => {
@@ -193,7 +198,10 @@ test.describe('Feature-Specific Tests', () => {
             (window as any).setSimulationTime(loiDate);
         }, equatorCrossing);
 
-        await page.waitForTimeout(1000);
+        await page.waitForFunction(() => {
+            const cache = (window as any).realPositionsCache;
+            return !!(cache && cache.craftPositionKm && cache.moonPositionKm);
+        });
 
         // Check distance at LOI time
         const distanceAtLOI = await page.evaluate(() => {
@@ -238,7 +246,7 @@ test.describe('Feature-Specific Tests', () => {
     test('should handle visibility toggles for visual elements', async ({ page }) => {
         console.log('\n=== VISIBILITY TOGGLES TEST ===');
 
-        await page.goto('http://localhost:3002');
+        await gotoApp(page);
         await page.waitForLoadState('load');
 
         console.log('\n--- Testing visibility toggles in Explore mode ---');
@@ -290,7 +298,7 @@ test.describe('Feature-Specific Tests', () => {
         // issue between state updates and UI responsiveness that needs app-level refactoring to fix.
         console.log('\n=== MULTIPLE OPTIMIZATION SCENARIOS TEST ===');
 
-        await page.goto('http://localhost:3002');
+        await gotoApp(page);
         await page.waitForLoadState('load');
 
         const testScenarios = [
@@ -445,7 +453,7 @@ test.describe('Feature-Specific Tests', () => {
     test('should handle time progression in Game mode', async ({ page }) => {
         console.log('\n=== TIME PROGRESSION TEST ===');
 
-        await page.goto('http://localhost:3002');
+        await gotoApp(page);
         await page.waitForLoadState('load');
 
         // Switch to Game mode
