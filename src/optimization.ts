@@ -287,7 +287,6 @@ export function calculateClosestApproachToMoon(raan: number, apogeeAlt: number, 
  * Optimize RAAN and Apogee to minimize closest approach distance to Moon
  * Uses Nelder-Mead simplex algorithm (derivative-free optimization)
  */
-/* eslint-disable-next-line complexity */
 export function optimizeApogeeToMoon(loiDate: Date, omega: number, inclination: number, initialRaan: number, initialApogeeAlt: number): { raan: number, apogeeAlt: number, distance: number } {
     const perigeeAlt = 180; // Fixed perigee at 180 km
 

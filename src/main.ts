@@ -1759,7 +1759,6 @@ function updateChandrayaanOrbit(): void {
     updateChandrayaanPosition(orbitalParams);
 }
 
-/* eslint-disable-next-line complexity */
 function updateChandrayaanPosition(orbitalParams?: OrbitalParams): void {
     const orbital = orbitalParams ?? getChandrayaanParams();
 
@@ -4003,7 +4002,6 @@ function markDirtyAndUpdate(): void {
     updateChandrayaanOrbit();
 }
 
-/* eslint-disable-next-line complexity */
 function createLaunchEventGUI(): void {
     const container = document.getElementById('launch-event-container');
 
