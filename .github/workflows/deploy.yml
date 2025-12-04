@@ -49,7 +49,7 @@ jobs:
 
       - name: Copy necessary files to dist-pages
         run: |
-          cp style.css dist-pages/
+          cp src/style.css dist-pages/ || true
           cp *.glb dist-pages/ 2>/dev/null || true
           cp public/chandrayaan-mission-design.png dist-pages/ 2>/dev/null || true
 
