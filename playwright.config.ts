@@ -3,10 +3,14 @@ import { defineConfig, devices } from '@playwright/test';
 /**
  * Playwright configuration for E2E tests
  * See https://playwright.dev/docs/test-configuration
+ *
+ * Projects:
+ *   - default: All tests (npm run test:e2e)
+ *   - fast: Quick essential tests for CI/pre-commit (npm run test:e2e -- --project=fast)
+ *   - slow: All tests including long-running ones (npm run test:e2e -- --project=slow)
  */
 export default defineConfig({
   testDir: './tests/e2e',
-  testMatch: /e2e-.+\.test\.ts/,
 
   /* Run tests in files in parallel */
   fullyParallel: false,
@@ -36,13 +40,27 @@ export default defineConfig({
 
     /* Video on failure */
     video: 'retain-on-failure',
+
+    /* Run headless */
+    headless: true,
   },
 
-  /* Configure projects for major browsers */
+  /* Configure projects */
   projects: [
     {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'], headless: true },
+      name: 'default',
+      testMatch: /e2e-.+\.test\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'fast',
+      testMatch: /e2e-(simple|exact|behaviors|workflow|modes)\.test\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'slow',
+      testMatch: /e2e-.+\.test\.ts/,
+      use: { ...devices['Desktop Chrome'] },
     },
   ],
 
