@@ -4577,7 +4577,7 @@ function setupCollapsiblePanels(): void {
             if (guiCollapsed) {
                 gui.classList.add('collapsed');
                 guiCollapseBtn.classList.add('collapsed');
-                guiCollapseBtn.innerHTML = '▶ RHS';
+                guiCollapseBtn.innerHTML = '«';
 
                 // Move actions panel to the right when RHS is collapsed
                 if (actionsPanel) actionsPanel.classList.add('rhs-collapsed');
@@ -4585,7 +4585,7 @@ function setupCollapsiblePanels(): void {
             } else {
                 gui.classList.remove('collapsed');
                 guiCollapseBtn.classList.remove('collapsed');
-                guiCollapseBtn.innerHTML = '◀ RHS';
+                guiCollapseBtn.innerHTML = '»';
 
                 // Move actions panel back when RHS is expanded
                 if (actionsPanel) actionsPanel.classList.remove('rhs-collapsed');
@@ -4604,11 +4604,11 @@ function setupCollapsiblePanels(): void {
             if (actionsCollapsed) {
                 actionsPanel.classList.add('collapsed');
                 actionsCollapseBtn.classList.add('collapsed');
-                actionsCollapseBtn.innerHTML = '▶ TLI';
+                actionsCollapseBtn.innerHTML = '«';
             } else {
                 actionsPanel.classList.remove('collapsed');
                 actionsCollapseBtn.classList.remove('collapsed');
-                actionsCollapseBtn.innerHTML = '◀ TLI';
+                actionsCollapseBtn.innerHTML = '»';
             }
         });
 
@@ -4627,7 +4627,7 @@ function setupCollapsiblePanels(): void {
                     actionsPanel.classList.remove('collapsed');
                 }
                 actionsCollapseBtn.classList.remove('collapsed');
-                actionsCollapseBtn.innerHTML = '◀ TLI';
+                actionsCollapseBtn.innerHTML = '»';
                 actionsCollapsed = false;
             }
         });

@@ -77,7 +77,7 @@ body {
     pointer-events: none;
 }
 
-/* When RHS panel is collapsed, move actions panel to the right */
+/* When Controls panel is collapsed, move actions panel to the right */
 #actions-panel.rhs-collapsed {
     right: 10px;
 }
@@ -87,10 +87,10 @@ body {
     transform: translateX(calc(100% + 330px));
 }
 
-/* Collapse button for actions panel */
+/* Collapse button for Events panel */
 #actions-collapse-btn {
     position: fixed;
-    right: 610px;
+    right: 605px;
     top: 50px;
     background: rgba(0, 0, 0, 0.8);
     border: 1px solid #555;
@@ -98,12 +98,11 @@ body {
     border-right: none;
     color: #fff;
     cursor: pointer;
-    font-size: 14px;
-    padding: 8px 6px;
-    z-index: 1002;  /* Higher than actions panel (999) and lil-gui (1000) */
+    font-size: 16px;
+    padding: 4px 6px;
+    z-index: 1002;
     transition: right 0.3s ease;
-    writing-mode: vertical-rl;
-    text-orientation: mixed;
+    line-height: 1;
     display: none;
 }
 
@@ -115,18 +114,18 @@ body {
     background: rgba(40, 40, 40, 0.9);
 }
 
-/* When actions panel is collapsed */
+/* When Events panel is collapsed */
 #actions-collapse-btn.collapsed {
-    right: 320px;
+    right: 340px;
 }
 
-/* When RHS panel is collapsed, adjust position */
+/* When Controls panel is collapsed, adjust position */
 #actions-collapse-btn.rhs-collapsed {
-    right: 300px;
+    right: 295px;
 }
 
 #actions-collapse-btn.rhs-collapsed.collapsed {
-    right: 10px;
+    right: 25px;
 }
 
 .action-add-btn {
@@ -220,10 +219,10 @@ body {
     transform: translateX(calc(100% + 10px));
 }
 
-/* Collapse button for lil-gui panel */
+/* Collapse button for Controls panel */
 #gui-collapse-btn {
     position: fixed;
-    right: 320px;
+    right: 315px;
     top: 50px;
     background: rgba(0, 0, 0, 0.8);
     border: 1px solid #555;
@@ -231,12 +230,11 @@ body {
     border-right: none;
     color: #fff;
     cursor: pointer;
-    font-size: 14px;
-    padding: 8px 6px;
-    z-index: 999;
+    font-size: 16px;
+    padding: 4px 6px;
+    z-index: 1001;
     transition: right 0.3s ease;
-    writing-mode: vertical-rl;
-    text-orientation: mixed;
+    line-height: 1;
 }
 
 #gui-collapse-btn:hover {

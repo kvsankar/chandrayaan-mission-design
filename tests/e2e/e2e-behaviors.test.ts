@@ -639,3 +639,94 @@ test.describe('Mode Transitions', () => {
         expect(finalParams).toEqual(planParams);
     });
 });
+
+test.describe('UI Panel Collapse', () => {
+    test('should collapse and expand Controls panel', async ({ page }) => {
+        await gotoApp(page);
+
+        const collapseBtn = page.locator('#gui-collapse-btn');
+        const guiPanel = page.locator('.lil-gui.root');
+
+        // Initially expanded - button shows »
+        await expect(collapseBtn).toHaveText('»');
+        await expect(guiPanel).not.toHaveClass(/collapsed/);
+
+        // Collapse
+        await collapseBtn.click();
+        await page.waitForTimeout(400);
+
+        await expect(collapseBtn).toHaveText('«');
+        await expect(guiPanel).toHaveClass(/collapsed/);
+
+        // Expand
+        await collapseBtn.click();
+        await page.waitForTimeout(400);
+
+        await expect(collapseBtn).toHaveText('»');
+        await expect(guiPanel).not.toHaveClass(/collapsed/);
+    });
+
+    test('should collapse and expand Events panel in Plan mode', async ({ page }) => {
+        await gotoApp(page);
+
+        // Switch to Plan mode and create launch event
+        await page.click('button:has-text("Plan")');
+        await waitForAppMode(page, 'Plan');
+        await page.click('#add-launch-action-btn');
+        await waitForLaunchEvent(page);
+
+        const collapseBtn = page.locator('#actions-collapse-btn');
+        const actionsPanel = page.locator('#actions-panel');
+
+        // Initially expanded - button shows »
+        await expect(collapseBtn).toBeVisible();
+        await expect(collapseBtn).toHaveText('»');
+        await expect(actionsPanel).not.toHaveClass(/collapsed/);
+
+        // Collapse
+        await collapseBtn.click();
+        await page.waitForTimeout(400);
+
+        await expect(collapseBtn).toHaveText('«');
+        await expect(actionsPanel).toHaveClass(/collapsed/);
+
+        // Expand
+        await collapseBtn.click();
+        await page.waitForTimeout(400);
+
+        await expect(collapseBtn).toHaveText('»');
+        await expect(actionsPanel).not.toHaveClass(/collapsed/);
+    });
+
+    test('should not overlap when both panels are collapsed', async ({ page }) => {
+        await gotoApp(page);
+
+        // Switch to Plan mode and create launch event
+        await page.click('button:has-text("Plan")');
+        await waitForAppMode(page, 'Plan');
+        await page.click('#add-launch-action-btn');
+        await waitForLaunchEvent(page);
+
+        const controlsBtn = page.locator('#gui-collapse-btn');
+        const eventsBtn = page.locator('#actions-collapse-btn');
+
+        // Collapse both panels
+        await controlsBtn.click();
+        await page.waitForTimeout(400);
+        await eventsBtn.click();
+        await page.waitForTimeout(400);
+
+        // Get bounding boxes
+        const controlsBox = await controlsBtn.boundingBox();
+        const eventsBox = await eventsBtn.boundingBox();
+
+        expect(controlsBox).not.toBeNull();
+        expect(eventsBox).not.toBeNull();
+
+        if (controlsBox && eventsBox) {
+            // Events button should be to the left of Controls button (no overlap)
+            const eventsRight = eventsBox.x + eventsBox.width;
+            expect(eventsRight).toBeLessThanOrEqual(controlsBox.x);
+        }
+    });
+});
