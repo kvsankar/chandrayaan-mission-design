@@ -68,28 +68,40 @@ This mapping handles Three.js's Y-up convention while maintaining proper celesti
 ```
 cy3-orbit/
 ├── index.html               # Main HTML with legend panel and imports
-├── main.ts                  # Three.js visualization logic (TypeScript)
-├── main.js                  # Compiled JavaScript (generated)
-├── reactive.ts              # Reactive state management system
-├── style.css                # Styling for UI elements
+├── CLAUDE.md                # This file (developer documentation)
 ├── package.json             # NPM dependencies and scripts
 ├── tsconfig.json            # TypeScript configuration
 ├── vite.config.js           # Vite build configuration
-├── vitest.config.ts         # Testing configuration
-├── *.test.ts                # Unit tests (97 tests)
-├── CLAUDE.md                     # This file (developer documentation)
-├── ARCHITECTURE.md               # Event bus architecture documentation
-├── DEPLOYMENT.md                 # GitHub Pages deployment guide
-├── LESSONS-LEARNED.md            # Bug regression documentation
-├── TESTING.md                    # Testing strategy and CI/CD setup
-├── playwright.config.ts          # E2E test configuration (all tests)
-├── playwright.config.fast.ts    # Fast E2E tests for CI
-├── playwright.config.slow.ts    # Comprehensive E2E tests for releases
-└── .github/workflows/            # CI/CD pipeline
-    └── deploy.yml                # Automated deployment to GitHub Pages
+├── vitest.config.ts         # Unit test configuration
+├── eslint.config.js         # ESLint configuration
+├── playwright.config.ts     # E2E test config (projects: default, fast, slow)
+├── .pre-commit-config.yaml  # Pre-commit hooks (ESLint, TypeScript, etc.)
+├── src/                     # Source files
+│   ├── main.ts              # Three.js visualization logic
+│   ├── style.css            # Styling for UI elements
+│   ├── constants.ts         # Application constants
+│   ├── events.ts            # Event bus for state management
+│   ├── types.ts             # TypeScript type definitions
+│   ├── launchEventSetters.ts    # Launch event update functions
+│   ├── launchEventComputed.ts   # Computed launch event values
+│   ├── optimization.ts      # Orbital optimization algorithms
+│   ├── types/               # Type declarations
+│   │   ├── astronomy-engine.d.ts
+│   │   └── lil-gui.d.ts
+│   └── ui/
+│       └── dialog.ts        # UI dialog components
+├── tests/
+│   ├── unit/                # Unit tests (Vitest)
+│   └── e2e/                 # E2E tests (Playwright)
+├── docs/                    # Documentation
+│   ├── ARCHITECTURE.md
+│   ├── TESTING.md
+│   └── ...
+└── .github/workflows/
+    └── deploy.yml           # CI/CD: tests + GitHub Pages deployment
 ```
 
-##  Technology Stack
+## Technology Stack
 
 - **Language**: TypeScript (compiled to JavaScript)
 - **3D Visualization**: Three.js
@@ -97,11 +109,13 @@ cy3-orbit/
 - **GUI**: lil-gui
 - **Astronomy**: astronomy-engine
 - **Build Tool**: Vite
+- **Linting**: ESLint with typescript-eslint
+- **Pre-commit Hooks**: Python pre-commit framework (ESLint, TypeScript, complexity checks)
 - **Testing**:
   - Vitest: Unit tests (orbital mechanics, utilities, calculations)
   - Playwright: E2E tests (UI interactions, workflows, mode transitions)
-  - Two-tier strategy: Fast tests (3 min) for CI, Slow tests (5 min) for releases
-- **Deployment**: GitHub Actions → GitHub Pages
+  - Two-tier strategy: Fast tests (33 tests) for CI, Slow tests (49 tests) for releases
+- **CI/CD**: GitHub Actions (unit tests + E2E tests + GitHub Pages deployment)
 
 ## Color Scheme
 
@@ -281,12 +295,16 @@ u = atan2(sin(u), cos(u))
 npm run dev          # Start Vite dev server with HMR (port 3000/3001)
 npm run compile      # Compile TypeScript to JavaScript
 npm run build        # Production build for GitHub Pages
+npm run lint         # Run ESLint
+npm run lint:fix     # Run ESLint with auto-fix
 
 # Testing
-npm test             # Run unit tests (Vitest)
-npm test:coverage    # Generate coverage report
-npm run test:e2e:fast    # Fast E2E tests for CI (3 min, 34 tests)
-npm run test:e2e:slow    # All E2E tests for releases (5 min, 49 tests)
+npm test             # Run unit tests once (Vitest)
+npm run test:watch   # Run unit tests in watch mode
+npm run test:coverage    # Generate coverage report
+npm run test:e2e         # All E2E tests (--project=default)
+npm run test:e2e:fast    # Fast E2E tests for CI (--project=fast, 33 tests)
+npm run test:e2e:slow    # All E2E tests for releases (--project=slow, 49 tests)
 npm run test:ci          # Unit + Fast E2E (for pre-commit/CI)
 npm run test:release     # Unit + Slow E2E (for releases)
 ```
@@ -315,12 +333,14 @@ The project uses a **two-tier testing approach** optimized for different stages 
 See [TESTING.md](TESTING.md) for detailed testing strategy, CI/CD setup, and best practices.
 
 ### Code Organization
-- **Event Bus Pattern**: Explicit event emission for state updates in src/events.ts
-- **Setter Functions**: Dedicated update functions with validation in src/launchEventSetters.ts
-- **Centralized Functions**: RA↔Anomaly conversions in main.ts:806, main.ts:836
+- **Source in `src/`**: All source files organized under src/ directory
+- **Event Bus Pattern**: Explicit event emission for state updates in `src/events.ts`
+- **Setter Functions**: Dedicated update functions with validation in `src/launchEventSetters.ts`
+- **Centralized Functions**: RA↔Anomaly conversions in `src/main.ts`
 - **Modular Architecture**: Clear separation between state, UI, and rendering
-- **Type Safety**: Full TypeScript types in src/types.ts
-- **Comprehensive Testing**: Unit and E2E tests with two-tier CI/CD strategy
+- **Type Safety**: Full TypeScript types in `src/types.ts`
+- **Type Declarations**: Custom .d.ts files in `src/types/`
+- **Comprehensive Testing**: Unit tests in `tests/unit/`, E2E tests in `tests/e2e/`
 
 ### Key Technical Details
 - ES6 modules with Vite bundling
