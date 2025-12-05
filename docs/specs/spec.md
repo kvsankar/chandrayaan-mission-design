@@ -1,7 +1,7 @@
 # Chandrayaan-3 Orbit Visualization - Technical Specification
 
-**Version:** 1.1
-**Last Updated:** December 4, 2024
+**Version:** 1.2
+**Last Updated:** December 5, 2024
 **Project Type:** Interactive 3D Orbit Visualization
 
 ---
@@ -895,34 +895,28 @@ const confirmed = await showConfirmDialog(
    - Missing launch event handling
    - Boundary condition testing
 
-### 13.3 Test Configurations
+### 13.3 Test Configuration
 
-**Three Playwright Configs:**
+**Single Playwright Config with Projects** (`playwright.config.ts`):
 
-1. **All Tests** (`playwright.config.ts`)
-   - Runs complete test suite
-   - ~8 minutes execution time
-   - For comprehensive validation
-
-2. **Fast Tests** (`playwright.fast.config.ts`)
-   - Essential tests only
-   - ~3 minutes execution time
-   - For CI and pre-commit hooks
-
-3. **Slow Tests** (`playwright.slow.config.ts`)
-   - Includes optimization and stress tests
-   - ~5 minutes execution time
-   - For release validation
+| Project | Pattern | Tests | Time | Use Case |
+|---------|---------|-------|------|----------|
+| `default` | `e2e-.+.test.ts` | All | ~5m | Comprehensive |
+| `fast` | `e2e-(simple\|exact\|behaviors\|workflow\|modes).test.ts` | 33 | ~2m | CI, pre-commit |
+| `slow` | `e2e-.+.test.ts` | 49 | ~5m | Releases |
 
 ### 13.4 npm Test Scripts
 
 ```json
 {
-  "test:unit": "vitest",
-  "test:e2e": "playwright test",
-  "test:e2e:fast": "playwright test --config=playwright.fast.config.ts",
-  "test:e2e:slow": "playwright test --config=playwright.slow.config.ts",
-  "test:coverage": "vitest --coverage"
+  "test": "vitest run",
+  "test:watch": "vitest",
+  "test:coverage": "vitest run --coverage",
+  "test:e2e": "playwright test --project=default",
+  "test:e2e:fast": "playwright test --project=fast",
+  "test:e2e:slow": "playwright test --project=slow",
+  "test:ci": "npm test && npm run test:e2e:fast",
+  "test:release": "npm test && npm run test:e2e:slow"
 }
 ```
 
