@@ -136,6 +136,11 @@ export class LandingSiteStep {
                                 <span class="section-badge required">Required</span>
                             </div>
                             <div class="substep-content">
+                                <select id="primary-site-select" class="site-select">
+                                    <option value="">-- Select preset site --</option>
+                                    ${this.renderSiteOptions(this.state.primarySite?.id)}
+                                </select>
+                                <div class="or-divider">or use crosshair</div>
                                 <div class="selected-display" id="primary-display">
                                     ${this.state.primarySite
                                         ? `<span class="site-name">${this.state.primarySite.name}</span>
@@ -157,6 +162,11 @@ export class LandingSiteStep {
                                 <span class="section-badge optional">Optional</span>
                             </div>
                             <div class="substep-content">
+                                <select id="backup-site-select" class="site-select">
+                                    <option value="">-- Select preset site --</option>
+                                    ${this.renderSiteOptions(this.state.backupSite?.id)}
+                                </select>
+                                <div class="or-divider">or use crosshair</div>
                                 <div class="selected-display" id="backup-display">
                                     ${this.state.backupSite
                                         ? `<span class="site-name">${this.state.backupSite.name}</span>
@@ -195,6 +205,14 @@ export class LandingSiteStep {
         }
 
         this.attachEventListeners();
+    }
+
+    private renderSiteOptions(selectedId?: string): string {
+        return this.filteredSites.map(site => {
+            const selected = selectedId === site.id ? 'selected' : '';
+            const coords = formatCoordinates(site.latitude, site.longitude);
+            return `<option value="${site.id}" ${selected}>${site.shortLabel} (${coords})</option>`;
+        }).join('');
     }
 
     private renderLegend(): string {
@@ -289,6 +307,25 @@ export class LandingSiteStep {
                     this.toggleMarkerVisibility(siteId, item as HTMLElement);
                 }
             });
+        });
+
+        // Primary site dropdown
+        const primarySelect = this.container.querySelector('#primary-site-select') as HTMLSelectElement;
+        primarySelect?.addEventListener('change', () => {
+            if (primarySelect.value) {
+                this.selectSiteById(primarySelect.value, 'primary');
+                this.enableEditButton('primary');
+                this.setSubStep('backup');
+            }
+        });
+
+        // Backup site dropdown
+        const backupSelect = this.container.querySelector('#backup-site-select') as HTMLSelectElement;
+        backupSelect?.addEventListener('change', () => {
+            if (backupSelect.value) {
+                this.selectSiteById(backupSelect.value, 'backup');
+                this.enableEditButton('backup');
+            }
         });
 
         // Set Primary button
@@ -460,6 +497,8 @@ export class LandingSiteStep {
 
     private updatePrimaryDisplay(): void {
         const display = this.container.querySelector('#primary-display');
+        const select = this.container.querySelector('#primary-site-select') as HTMLSelectElement;
+
         if (display) {
             if (this.state.primarySite) {
                 display.innerHTML = `
@@ -470,10 +509,17 @@ export class LandingSiteStep {
                 display.innerHTML = '<span class="no-selection">Align crosshair with desired site</span>';
             }
         }
+
+        // Sync dropdown
+        if (select) {
+            select.value = this.state.primarySite?.isPreset ? this.state.primarySite.id : '';
+        }
     }
 
     private updateBackupDisplay(): void {
         const display = this.container.querySelector('#backup-display');
+        const select = this.container.querySelector('#backup-site-select') as HTMLSelectElement;
+
         if (display) {
             if (this.state.backupSite) {
                 display.innerHTML = `
@@ -483,6 +529,11 @@ export class LandingSiteStep {
             } else {
                 display.innerHTML = '<span class="no-selection">Align crosshair with backup site (optional)</span>';
             }
+        }
+
+        // Sync dropdown
+        if (select) {
+            select.value = this.state.backupSite?.isPreset ? this.state.backupSite.id : '';
         }
     }
 

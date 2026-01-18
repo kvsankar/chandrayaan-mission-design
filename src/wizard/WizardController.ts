@@ -57,15 +57,14 @@ export class WizardController {
     private render(): void {
         this.container.innerHTML = `
             <div class="wizard-container">
-                <div class="wizard-header">
-                    <div class="wizard-breadcrumb" id="wizard-breadcrumb"></div>
-                    <div class="wizard-progress">
-                        Step <span id="current-step-num">1</span> of 5
+                <div class="wizard-main">
+                    <div class="wizard-steps-panel" id="wizard-steps-panel">
+                        <div class="steps-header">Steps</div>
+                        <div class="steps-list" id="wizard-steps-list"></div>
                     </div>
-                </div>
 
-                <div class="wizard-body">
                     <div class="wizard-content" id="wizard-content"></div>
+
                     <div class="wizard-summary" id="wizard-summary">
                         <div class="summary-header">Mission Summary</div>
                         <div class="summary-content" id="summary-content">
@@ -89,7 +88,7 @@ export class WizardController {
         `;
 
         this.contentContainer = this.container.querySelector('#wizard-content');
-        this.updateBreadcrumb();
+        this.updateStepsList();
         this.attachEventListeners();
     }
 
@@ -103,9 +102,9 @@ export class WizardController {
         cancelBtn?.addEventListener('click', () => this.cancel());
     }
 
-    private updateBreadcrumb(): void {
-        const breadcrumb = this.container.querySelector('#wizard-breadcrumb');
-        if (!breadcrumb) return;
+    private updateStepsList(): void {
+        const stepsList = this.container.querySelector('#wizard-steps-list');
+        if (!stepsList) return;
 
         const items = STEP_TITLES.map((title, index) => {
             const stepNum = index + 1;
@@ -113,24 +112,23 @@ export class WizardController {
             const isCompleted = stepNum < this.state.currentStep;
             const isClickable = stepNum < this.state.currentStep;
 
-            let className = 'breadcrumb-item';
+            let className = 'step-item';
             if (isActive) className += ' active';
             if (isCompleted) className += ' completed';
             if (isClickable) className += ' clickable';
 
             return `
-                <span class="${className}" data-step="${stepNum}">
-                    <span class="breadcrumb-number">${isCompleted ? '✓' : stepNum}</span>
-                    <span class="breadcrumb-title">${title}</span>
-                </span>
-                ${stepNum < STEP_TITLES.length ? '<span class="breadcrumb-separator">→</span>' : ''}
+                <div class="${className}" data-step="${stepNum}">
+                    <span class="step-number">${isCompleted ? '✓' : stepNum}</span>
+                    <span class="step-title">${title}</span>
+                </div>
             `;
         }).join('');
 
-        breadcrumb.innerHTML = items;
+        stepsList.innerHTML = items;
 
         // Add click handlers for completed steps
-        breadcrumb.querySelectorAll('.breadcrumb-item.clickable').forEach(item => {
+        stepsList.querySelectorAll('.step-item.clickable').forEach(item => {
             item.addEventListener('click', () => {
                 const step = parseInt(item.getAttribute('data-step') || '1', 10);
                 this.goToStep(step);
@@ -141,7 +139,6 @@ export class WizardController {
     private updateNavButtons(): void {
         const backBtn = this.container.querySelector('#wizard-back-btn') as HTMLButtonElement;
         const nextBtn = this.container.querySelector('#wizard-next-btn') as HTMLButtonElement;
-        const stepNum = this.container.querySelector('#current-step-num');
 
         if (backBtn) {
             backBtn.disabled = this.state.currentStep === 1;
@@ -154,10 +151,6 @@ export class WizardController {
                 nextBtn.textContent = 'Next →';
             }
         }
-
-        if (stepNum) {
-            stepNum.textContent = String(this.state.currentStep);
-        }
     }
 
     private showStep(stepNum: number): void {
@@ -168,7 +161,7 @@ export class WizardController {
         this.currentStepInstance = null;
 
         this.state.currentStep = stepNum;
-        this.updateBreadcrumb();
+        this.updateStepsList();
         this.updateNavButtons();
 
         switch (stepNum) {
