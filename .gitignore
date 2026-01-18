@@ -40,3 +40,7 @@ coverage/
 # Claude conversations and retrospectives
 claude-conversations/
 docs/retrospectives/
+
+# Reference PDFs (too large for repo)
+*.pdf
+*.pdf:Zone.Identifier
