@@ -82,6 +82,18 @@ export class LandingSiteStep {
         this.render();
     }
 
+    private renderSiteDisplay(site: SelectedSite | null, fallbackText: string): string {
+        if (!site) return `<span class="no-selection">${fallbackText}</span>`;
+        return `<span class="site-name">${site.name}</span>
+                <span class="site-coords">${formatCoordinates(site.latitude, site.longitude)}</span>`;
+    }
+
+    private renderSnapRadiusOptions(): string {
+        return [1, 2, 5].map(val =>
+            `<option value="${val}" ${this.state.snapRadius === val ? 'selected' : ''}>${val}°</option>`
+        ).join('');
+    }
+
     private render(): void {
         this.container.innerHTML = `
             <div class="landing-site-step">
@@ -120,10 +132,8 @@ export class LandingSiteStep {
                                     ${this.state.snapEnabled ? 'checked' : ''} />
                                 <span>Snap to nearby sites</span>
                                 <select id="snap-radius-select" class="inline-select"
-                                    ${!this.state.snapEnabled ? 'disabled' : ''}>
-                                    <option value="1" ${this.state.snapRadius === 1 ? 'selected' : ''}>1°</option>
-                                    <option value="2" ${this.state.snapRadius === 2 ? 'selected' : ''}>2°</option>
-                                    <option value="5" ${this.state.snapRadius === 5 ? 'selected' : ''}>5°</option>
+                                    ${this.state.snapEnabled ? '' : 'disabled'}>
+                                    ${this.renderSnapRadiusOptions()}
                                 </select>
                             </label>
                         </div>
@@ -142,10 +152,7 @@ export class LandingSiteStep {
                                 </select>
                                 <div class="or-divider">or use crosshair</div>
                                 <div class="selected-display" id="primary-display">
-                                    ${this.state.primarySite
-                                        ? `<span class="site-name">${this.state.primarySite.name}</span>
-                                           <span class="site-coords">${formatCoordinates(this.state.primarySite.latitude, this.state.primarySite.longitude)}</span>`
-                                        : '<span class="no-selection">Align crosshair with desired site</span>'}
+                                    ${this.renderSiteDisplay(this.state.primarySite, 'Align crosshair with desired site')}
                                 </div>
                                 <div class="substep-actions">
                                     <button id="set-primary-btn" class="action-btn primary-btn">Set</button>
@@ -168,10 +175,7 @@ export class LandingSiteStep {
                                 </select>
                                 <div class="or-divider">or use crosshair</div>
                                 <div class="selected-display" id="backup-display">
-                                    ${this.state.backupSite
-                                        ? `<span class="site-name">${this.state.backupSite.name}</span>
-                                           <span class="site-coords">${formatCoordinates(this.state.backupSite.latitude, this.state.backupSite.longitude)}</span>`
-                                        : '<span class="no-selection">Align crosshair with backup site</span>'}
+                                    ${this.renderSiteDisplay(this.state.backupSite, 'Align crosshair with backup site')}
                                 </div>
                                 <div class="substep-actions">
                                     <button id="set-backup-btn" class="action-btn primary-btn">Set</button>

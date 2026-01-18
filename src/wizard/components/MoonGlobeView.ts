@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 import { TrackballControls } from 'three/addons/controls/TrackballControls.js';
 import type { PresetSite } from './SiteMarkers.js';
+import { getSubSolarPoint } from '../calculations/sunElevation.js';
 
 const MOON_RADIUS = 50;  // Visual size in scene units
 const DEG_TO_RAD = Math.PI / 180;
@@ -40,6 +41,7 @@ export class MoonGlobeView {
     private gridLines: THREE.Group;
     private siteMarkers: THREE.Group;
     private crosshair: HTMLElement | null = null;
+    private directionalLight: THREE.DirectionalLight | null = null;
 
     private onCrosshairMove?: (lat: number, lon: number) => void;
     private presetSites: PresetSite[] = [];
@@ -108,9 +110,9 @@ export class MoonGlobeView {
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
         this.scene.add(ambientLight);
 
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
-        directionalLight.position.set(100, 50, 100);
-        this.scene.add(directionalLight);
+        this.directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        this.directionalLight.position.set(100, 50, 100);
+        this.scene.add(this.directionalLight);
 
         // Create crosshair overlay
         this.createCrosshair();
@@ -573,6 +575,21 @@ export class MoonGlobeView {
 
         this.renderer.render(this.scene, this.camera);
     };
+
+    /**
+     * Update sun lighting direction based on a given date
+     * @param date - The datetime to calculate sun position for
+     */
+    updateSunLighting(date: Date): void {
+        if (!this.directionalLight) return;
+
+        const subSolar = getSubSolarPoint(date);
+
+        // Convert selenographic coords to Three.js direction
+        // Position light in the direction FROM the Moon TO the Sun
+        const sunPos = this.latLonToPosition(subSolar.latitude, subSolar.longitude);
+        this.directionalLight.position.copy(sunPos.multiplyScalar(3));
+    }
 
     /**
      * Clean up resources

@@ -283,59 +283,84 @@ export function calculateClosestApproachToMoon(raan: number, apogeeAlt: number, 
     return { distance: minDistance, trueAnomaly: minNu * 180 / Math.PI };
 }
 
+interface SimplexPoint {
+    raan: number;
+    apogeeAlt: number;
+    value: number;
+}
+
+// Nelder-Mead constants
+const NM_ALPHA = 1.0;   // Reflection
+const NM_GAMMA = 2.0;   // Expansion
+const NM_RHO = 0.5;     // Contraction
+const NM_SIGMA = 0.5;   // Shrinkage
+
+function tryExpansion(
+    centroid: { raan: number; apogeeAlt: number },
+    reflected: SimplexPoint,
+    objectiveFunc: (r: number, a: number) => number
+): SimplexPoint {
+    const expanded = {
+        raan: centroid.raan + NM_GAMMA * (reflected.raan - centroid.raan),
+        apogeeAlt: centroid.apogeeAlt + NM_GAMMA * (reflected.apogeeAlt - centroid.apogeeAlt),
+        value: 0
+    };
+    expanded.value = objectiveFunc(expanded.raan, expanded.apogeeAlt);
+    return expanded.value < reflected.value ? expanded : reflected;
+}
+
+function tryContraction(
+    centroid: { raan: number; apogeeAlt: number },
+    worst: SimplexPoint,
+    objectiveFunc: (r: number, a: number) => number
+): SimplexPoint {
+    const contracted = {
+        raan: centroid.raan + NM_RHO * (worst.raan - centroid.raan),
+        apogeeAlt: centroid.apogeeAlt + NM_RHO * (worst.apogeeAlt - centroid.apogeeAlt),
+        value: 0
+    };
+    contracted.value = objectiveFunc(contracted.raan, contracted.apogeeAlt);
+    return contracted;
+}
+
 /**
  * Optimize RAAN and Apogee to minimize closest approach distance to Moon
  * Uses Nelder-Mead simplex algorithm (derivative-free optimization)
  */
 export function optimizeApogeeToMoon(loiDate: Date, omega: number, inclination: number, initialRaan: number, initialApogeeAlt: number): { raan: number, apogeeAlt: number, distance: number } {
     const perigeeAlt = 180; // Fixed perigee at 180 km
-
-    // Nelder-Mead parameters
-    const alpha = 1.0;   // Reflection
-    const gamma = 2.0;   // Expansion
-    const rho = 0.5;     // Contraction
-    const sigma = 0.5;   // Shrinkage
-
     const maxIterations = isAutomatedTestMode() ? 40 : 150;
-    const tolerance = isAutomatedTestMode() ? 5.0 : 1.0; // Relax tolerance during automated tests
+    const tolerance = isAutomatedTestMode() ? 5.0 : 1.0;
 
-    // Objective function: minimize closest approach distance
     const objectiveFunc = (raan: number, apogeeAlt: number): number => {
-        // Clamp to valid ranges
         raan = Math.max(0, Math.min(360, raan));
         apogeeAlt = Math.max(180, Math.min(600000, apogeeAlt));
         return calculateClosestApproachToMoon(raan, apogeeAlt, perigeeAlt, loiDate, omega, inclination).distance;
     };
 
-    // Initialize simplex (3 points for 2D optimization)
-    const simplex = [
+    const simplex: SimplexPoint[] = [
         { raan: initialRaan, apogeeAlt: initialApogeeAlt, value: objectiveFunc(initialRaan, initialApogeeAlt) },
         { raan: initialRaan + 10, apogeeAlt: initialApogeeAlt, value: objectiveFunc(initialRaan + 10, initialApogeeAlt) },
         { raan: initialRaan, apogeeAlt: initialApogeeAlt + 5000, value: objectiveFunc(initialRaan, initialApogeeAlt + 5000) }
     ];
 
     for (let iter = 0; iter < maxIterations; iter++) {
-        // Sort simplex by objective value
         simplex.sort((a, b) => a.value - b.value);
-
         const best = simplex[0];
         const worst = simplex[2];
 
-        // Check convergence
         if (worst.value - best.value < tolerance) {
             return { raan: best.raan, apogeeAlt: best.apogeeAlt, distance: best.value };
         }
 
-        // Calculate centroid of best two points
         const centroid = {
             raan: (simplex[0].raan + simplex[1].raan) / 2,
             apogeeAlt: (simplex[0].apogeeAlt + simplex[1].apogeeAlt) / 2
         };
 
-        // Reflection
-        const reflected = {
-            raan: centroid.raan + alpha * (centroid.raan - worst.raan),
-            apogeeAlt: centroid.apogeeAlt + alpha * (centroid.apogeeAlt - worst.apogeeAlt),
+        const reflected: SimplexPoint = {
+            raan: centroid.raan + NM_ALPHA * (centroid.raan - worst.raan),
+            apogeeAlt: centroid.apogeeAlt + NM_ALPHA * (centroid.apogeeAlt - worst.apogeeAlt),
             value: 0
         };
         reflected.value = objectiveFunc(reflected.raan, reflected.apogeeAlt);
@@ -346,30 +371,11 @@ export function optimizeApogeeToMoon(loiDate: Date, omega: number, inclination: 
         }
 
         if (reflected.value < best.value) {
-            // Try expansion
-            const expanded = {
-                raan: centroid.raan + gamma * (reflected.raan - centroid.raan),
-                apogeeAlt: centroid.apogeeAlt + gamma * (reflected.apogeeAlt - centroid.apogeeAlt),
-                value: 0
-            };
-            expanded.value = objectiveFunc(expanded.raan, expanded.apogeeAlt);
-
-            if (expanded.value < reflected.value) {
-                simplex[2] = expanded;
-            } else {
-                simplex[2] = reflected;
-            }
+            simplex[2] = tryExpansion(centroid, reflected, objectiveFunc);
             continue;
         }
 
-        // Contraction
-        const contracted = {
-            raan: centroid.raan + rho * (worst.raan - centroid.raan),
-            apogeeAlt: centroid.apogeeAlt + rho * (worst.apogeeAlt - centroid.apogeeAlt),
-            value: 0
-        };
-        contracted.value = objectiveFunc(contracted.raan, contracted.apogeeAlt);
-
+        const contracted = tryContraction(centroid, worst, objectiveFunc);
         if (contracted.value < worst.value) {
             simplex[2] = contracted;
             continue;
@@ -378,15 +384,14 @@ export function optimizeApogeeToMoon(loiDate: Date, omega: number, inclination: 
         // Shrinkage
         for (let i = 1; i < simplex.length; i++) {
             simplex[i] = {
-                raan: best.raan + sigma * (simplex[i].raan - best.raan),
-                apogeeAlt: best.apogeeAlt + sigma * (simplex[i].apogeeAlt - best.apogeeAlt),
+                raan: best.raan + NM_SIGMA * (simplex[i].raan - best.raan),
+                apogeeAlt: best.apogeeAlt + NM_SIGMA * (simplex[i].apogeeAlt - best.apogeeAlt),
                 value: 0
             };
             simplex[i].value = objectiveFunc(simplex[i].raan, simplex[i].apogeeAlt);
         }
     }
 
-    // Return best result after max iterations
     simplex.sort((a, b) => a.value - b.value);
     const best = simplex[0];
     return { raan: best.raan, apogeeAlt: best.apogeeAlt, distance: best.value };

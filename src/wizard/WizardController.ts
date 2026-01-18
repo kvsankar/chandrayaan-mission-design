@@ -9,12 +9,20 @@
 
 import { MissionWindowStep, MissionWindowState } from './steps/MissionWindowStep.js';
 import { LandingSiteStep, LandingSiteStepState } from './steps/LandingSiteStep.js';
+import { LandingWindowStep, LandingWindowStepState } from './steps/LandingWindowStep.js';
+import {
+    LunarDaySegment,
+    formatLunarDayLabel,
+    findElevationCrossing,
+    calculateSunElevation
+} from './calculations/sunElevation.js';
 
 export interface WizardState {
     currentStep: number;
     missionWindow: MissionWindowState | null;
     landingSite: LandingSiteStepState | null;
-    // Future steps will add more state here
+    landingWindow: LandingWindowStepState | null;
+    selectedLunarDay: LunarDaySegment | null;
 }
 
 export interface WizardControllerOptions {
@@ -24,23 +32,50 @@ export interface WizardControllerOptions {
 }
 
 const STEP_TITLES = [
-    'Mission Window',
+    'Exploration Window',
     'Landing Site',
-    'Landing Window',
+    'Lunar Day',
     'LOI Date',
     'Review'
+];
+
+interface MissionTimes {
+    sixDegRising: Date;
+    nineDegRising: Date;
+    sixDegSetting: Date;
+    missionDurationHours: number;
+}
+
+// Common timezones grouped by region (using IANA timezone names)
+const TIMEZONE_OPTIONS = [
+    { value: 'UTC', label: 'UTC' },
+    { value: 'Asia/Kolkata', label: 'India (IST)' },
+    { value: 'America/New_York', label: 'US Eastern' },
+    { value: 'America/Chicago', label: 'US Central' },
+    { value: 'America/Denver', label: 'US Mountain' },
+    { value: 'America/Los_Angeles', label: 'US Pacific' },
+    { value: 'Europe/London', label: 'London' },
+    { value: 'Europe/Paris', label: 'Paris/Berlin' },
+    { value: 'Europe/Moscow', label: 'Moscow' },
+    { value: 'Asia/Tokyo', label: 'Tokyo' },
+    { value: 'Asia/Shanghai', label: 'China' },
+    { value: 'Australia/Sydney', label: 'Sydney' },
 ];
 
 export class WizardController {
     private container: HTMLElement;
     private contentContainer: HTMLElement | null = null;
-    private currentStepInstance: MissionWindowStep | LandingSiteStep | null = null;
+    private currentStepInstance: MissionWindowStep | LandingSiteStep | LandingWindowStep | null = null;
 
     private state: WizardState = {
         currentStep: 1,
         missionWindow: null,
-        landingSite: null
+        landingSite: null,
+        landingWindow: null,
+        selectedLunarDay: null
     };
+
+    private timezone: string = 'UTC';  // Default timezone (IANA name)
 
     private onComplete?: (state: WizardState) => void;
     private onCancel?: () => void;
@@ -75,6 +110,16 @@ export class WizardController {
 
                 <div class="wizard-footer">
                     <button class="wizard-btn wizard-btn-cancel" id="wizard-cancel-btn">Cancel</button>
+                    <div class="wizard-footer-center">
+                        <label class="timezone-selector">
+                            <span class="timezone-label">Timezone:</span>
+                            <select id="timezone-select" class="timezone-select">
+                                ${TIMEZONE_OPTIONS.map(tz =>
+                                    `<option value="${tz.value}">${tz.label}</option>`
+                                ).join('')}
+                            </select>
+                        </label>
+                    </div>
                     <div class="wizard-nav-buttons">
                         <button class="wizard-btn wizard-btn-back" id="wizard-back-btn" disabled>
                             ← Back
@@ -96,10 +141,20 @@ export class WizardController {
         const backBtn = this.container.querySelector('#wizard-back-btn');
         const nextBtn = this.container.querySelector('#wizard-next-btn');
         const cancelBtn = this.container.querySelector('#wizard-cancel-btn');
+        const timezoneSelect = this.container.querySelector('#timezone-select') as HTMLSelectElement;
 
         backBtn?.addEventListener('click', () => this.goBack());
         nextBtn?.addEventListener('click', () => this.goNext());
         cancelBtn?.addEventListener('click', () => this.cancel());
+
+        timezoneSelect?.addEventListener('change', () => {
+            this.timezone = timezoneSelect.value;
+            this.updateSummary();
+            // Notify current step of timezone change
+            if (this.currentStepInstance instanceof LandingWindowStep) {
+                this.currentStepInstance.setTimezone(this.timezone);
+            }
+        });
     }
 
     private updateStepsList(): void {
@@ -172,6 +227,8 @@ export class WizardController {
                 this.showLandingSiteStep();
                 break;
             case 3:
+                this.showLandingWindowStep();
+                break;
             case 4:
             case 5:
                 this.showPlaceholderStep(stepNum);
@@ -210,6 +267,48 @@ export class WizardController {
         });
     }
 
+    private getExplorationDates(): { startDate: Date; endDate: Date } {
+        const startDate = this.state.missionWindow?.startDate
+            ? new Date(this.state.missionWindow.startDate)
+            : new Date('2023-03-01');
+        const endDate = this.state.missionWindow?.endDate
+            ? new Date(this.state.missionWindow.endDate)
+            : new Date('2023-10-31');
+        return { startDate, endDate };
+    }
+
+    private showLandingWindowStep(): void {
+        if (!this.contentContainer) return;
+
+        const site = this.state.landingSite?.primarySite;
+        if (!site) {
+            this.showPlaceholderStep(3);
+            return;
+        }
+
+        const { startDate, endDate } = this.getExplorationDates();
+        const backupSite = this.state.landingSite?.backupSite;
+
+        this.currentStepInstance = new LandingWindowStep({
+            container: this.contentContainer,
+            siteName: site.name,
+            siteLatitude: site.latitude,
+            siteLongitude: site.longitude,
+            backupSiteName: backupSite?.name,
+            backupSiteLatitude: backupSite?.latitude,
+            backupSiteLongitude: backupSite?.longitude,
+            explorationStartDate: startDate,
+            explorationEndDate: endDate,
+            timezone: this.timezone,
+            initialState: this.state.landingWindow || undefined,
+            onStateChange: (state) => {
+                this.state.landingWindow = state;
+                this.state.selectedLunarDay = state.selectedLunarDay;
+                this.updateSummary();
+            }
+        });
+    }
+
     private updateSummary(): void {
         const summaryContent = this.container.querySelector('#summary-content');
         if (!summaryContent) return;
@@ -223,6 +322,10 @@ export class WizardController {
         if (this.state.landingSite) {
             const siteSection = this.renderLandingSiteSection(this.state.landingSite);
             if (siteSection) sections.push(siteSection);
+        }
+
+        if (this.state.selectedLunarDay) {
+            sections.push(this.renderLunarDaySection(this.state.selectedLunarDay));
         }
 
         summaryContent.innerHTML = sections.length > 0
@@ -286,6 +389,210 @@ export class WizardController {
         `;
     }
 
+    private renderLunarDaySection(lunarDay: LunarDaySegment): string {
+        const label = formatLunarDayLabel(lunarDay);
+
+        // Get primary and backup sites
+        const primarySite = this.state.landingSite?.primarySite;
+        const backupSite = this.state.landingSite?.backupSite;
+
+        let siteSections = '';
+
+        // Primary site mission times
+        if (primarySite) {
+            const missionTimes = this.calculateMissionTimes(
+                { latitude: primarySite.latitude, longitude: primarySite.longitude },
+                lunarDay
+            );
+            siteSections += this.renderSiteMissionTimes('Primary', primarySite.name, missionTimes);
+        }
+
+        // Backup site mission times
+        if (backupSite) {
+            const missionTimes = this.calculateMissionTimes(
+                { latitude: backupSite.latitude, longitude: backupSite.longitude },
+                lunarDay
+            );
+            siteSections += this.renderSiteMissionTimes('Backup', backupSite.name, missionTimes);
+        }
+
+        return `
+            <div class="summary-section">
+                <div class="summary-section-header">
+                    <span class="summary-step-num">3</span>
+                    Lunar Day
+                </div>
+                <div class="summary-section-content">
+                    <div class="summary-item">
+                        <span class="summary-label">Period:</span>
+                        <span class="summary-value">${label}</span>
+                    </div>
+                    ${siteSections}
+                </div>
+            </div>
+        `;
+    }
+
+    private renderSiteMissionTimes(
+        siteType: string,
+        siteName: string,
+        missionTimes: MissionTimes | null
+    ): string {
+        if (!missionTimes) {
+            return `
+                <div class="summary-subsection">
+                    <div class="summary-item">
+                        <span class="summary-label">${siteType}:</span>
+                        <span class="summary-value">${siteName}</span>
+                    </div>
+                    <div class="summary-item secondary">
+                        <span class="summary-value">Unable to calculate times</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        const missionDays = missionTimes.missionDurationHours / 24;
+
+        return `
+            <div class="summary-subsection">
+                <div class="summary-item">
+                    <span class="summary-label">${siteType}:</span>
+                    <span class="summary-value">${siteName}</span>
+                </div>
+                <div class="summary-item secondary">
+                    <span class="summary-label">6° rising:</span>
+                    <span class="summary-value">${this.formatDateTime(missionTimes.sixDegRising)}</span>
+                </div>
+                <div class="summary-item secondary">
+                    <span class="summary-label">9° rising:</span>
+                    <span class="summary-value">${this.formatDateTime(missionTimes.nineDegRising)}</span>
+                </div>
+                <div class="summary-item secondary">
+                    <span class="summary-label">6° setting:</span>
+                    <span class="summary-value">${this.formatDateTime(missionTimes.sixDegSetting)}</span>
+                </div>
+                <div class="summary-item secondary">
+                    <span class="summary-label">Duration:</span>
+                    <span class="summary-value">${missionDays.toFixed(1)} days</span>
+                </div>
+            </div>
+        `;
+    }
+
+    private calculateMissionTimes(
+        site: { latitude: number; longitude: number },
+        lunarDay: LunarDaySegment
+    ): MissionTimes | null {
+        const samples = this.generateElevationSamples(site, lunarDay);
+        const cycles = this.findMissionCycles(site, samples);
+        const bestCycle = this.findClosestCycle(cycles, lunarDay.peakTime);
+
+        if (!bestCycle) {
+            return null;
+        }
+
+        return {
+            sixDegRising: bestCycle.sixDegRising,
+            nineDegRising: bestCycle.nineDegRising,
+            sixDegSetting: bestCycle.sixDegSetting,
+            missionDurationHours: (bestCycle.sixDegSetting.getTime() - bestCycle.sixDegRising.getTime()) / (1000 * 60 * 60)
+        };
+    }
+
+    private generateElevationSamples(
+        site: { latitude: number; longitude: number },
+        lunarDay: LunarDaySegment
+    ): { time: Date; elevation: number }[] {
+        const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
+        const FIFTEEN_DAYS_MS = 15 * 24 * 60 * 60 * 1000;
+
+        const searchStart = lunarDay.sunrise.getTime() - FIFTEEN_DAYS_MS;
+        const searchEnd = lunarDay.sunset.getTime() + FIFTEEN_DAYS_MS;
+
+        const samples: { time: Date; elevation: number }[] = [];
+        let t = searchStart;
+        while (t <= searchEnd) {
+            const time = new Date(t);
+            samples.push({ time, elevation: calculateSunElevation(site, time) });
+            t += THREE_HOURS_MS;
+        }
+        return samples;
+    }
+
+    private isRisingCrossing(curr: number, next: number, threshold: number): boolean {
+        return curr < threshold && next >= threshold;
+    }
+
+    private isSettingCrossing(curr: number, next: number, threshold: number): boolean {
+        return curr >= threshold && next < threshold;
+    }
+
+    private findMissionCycles(
+        site: { latitude: number; longitude: number },
+        samples: { time: Date; elevation: number }[]
+    ): { sixDegRising: Date; nineDegRising: Date; sixDegSetting: Date }[] {
+        const cycles: { sixDegRising: Date; nineDegRising: Date; sixDegSetting: Date }[] = [];
+        let sixRising: Date | null = null;
+        let nineRising: Date | null = null;
+
+        for (let i = 0; i < samples.length - 1; i++) {
+            const curr = samples[i];
+            const next = samples[i + 1];
+
+            if (this.isRisingCrossing(curr.elevation, next.elevation, 6)) {
+                sixRising = findElevationCrossing(site, curr.time, next.time, 6);
+                nineRising = null;
+            }
+            if (sixRising && !nineRising && this.isRisingCrossing(curr.elevation, next.elevation, 9)) {
+                nineRising = findElevationCrossing(site, curr.time, next.time, 9);
+            }
+            if (sixRising && nineRising && this.isSettingCrossing(curr.elevation, next.elevation, 6)) {
+                cycles.push({
+                    sixDegRising: sixRising,
+                    nineDegRising: nineRising,
+                    sixDegSetting: findElevationCrossing(site, curr.time, next.time, 6)
+                });
+                sixRising = null;
+                nineRising = null;
+            }
+        }
+        return cycles;
+    }
+
+    private findClosestCycle(
+        cycles: { sixDegRising: Date; nineDegRising: Date; sixDegSetting: Date }[],
+        peakTime: Date
+    ): { sixDegRising: Date; nineDegRising: Date; sixDegSetting: Date } | null {
+        const peakMs = peakTime.getTime();
+        let bestCycle: { sixDegRising: Date; nineDegRising: Date; sixDegSetting: Date } | null = null;
+        let bestDistance = Infinity;
+
+        for (const cycle of cycles) {
+            const midpoint = (cycle.sixDegRising.getTime() + cycle.sixDegSetting.getTime()) / 2;
+            const distance = Math.abs(midpoint - peakMs);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestCycle = cycle;
+            }
+        }
+        return bestCycle;
+    }
+
+    private formatDateTime(date: Date): string {
+        // Use Intl.DateTimeFormat for proper timezone handling
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: this.timezone,
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+            timeZoneName: 'short'
+        });
+        return formatter.format(date);
+    }
+
     private showPlaceholderStep(stepNum: number): void {
         if (!this.contentContainer) return;
 
@@ -340,6 +647,9 @@ export class WizardController {
                 this.state.missionWindow = this.currentStepInstance.getState();
             } else if (this.currentStepInstance instanceof LandingSiteStep) {
                 this.state.landingSite = this.currentStepInstance.getState();
+            } else if (this.currentStepInstance instanceof LandingWindowStep) {
+                this.state.landingWindow = this.currentStepInstance.getState();
+                this.state.selectedLunarDay = this.currentStepInstance.getSelectedLunarDay();
             }
         }
     }

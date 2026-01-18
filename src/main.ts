@@ -106,6 +106,7 @@ let aopLine2: THREE.Line;
 let aopArc: THREE.Line;
 let aopPie: THREE.Mesh;
 let aopLabel: THREE.Sprite;
+let raLabelsGroup: THREE.Group;
 
 // ============================================================================
 // Application State
@@ -1260,6 +1261,7 @@ function init(): void {
     setupActionsPanel();
     setupTimeline();
     setupCollapsiblePanels();
+    setupViewButtons();
     updateOrbitalElements();
 
     window.addEventListener('resize', onWindowResize, false);
@@ -1388,6 +1390,67 @@ function createGreatCircle(radius: number, color: number, inclination: number = 
 function createEquator(): void {
     equatorCircle = createGreatCircle(SPHERE_RADIUS, COLORS.equator);
     scene.add(equatorCircle);
+
+    // Create RA labels on equator
+    createRALabels();
+}
+
+function createRALabels(): void {
+    raLabelsGroup = new THREE.Group();
+
+    const raPositions = [
+        { ra: 0, label: '0°' },
+        { ra: 90, label: '90°' },
+        { ra: 180, label: '180°' },
+        { ra: 270, label: '270°' }
+    ];
+
+    const labelRadius = SPHERE_RADIUS * 1.08; // Slightly outside the sphere
+
+    raPositions.forEach(({ ra, label }) => {
+        const sprite = createRALabelSprite(label);
+
+        // Convert RA to position: Celestial X = cos(ra), Y = sin(ra), Z = 0
+        // In Three.js: x = cos(ra), z = -sin(ra), y = 0
+        const raRad = (ra * Math.PI) / 180;
+        sprite.position.set(
+            labelRadius * Math.cos(raRad),
+            0,
+            -labelRadius * Math.sin(raRad)
+        );
+
+        sprite.scale.set(8, 4, 1);
+        raLabelsGroup.add(sprite);
+    });
+
+    scene.add(raLabelsGroup);
+}
+
+function createRALabelSprite(text: string): THREE.Sprite {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 64;
+    const context = canvas.getContext('2d')!;
+
+    context.fillStyle = 'rgba(0, 0, 0, 0)';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    context.font = 'Bold 40px Arial';
+    context.fillStyle = '#ffffff';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(text, canvas.width / 2, canvas.height / 2);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+
+    const spriteMaterial = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthWrite: false
+    });
+
+    return new THREE.Sprite(spriteMaterial);
 }
 
 function createLunarOrbitCircle(): void {
@@ -1836,28 +1899,31 @@ function updateChandrayaanPosition(orbitalParams?: OrbitalParams): void {
     }
 
     // Update spacecraft appearance and visibility based on status
-    if (captureState.isCaptured && params.appMode === 'Game') {
-        // After capture - hide the spacecraft
-        chandrayaan.visible = false;
-    } else if (params.appMode !== 'Explore' && launchEvent.exists && !orbital.isLaunched) {
-        // Plan/Game mode: Launch exists but not reached yet - grey and frozen at perigee
-        // Respect showChandrayaan visibility toggle
-        chandrayaan.visible = params.showChandrayaan;
-        (chandrayaan.material as THREE.MeshPhongMaterial).color.setHex(0x888888);
-        (chandrayaan.material as THREE.MeshPhongMaterial).emissive.setHex(0x000000);
-    } else {
-        // Explore mode OR no launch event OR launched - white and active
-        // Respect showChandrayaan visibility toggle
-        chandrayaan.visible = params.showChandrayaan;
-        (chandrayaan.material as THREE.MeshPhongMaterial).color.setHex(COLORS.chandrayaan);
-        (chandrayaan.material as THREE.MeshPhongMaterial).emissive.setHex(0x222222);
-    }
+    updateSpacecraftAppearance(orbital);
 
     // Update RA display
     updateChandrayaanRADisplay();
 
     // Update craft-Moon distance and check for capture
     updateCraftMoonDistance();
+}
+
+function updateSpacecraftAppearance(orbital: OrbitalParams): void {
+    const material = chandrayaan.material as THREE.MeshPhongMaterial;
+    const isCapturedInGame = captureState.isCaptured && params.appMode === 'Game';
+    const isPreLaunchInPlanGame = params.appMode !== 'Explore' && launchEvent.exists && !orbital.isLaunched;
+
+    if (isCapturedInGame) {
+        chandrayaan.visible = false;
+    } else if (isPreLaunchInPlanGame) {
+        chandrayaan.visible = params.showChandrayaan;
+        material.color.setHex(0x888888);
+        material.emissive.setHex(0x000000);
+    } else {
+        chandrayaan.visible = params.showChandrayaan;
+        material.color.setHex(COLORS.chandrayaan);
+        material.emissive.setHex(0x222222);
+    }
 }
 
 // Calculate and update distance between craft and Moon
@@ -3756,6 +3822,19 @@ function updateMarkerSizes(): void {
 
         chandrayaan.scale.setScalar(scale);
     }
+
+    // RA Labels on equator: scale with zoom
+    if (raLabelsGroup) {
+        const cameraDistance = camera.position.length();
+        let scale = (cameraDistance / ZOOM_BASE_DISTANCE) * ZOOM_BASE_SCALE;
+
+        // Cap scale to keep labels readable
+        scale = Math.max(0.4, Math.min(1.5, scale));
+
+        raLabelsGroup.children.forEach(sprite => {
+            (sprite as THREE.Sprite).scale.set(8 * scale, 4 * scale, 1);
+        });
+    }
 }
 
 function onWindowResize(): void {
@@ -4002,13 +4081,29 @@ function markDirtyAndUpdate(): void {
     updateChandrayaanOrbit();
 }
 
+function destroyExistingLaunchGUI(): void {
+    if (launchEventGUI) {
+        launchEventGUI.destroy();
+    }
+}
+
+function exposeForTesting(name: string, fn: () => unknown): void {
+    if (typeof window !== 'undefined') {
+        (window as any)[name] = fn;
+    }
+}
+
+function setAutoOptimizeVisibility(wrapper: HTMLElement | null, visible: boolean): void {
+    if (wrapper) {
+        wrapper.style.display = visible ? 'block' : 'none';
+    }
+}
+
 function createLaunchEventGUI(): void {
     const container = document.getElementById('launch-event-container');
 
     // Destroy existing GUI if it exists
-    if (launchEventGUI) {
-        launchEventGUI.destroy();
-    }
+    destroyExistingLaunchGUI();
 
     // Create new GUI instance
     launchEventGUI = new GUI({ container: container || undefined });
@@ -4273,21 +4368,13 @@ function createLaunchEventGUI(): void {
     // Insert button into GUI
     autoOptimizeBtnWrapper = insertButtonIntoGUI(launchEventGUI, autoOptimizeBtn);
 
-    if (typeof window !== 'undefined') {
-        (window as any).triggerAutoOptimizeForTest = triggerAutoOptimize;
-    }
-
-    // Set initial button visibility
-    if (autoOptimizeBtnWrapper) {
-        autoOptimizeBtnWrapper.style.display = launchEvent.autoLOI ? 'block' : 'none';
-    }
+    exposeForTesting('triggerAutoOptimizeForTest', triggerAutoOptimize);
+    setAutoOptimizeVisibility(autoOptimizeBtnWrapper, launchEvent.autoLOI);
 
     // Listen for autoLOI changes via event bus and update button visibility
     // This ensures visibility updates even when changed programmatically (e.g., in tests)
     const updateAutoOptimizeVisibility = () => {
-        if (autoOptimizeBtnWrapper) {
-            autoOptimizeBtnWrapper.style.display = launchEvent.autoLOI ? 'block' : 'none';
-        }
+        setAutoOptimizeVisibility(autoOptimizeBtnWrapper, launchEvent.autoLOI);
     };
 
     // Subscribe to autoLOI changes
@@ -4642,6 +4729,66 @@ function setupCollapsiblePanels(): void {
             actionsCollapseBtn.classList.add('visible');
         }
     }
+}
+
+// Camera view presets
+interface ViewPreset {
+    position: { x: number; y: number; z: number };
+    target?: { x: number; y: number; z: number };
+}
+
+const viewPresets: Record<string, ViewPreset> = {
+    oblique: { position: { x: 240, y: 160, z: 240 } },
+    top: { position: { x: 0, y: 350, z: 0.1 } },  // Slight z offset to avoid gimbal lock
+    side: { position: { x: 350, y: 0, z: 0 } },
+    front: { position: { x: 0, y: 0, z: 350 } }
+};
+
+function setupViewButtons(): void {
+    const viewButtons = document.querySelectorAll('.view-btn');
+
+    viewButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const viewName = btn.getAttribute('data-view');
+            if (!viewName || !viewPresets[viewName]) return;
+
+            const preset = viewPresets[viewName];
+
+            // Animate camera to new position
+            animateCameraTo(preset.position);
+
+            // Update active button state
+            viewButtons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        });
+    });
+}
+
+function animateCameraTo(targetPos: { x: number; y: number; z: number }): void {
+    const startPos = { x: camera.position.x, y: camera.position.y, z: camera.position.z };
+    const duration = 500; // ms
+    const startTime = Date.now();
+
+    function animate() {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+
+        // Ease-out cubic
+        const eased = 1 - Math.pow(1 - progress, 3);
+
+        camera.position.x = startPos.x + (targetPos.x - startPos.x) * eased;
+        camera.position.y = startPos.y + (targetPos.y - startPos.y) * eased;
+        camera.position.z = startPos.z + (targetPos.z - startPos.z) * eased;
+
+        camera.lookAt(0, 0, 0);
+        controls.update();
+
+        if (progress < 1) {
+            requestAnimationFrame(animate);
+        }
+    }
+
+    animate();
 }
 
 function setupFloatingTimeline(): void {

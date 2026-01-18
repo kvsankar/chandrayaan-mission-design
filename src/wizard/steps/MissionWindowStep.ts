@@ -1,7 +1,7 @@
 /**
  * MissionWindowStep - Step 1 of Mission Design Wizard
  *
- * Allows user to select the mission time window:
+ * Allows user to select the exploration window (time range for planning):
  * - CY3 preset (March - October 2023)
  * - CY2 preset (January - September 2019)
  * - Custom date range
@@ -59,10 +59,10 @@ export class MissionWindowStep {
         this.container.innerHTML = `
             <div class="mission-window-step">
                 <div class="step-header">
-                    <h2>Step 1: Mission Time Window</h2>
+                    <h2>Step 1: Exploration Window</h2>
                     <p class="step-description">
-                        Select a time range for mission planning. Landing windows occur
-                        roughly once per month when sun elevation at the landing site is 6°-9°.
+                        Select a time range for mission planning. Each lunar day (~14 Earth days)
+                        represents a potential exploration period when the landing site is sunlit.
                     </p>
                 </div>
 
