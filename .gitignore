@@ -41,6 +41,7 @@ coverage/
 claude-conversations/
 docs/retrospectives/
 
-# Reference PDFs (too large for repo)
+# Reference materials (PDFs and extracted data from papers)
+docs/reference/
 *.pdf
 *.pdf:Zone.Identifier
