@@ -1267,13 +1267,14 @@
 
 .month-label {
     position: absolute;
-    top: 1px;
+    top: 0;
     left: 3px;
     font-size: 11px;
     color: #888;
     white-space: nowrap;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    line-height: 14px;  /* Ensure text fits within container */
 }
 
 /* Timeline Segments */
@@ -1286,19 +1287,20 @@
 }
 
 .timeline-segment.night {
-    background: #1a1a2a;
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: #0a1428;  /* Very dark blue */
+    border: 1px solid rgba(50, 80, 120, 0.3);
 }
 
 .timeline-segment.day {
-    background: linear-gradient(180deg, #4a6a9a 0%, #3a5a8a 100%);
-    border: 1px solid rgba(100, 150, 200, 0.3);
+    background: #e8e0a0;  /* Light yellow */
+    border: 1px solid rgba(200, 180, 100, 0.5);
+    border-radius: 0;  /* Square corners */
     cursor: pointer;
 }
 
 .timeline-segment.day:hover {
-    background: linear-gradient(180deg, #5a7aaa 0%, #4a6a9a 100%);
-    border-color: rgba(100, 180, 255, 0.5);
+    background: #f0e8a8;  /* Lighter yellow on hover */
+    border-color: rgba(220, 200, 100, 0.7);
     transform: scaleY(1.1);
     z-index: 5;
 }
@@ -1316,8 +1318,8 @@
 }
 
 .timeline-segment.day.readonly:hover {
-    background: linear-gradient(180deg, #4a6a9a 0%, #3a5a8a 100%);
-    border-color: rgba(100, 150, 200, 0.3);
+    background: #e8e0a0;  /* Same as non-hover for readonly */
+    border-color: rgba(200, 180, 100, 0.5);
     transform: none;
     z-index: auto;
 }
@@ -1361,13 +1363,13 @@
 }
 
 .legend-box.day {
-    background: linear-gradient(180deg, #4a6a9a 0%, #3a5a8a 100%);
-    border: 1px solid rgba(100, 150, 200, 0.3);
+    background: #e8e0a0;  /* Light yellow */
+    border: 1px solid rgba(200, 180, 100, 0.5);
 }
 
 .legend-box.night {
-    background: #1a1a2a;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: #0a1428;  /* Very dark blue */
+    border: 1px solid rgba(50, 80, 120, 0.3);
 }
 
 .legend-box.selected {
