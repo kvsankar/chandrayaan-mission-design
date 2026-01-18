@@ -36,6 +36,13 @@ declare module 'astronomy-engine' {
     diam_deg: number;  // Moon's apparent angular diameter (degrees)
   }
 
+  export interface AxisInfo {
+    ra: number;        // Right ascension of the rotation axis (degrees)
+    dec: number;       // Declination of the rotation axis (degrees)
+    spin: number;      // Spin angle about the rotation axis (degrees)
+    north: Vector;     // North pole direction unit vector
+  }
+
   export enum Body {
     Sun = 'Sun',
     Moon = 'Moon',
@@ -59,4 +66,5 @@ declare module 'astronomy-engine' {
   export function EquatorFromVector(vector: Vector): Equator;
   export function MoonPhase(time: AstroTime): number;
   export function Libration(time: AstroTime): LibrationInfo;
+  export function RotationAxis(body: string, time: AstroTime): AxisInfo;
 }

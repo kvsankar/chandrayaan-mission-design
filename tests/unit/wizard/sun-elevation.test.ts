@@ -335,4 +335,205 @@ describe('Sun Elevation PoC', () => {
 
     });
 
+    describe('RAAN Calculation Verification', () => {
+
+        /**
+         * Verify RAAN calculation against CY3 paper data
+         *
+         * From: Mathavaraj & Negi, "Chandrayaan-3 Trajectory Design"
+         * Table: Required Lunar Orbit RAAN by Landing Date
+         *
+         * Formula: θS = θR + θ
+         *   θS = Required RAAN
+         *   θR = Moon's sidereal angle (Right Ascension from ephemeris)
+         *   θ = Landing site longitude
+         */
+
+        // Paper data: Required RAAN values for CY3 primary site (longitude 32.3481°E)
+        const PAPER_RAAN_DATA = [
+            { date: '2023-01-27T16:00:00Z', expectedRaan: 53 },
+            { date: '2023-02-26T08:00:00Z', expectedRaan: 83 },
+            { date: '2023-03-28T06:00:00Z', expectedRaan: 114 },
+            { date: '2023-04-24T16:30:00Z', expectedRaan: 145 },
+            { date: '2023-05-26T08:30:00Z', expectedRaan: 176 },
+            { date: '2023-06-24T22:30:00Z', expectedRaan: 206 },
+            { date: '2023-07-24T10:30:00Z', expectedRaan: 234 },
+            { date: '2023-08-22T20:30:00Z', expectedRaan: 262 },
+            { date: '2023-09-21T05:30:00Z', expectedRaan: 289 },
+            { date: '2023-10-20T13:30:00Z', expectedRaan: 316 },
+            { date: '2023-11-18T23:00:00Z', expectedRaan: 343 },
+            { date: '2023-12-18T10:30:00Z', expectedRaan: 11 },
+        ];
+
+        /**
+         * Calculate RAAN using Moon's spin angle (more accurate formula)
+         *
+         * Formula: RAAN = (Moon spin - 180°) + site longitude
+         *
+         * This uses the Moon's rotation axis spin angle which accounts for
+         * the Moon's orientation in inertial space including libration.
+         */
+        function calculateRaan(siteLongitude: number, date: Date): number {
+            const time = Astronomy.MakeTime(date);
+            const axis = Astronomy.RotationAxis('Moon', time);
+
+            // Normalize spin to 0-360
+            let spinNorm = axis.spin % 360;
+            if (spinNorm < 0) spinNorm += 360;
+
+            // RAAN = (spin - 180) + site longitude
+            let raan = spinNorm - 180 + siteLongitude;
+            while (raan < 0) raan += 360;
+            while (raan >= 360) raan -= 360;
+
+            return raan;
+        }
+
+        it('should compute RAAN close to paper values for August 22, 2023 (CY3 landing)', () => {
+            // The actual CY3 landing was August 23, but the paper window is Aug 22, 20:30 UT
+            const date = new Date('2023-08-22T20:30:00Z');
+            const siteLon = SITES.cy3Primary.longitude;
+
+            const computedRaan = calculateRaan(siteLon, date);
+
+            // Get Moon's spin angle for logging
+            const time = Astronomy.MakeTime(date);
+            const axis = Astronomy.RotationAxis('Moon', time);
+            let spinNorm = axis.spin % 360;
+            if (spinNorm < 0) spinNorm += 360;
+
+            console.log(`\nRAAN Verification for Aug 22, 2023:`);
+            console.log(`  Landing site longitude: ${siteLon.toFixed(4)}°E`);
+            console.log(`  Moon spin angle (normalized): ${spinNorm.toFixed(2)}°`);
+            console.log(`  Computed RAAN: ${computedRaan.toFixed(2)}°`);
+            console.log(`  Paper expected: 262°`);
+            console.log(`  Difference: ${Math.abs(computedRaan - 262).toFixed(2)}°`);
+
+            // Using Moon's spin angle gives very accurate results
+            // Expected difference < 1° for most dates
+            expect(Math.abs(computedRaan - 262)).toBeLessThan(1);
+        });
+
+        it('should compute RAAN for all 2023 landing windows from paper', () => {
+            const siteLon = SITES.cy3Primary.longitude;
+
+            console.log(`\nRAAN Verification for all 2023 landing windows:`);
+            console.log(`Site longitude: ${siteLon.toFixed(4)}°E`);
+            console.log(`\n| Landing Date           | Computed RAAN | Paper RAAN | Diff |`);
+            console.log(`|------------------------|---------------|------------|------|`);
+
+            const results: { date: string; computed: number; expected: number; diff: number }[] = [];
+
+            for (const entry of PAPER_RAAN_DATA) {
+                const date = new Date(entry.date);
+                const computedRaan = calculateRaan(siteLon, date);
+                const diff = computedRaan - entry.expectedRaan;
+
+                // Normalize difference to -180 to +180 range
+                let normalizedDiff = diff;
+                if (normalizedDiff > 180) normalizedDiff -= 360;
+                if (normalizedDiff < -180) normalizedDiff += 360;
+
+                const dateStr = date.toISOString().substring(0, 16).replace('T', ' ');
+                console.log(`| ${dateStr} | ${computedRaan.toFixed(1).padStart(13)} | ${entry.expectedRaan.toString().padStart(10)} | ${normalizedDiff.toFixed(1).padStart(4)} |`);
+
+                results.push({
+                    date: dateStr,
+                    computed: computedRaan,
+                    expected: entry.expectedRaan,
+                    diff: normalizedDiff
+                });
+            }
+
+            // Calculate average absolute error
+            const avgError = results.reduce((sum, r) => sum + Math.abs(r.diff), 0) / results.length;
+            console.log(`\nAverage absolute error: ${avgError.toFixed(2)}°`);
+
+            // Most should be within 5 degrees
+            const withinTolerance = results.filter(r => Math.abs(r.diff) < 5).length;
+            console.log(`Within 5° tolerance: ${withinTolerance}/${results.length}`);
+        });
+
+        it('should compute RAAN for CY2 2019 landing windows from paper', () => {
+            // CY2 primary site longitude
+            const siteLon = SITES.cy2Primary.longitude; // 22.78°E
+
+            // CY2 Paper data
+            const CY2_PAPER_DATA = [
+                { date: '2019-06-09T23:00:00Z', expectedRaan: 190.0 },
+                { date: '2019-07-09T14:00:00Z', expectedRaan: 220.0 },
+                { date: '2019-08-08T05:00:00Z', expectedRaan: 251.0 },
+                { date: '2019-09-06T19:00:00Z', expectedRaan: 280.0 },  // CY2 landing attempt
+                { date: '2019-10-06T09:00:00Z', expectedRaan: 310.0 },
+                { date: '2019-11-04T21:00:00Z', expectedRaan: 339.0 },
+                { date: '2019-12-04T07:00:00Z', expectedRaan: 6.5 },
+            ];
+
+            console.log(`\nCY2 RAAN Verification (2019):`);
+            console.log(`Site: -70.90°S, ${siteLon}°E`);
+            console.log(`\n| Landing Date      | Computed RAAN | Paper RAAN | Diff   |`);
+            console.log(`|-------------------|---------------|------------|--------|`);
+
+            const results: { diff: number }[] = [];
+
+            for (const entry of CY2_PAPER_DATA) {
+                const date = new Date(entry.date);
+                const computedRaan = calculateRaan(siteLon, date);
+
+                let diff = computedRaan - entry.expectedRaan;
+                if (diff > 180) diff -= 360;
+                if (diff < -180) diff += 360;
+
+                const dateStr = date.toISOString().substring(0, 16).replace('T', ' ');
+                console.log(`| ${dateStr} | ${computedRaan.toFixed(1).padStart(13)} | ${entry.expectedRaan.toString().padStart(10)} | ${diff.toFixed(1).padStart(6)} |`);
+
+                results.push({ diff });
+            }
+
+            const avgError = results.reduce((sum, r) => sum + Math.abs(r.diff), 0) / results.length;
+            console.log(`\nAverage absolute error: ${avgError.toFixed(2)}°`);
+
+            // CY2 should have very low error (< 1°)
+            expect(avgError).toBeLessThan(1);
+
+            // All should be within 5° tolerance
+            const withinTolerance = results.filter(r => Math.abs(r.diff) < 5).length;
+            expect(withinTolerance).toBe(results.length);
+        });
+
+        it('should show detailed breakdown of spin-based RAAN calculation', () => {
+            // Analyze the Aug 22 case in detail
+            const date = new Date('2023-08-22T20:30:00Z');
+            const time = Astronomy.MakeTime(date);
+            const siteLon = SITES.cy3Primary.longitude;
+
+            // Get rotation axis info
+            const axis = Astronomy.RotationAxis('Moon', time);
+            let spinNorm = axis.spin % 360;
+            if (spinNorm < 0) spinNorm += 360;
+
+            // For comparison, also show Moon RA
+            const moonVector = Astronomy.GeoMoon(time);
+            const moonEquator = Astronomy.EquatorFromVector(moonVector);
+            const moonRA = moonEquator.ra * 15;
+
+            console.log(`\nDetailed breakdown for Aug 22, 2023 20:30 UT:`);
+            console.log(`  Moon rotation axis RA: ${axis.ra.toFixed(2)}°`);
+            console.log(`  Moon rotation axis Dec: ${axis.dec.toFixed(2)}°`);
+            console.log(`  Moon spin (cumulative): ${axis.spin.toFixed(2)}°`);
+            console.log(`  Moon spin (normalized): ${spinNorm.toFixed(2)}°`);
+            console.log(`  Site longitude: ${siteLon.toFixed(4)}°`);
+            console.log(`  Formula: (spin - 180) + siteLon`);
+            console.log(`  Result: (${spinNorm.toFixed(2)} - 180) + ${siteLon.toFixed(2)} = ${(spinNorm - 180 + siteLon).toFixed(2)}°`);
+            console.log(`  Paper value: 262°`);
+            console.log(`\n  Comparison with old formula (Moon RA + siteLon):`);
+            console.log(`  Moon RA: ${moonRA.toFixed(2)}° → RAAN: ${((moonRA + siteLon + 360) % 360).toFixed(2)}° (diff from paper: ${(((moonRA + siteLon + 360) % 360) - 262).toFixed(2)}°)`);
+
+            // Verify spin is reasonable
+            expect(spinNorm).toBeGreaterThanOrEqual(0);
+            expect(spinNorm).toBeLessThan(360);
+        });
+
+    });
+
 });

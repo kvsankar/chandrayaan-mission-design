@@ -263,11 +263,12 @@ export class LandingWindowStep {
     }
 
     private renderDayDetails(day: LunarDaySegment): string {
-        // Calculate required RAAN at the middle of the landing window (6°-9° range)
-        const requiredRaan = calculateRequiredRaan(this.siteLongitude, day.peakTime);
-
         // Calculate mission times (6° and 9° crossings)
         const missionTimes = this.calculateMissionTimes(day);
+
+        // Calculate required RAAN at landing time (6° rising crossing)
+        const landingTime = missionTimes?.sixDegRising ?? day.peakTime;
+        const requiredRaan = calculateRequiredRaan(this.siteLongitude, landingTime);
 
         if (missionTimes) {
             const missionDurationDays = missionTimes.missionDurationHours / 24;
@@ -461,15 +462,19 @@ export class LandingWindowStep {
             ? { name: this.backupSiteName, latitude: this.backupSiteLatitude, longitude: this.backupSiteLongitude }
             : undefined;
 
+        // Calculate mission times to get 6° crossing (landing time)
+        const missionTimes = this.calculateMissionTimes(day);
+        const landingTime = missionTimes?.sixDegRising ?? day.peakTime;
+
         // Create a landing window object from the lunar day
-        // The landing window is at sunrise when elevation is 6°-9°
         const landingWindow = {
             startDate: day.sunrise,
             endDate: day.sunset,
             peakTime: day.peakTime,
             peakElevation: day.peakElevation,
             durationHours: (day.sunset.getTime() - day.sunrise.getTime()) / (1000 * 60 * 60),
-            requiredRaan: calculateRequiredRaan(this.siteLongitude, day.peakTime)
+            // Calculate RAAN at landing time (6° rising), not lunar day peak
+            requiredRaan: calculateRequiredRaan(this.siteLongitude, landingTime)
         };
 
         this.illuminationPanel = new SunIlluminationPanel({
