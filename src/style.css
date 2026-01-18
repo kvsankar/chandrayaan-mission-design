@@ -152,59 +152,97 @@ body {
 #container {
     width: 100vw;
     height: 100vh;
+    position: relative;
 }
 
 #legend-panel {
     position: absolute;
     top: 10px;
     left: 10px;
-    background: rgba(0, 0, 0, 0.8);
-    padding: 8px;
-    border-radius: 4px;
-    width: 180px;
-    font-size: 10px;
+    background: rgba(0, 0, 0, 0.85);
+    padding: 12px;
+    border-radius: 6px;
+    width: 220px;
+    font-size: 13px;
     pointer-events: auto;
     z-index: 999;
 }
 
 #legend-panel h3 {
-    margin: 0 0 4px 0;
+    margin: 0 0 8px 0;
     border-bottom: 1px solid #666;
-    padding-bottom: 2px;
+    padding-bottom: 4px;
     user-select: none;
-    font-size: 12px;
+    font-size: 15px;
 }
 
 #legend-content {
-    line-height: 1.1;
+    line-height: 1.3;
 }
 
 .legend-section {
-    margin-bottom: 6px;
+    margin-bottom: 10px;
 }
 
 .legend-section strong {
     color: #aaa;
-    font-size: 10px;
+    font-size: 13px;
     display: block;
-    margin-bottom: 2px;
+    margin-bottom: 4px;
 }
 
 .legend-item {
     display: block;
     margin: 0;
-    padding: 1px 0;
-    font-size: 10px;
+    padding: 2px 0;
+    font-size: 13px;
 }
 
 .legend-color {
     display: inline-block;
-    width: 14px;
-    height: 8px;
-    margin-right: 5px;
+    width: 18px;
+    height: 10px;
+    margin-right: 8px;
     border: 1px solid #555;
     border-radius: 2px;
     flex-shrink: 0;
+}
+
+/* View Preset Buttons */
+#view-buttons {
+    position: absolute;
+    bottom: 200px;
+    left: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 999;
+}
+
+.view-btn {
+    padding: 10px 18px;
+    background: rgba(40, 40, 40, 0.9);
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: #ccc;
+    cursor: pointer;
+    font-size: 14px;
+    font-family: 'Arial', sans-serif;
+    transition: all 0.2s;
+    min-width: 60px;
+    text-align: center;
+}
+
+.view-btn:hover {
+    background: rgba(60, 60, 60, 0.9);
+    color: #fff;
+    border-color: #777;
+}
+
+.view-btn.active {
+    background: rgba(0, 120, 212, 0.9);
+    color: #fff;
+    border-color: #0078d4;
 }
 
 .lil-gui {
