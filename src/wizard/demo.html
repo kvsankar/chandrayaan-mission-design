@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mission Design Wizard - Chandrayaan</title>
+    <link rel="stylesheet" href="wizard.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+        }
+
+        header {
+            padding: 16px 24px;
+            background: rgba(0, 0, 0, 0.3);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header h1 {
+            font-size: 20px;
+            font-weight: 500;
+        }
+
+        header p {
+            font-size: 13px;
+            color: #888;
+            margin-top: 4px;
+        }
+
+        .header-badge {
+            background: #3366cc;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+
+        main {
+            padding: 24px;
+            width: 90%;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        #wizard-container {
+            min-height: 700px;
+            background: rgba(30, 30, 45, 0.5);
+            border-radius: 12px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div>
+            <h1>Mission Design Wizard</h1>
+            <p>Plan lunar landing missions using backwards design methodology</p>
+        </div>
+        <span class="header-badge">Demo</span>
+    </header>
+
+    <main>
+        <div id="wizard-container"></div>
+    </main>
+
+    <script type="module">
+        try {
+            const { WizardController } = await import('./WizardController.ts');
+
+            const container = document.getElementById('wizard-container');
+
+            const wizard = new WizardController({
+                container,
+                onComplete: (state) => {
+                    alert('Mission design complete! In the full app, this would create a launch event.');
+                    console.log('Wizard completed:', state);
+                },
+                onCancel: () => {
+                    console.log('Wizard cancelled');
+                }
+            });
+        } catch (error) {
+            console.error('Wizard error:', error);
+            document.getElementById('wizard-container').innerHTML =
+                '<div style="padding: 24px; color: #f66;">Error: ' + error.message + '</div>';
+        }
+    </script>
+</body>
+</html>

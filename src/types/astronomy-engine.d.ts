@@ -32,4 +32,5 @@ declare module 'astronomy-engine' {
   export function GeoMoonState(time: AstroTime): { position: Vector; velocity: Vector };
   export function Equator(body: string, time: AstroTime, observer: Observer | null, ofdate: boolean, aberration: boolean): Equator;
   export function EquatorFromVector(vector: Vector): Equator;
+  export function MoonPhase(time: AstroTime): number;
 }
