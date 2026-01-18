@@ -17,7 +17,7 @@
 }
 
 .landing-site-step .step-header h2 {
-    font-size: 20px;
+    font-size: 18px;
     margin-bottom: 0;
 }
 
@@ -1022,8 +1022,7 @@
  * ============================================================================ */
 
 .mission-window-step {
-    max-width: 600px;
-    margin: 0 auto;
+    width: 100%;
 }
 
 .step-header {
@@ -1031,7 +1030,7 @@
 }
 
 .step-header h2 {
-    font-size: 24px;
+    font-size: 18px;
     font-weight: 500;
     margin-bottom: 8px;
 }
@@ -1190,7 +1189,7 @@
 }
 
 .lunar-day-step .step-header h2 {
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 500;
     margin: 0;
 }
@@ -1309,6 +1308,23 @@
     border-color: rgba(68, 255, 136, 0.6);
     box-shadow: 0 0 12px rgba(68, 255, 136, 0.3);
     z-index: 6;
+}
+
+/* Read-only timeline segments (no hover effects, no pointer cursor) */
+.timeline-segment.day.readonly {
+    cursor: default;
+}
+
+.timeline-segment.day.readonly:hover {
+    background: linear-gradient(180deg, #4a6a9a 0%, #3a5a8a 100%);
+    border-color: rgba(100, 150, 200, 0.3);
+    transform: none;
+    z-index: auto;
+}
+
+.timeline-segment.day.readonly.selected:hover {
+    background: linear-gradient(180deg, #4f8 0%, #3c6 100%);
+    border-color: rgba(68, 255, 136, 0.6);
 }
 
 /* Segment Labels - below timeline */
@@ -1473,7 +1489,7 @@
 
 .summary-header {
     padding: 12px 16px;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 600;
     color: #fff;
     text-transform: uppercase;
@@ -1486,7 +1502,7 @@
     flex: 1;
     padding: 12px 16px;
     overflow-y: auto;
-    font-size: 11px;
+    font-size: 13px;
 }
 
 .summary-empty {
@@ -1513,7 +1529,7 @@
     align-items: center;
     gap: 8px;
     margin-bottom: 8px;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 500;
     color: #aaa;
 }
@@ -1541,7 +1557,7 @@
 .summary-item {
     display: flex;
     gap: 8px;
-    font-size: 11px;
+    font-size: 13px;
     line-height: 1.4;
 }
 
@@ -1907,4 +1923,233 @@
         height: 120px;
         margin: 0 auto;
     }
+}
+
+/* ============================================================================
+ * LOI Date Step (Step 4)
+ * ============================================================================ */
+
+.loi-date-step {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    height: 100%;
+}
+
+.loi-date-step .step-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 4px;
+}
+
+.loi-date-step .step-header h2 {
+    font-size: 18px;
+    font-weight: 500;
+    margin: 0;
+}
+
+.loi-date-step .step-site-info {
+    font-size: 12px;
+    color: #888;
+    margin: 0;
+}
+
+/* LOI Markers */
+.loi-marker {
+    position: absolute;
+    top: 14px;  /* Align with timeline segments */
+    transform: translateX(-50%);
+    cursor: pointer;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.loi-marker-line {
+    width: 3px;
+    height: 26px;  /* Match timeline segment height */
+    background: #3366cc;
+    border-radius: 1px;
+    transition: all 0.2s;
+    box-shadow: 0 0 4px rgba(51, 102, 204, 0.4);
+}
+
+.loi-marker:hover .loi-marker-line {
+    width: 5px;
+    background: #4488ee;
+    box-shadow: 0 0 8px rgba(51, 102, 204, 0.8);
+}
+
+.loi-marker.selected .loi-marker-line {
+    width: 5px;
+    background: #4CAF50;
+    box-shadow: 0 0 10px rgba(76, 175, 80, 0.8);
+}
+
+.loi-marker-label {
+    position: absolute;
+    top: -32px;  /* Position above month markers */
+    font-size: 14px;
+    color: #3366cc;
+    font-weight: bold;
+    white-space: nowrap;
+    line-height: 1;
+}
+
+.loi-marker:hover .loi-marker-label {
+    color: #4488ee;
+}
+
+.loi-marker.selected .loi-marker-label {
+    color: #4CAF50;
+    background: rgba(76, 175, 80, 0.2);
+}
+
+/* LOI Details Panel */
+.loi-details {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    padding: 14px 16px;
+}
+
+.loi-details .no-selection {
+    color: #666;
+    font-style: italic;
+    text-align: center;
+    padding: 12px;
+}
+
+.loi-details .details-content {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.loi-details .detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 4px 0;
+}
+
+.loi-details .detail-row.highlight {
+    background: rgba(76, 175, 80, 0.1);
+    margin: 0 -8px;
+    padding: 8px;
+    border-radius: 4px;
+}
+
+.loi-details .detail-label {
+    font-size: 12px;
+    color: #888;
+}
+
+.loi-details .detail-value {
+    font-size: 13px;
+    color: #fff;
+    font-weight: 500;
+}
+
+.loi-details .detail-row.highlight .detail-value {
+    color: #4CAF50;
+}
+
+.loi-details .details-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 6px 0;
+}
+
+.loi-details .detail-note {
+    font-size: 11px;
+    color: #888;
+    line-height: 1.5;
+    padding: 8px 0;
+}
+
+.loi-details .detail-note strong {
+    color: #aaa;
+}
+
+/* LOI Timeline Section */
+.loi-timeline-section {
+    margin-top: 8px;
+}
+
+.loi-timeline-section .timeline-track.loi-track {
+    background: rgba(51, 102, 204, 0.08);
+    border: 1px solid rgba(51, 102, 204, 0.2);
+    overflow: visible;  /* Allow markers and labels to extend outside */
+}
+
+.loi-timeline-section .timeline-container,
+.loi-timeline-section .timeline-wrapper,
+.loi-timeline-section .timeline-track {
+    overflow: visible;  /* Allow labels to show above timeline */
+}
+
+.loi-timeline-section .timeline-container {
+    padding-top: 20px;  /* Space for labels above */
+}
+
+/* Landing marker on LOI timeline */
+.landing-marker {
+    position: absolute;
+    top: 14px;  /* Align with timeline segments */
+    transform: translateX(-50%);
+    z-index: 15;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.landing-marker-line {
+    width: 2px;
+    height: 26px;  /* Match timeline segment height */
+    background: #4CAF50;
+    border-radius: 1px;
+}
+
+.landing-marker-label {
+    position: absolute;
+    top: -32px;  /* Position above month markers */
+    font-size: 10px;
+    color: #4CAF50;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+/* LOI labels below timeline */
+.loi-labels {
+    position: relative;
+    height: 16px;
+    margin-top: 4px;
+}
+
+.loi-label {
+    position: absolute;
+    transform: translateX(-50%);
+    font-size: 10px;
+    color: #3366cc;
+    white-space: nowrap;
+}
+
+/* LOI Legend boxes */
+.legend-box.loi {
+    background: #3366cc;
+    box-shadow: 0 0 4px rgba(51, 102, 204, 0.4);
+}
+
+.legend-box.loi-selected {
+    background: #4CAF50;
+    box-shadow: 0 0 4px rgba(76, 175, 80, 0.4);
+}
+
+/* Node symbols in legend */
+.node-symbol {
+    font-size: 14px;
+    color: #3366cc;
+    margin-right: 4px;
 }

@@ -10,6 +10,7 @@
 import { MissionWindowStep, MissionWindowState } from './steps/MissionWindowStep.js';
 import { LandingSiteStep, LandingSiteStepState } from './steps/LandingSiteStep.js';
 import { LandingWindowStep, LandingWindowStepState } from './steps/LandingWindowStep.js';
+import { LOIDateStep, LOIDateStepState } from './steps/LOIDateStep.js';
 import {
     LunarDaySegment,
     formatLunarDayLabel,
@@ -23,6 +24,7 @@ export interface WizardState {
     landingSite: LandingSiteStepState | null;
     landingWindow: LandingWindowStepState | null;
     selectedLunarDay: LunarDaySegment | null;
+    loiDate: LOIDateStepState | null;
 }
 
 export interface WizardControllerOptions {
@@ -65,14 +67,15 @@ const TIMEZONE_OPTIONS = [
 export class WizardController {
     private container: HTMLElement;
     private contentContainer: HTMLElement | null = null;
-    private currentStepInstance: MissionWindowStep | LandingSiteStep | LandingWindowStep | null = null;
+    private currentStepInstance: MissionWindowStep | LandingSiteStep | LandingWindowStep | LOIDateStep | null = null;
 
     private state: WizardState = {
         currentStep: 1,
         missionWindow: null,
         landingSite: null,
         landingWindow: null,
-        selectedLunarDay: null
+        selectedLunarDay: null,
+        loiDate: null
     };
 
     private timezone: string = 'UTC';  // Default timezone (IANA name)
@@ -153,6 +156,8 @@ export class WizardController {
             // Notify current step of timezone change
             if (this.currentStepInstance instanceof LandingWindowStep) {
                 this.currentStepInstance.setTimezone(this.timezone);
+            } else if (this.currentStepInstance instanceof LOIDateStep) {
+                this.currentStepInstance.setTimezone(this.timezone);
             }
         });
     }
@@ -230,6 +235,8 @@ export class WizardController {
                 this.showLandingWindowStep();
                 break;
             case 4:
+                this.showLOIDateStep();
+                break;
             case 5:
                 this.showPlaceholderStep(stepNum);
                 break;
@@ -309,6 +316,36 @@ export class WizardController {
         });
     }
 
+    private showLOIDateStep(): void {
+        if (!this.contentContainer) return;
+
+        const selectedLunarDay = this.state.selectedLunarDay;
+        const primarySite = this.state.landingSite?.primarySite;
+
+        if (!selectedLunarDay || !primarySite) {
+            this.showPlaceholderStep(4);
+            return;
+        }
+
+        const { startDate, endDate } = this.getExplorationDates();
+
+        this.currentStepInstance = new LOIDateStep({
+            container: this.contentContainer,
+            selectedLunarDay,
+            siteName: primarySite.name,
+            siteLatitude: primarySite.latitude,
+            siteLongitude: primarySite.longitude,
+            explorationStartDate: startDate,
+            explorationEndDate: endDate,
+            timezone: this.timezone,
+            initialState: this.state.loiDate || undefined,
+            onStateChange: (state) => {
+                this.state.loiDate = state;
+                this.updateSummary();
+            }
+        });
+    }
+
     private updateSummary(): void {
         const summaryContent = this.container.querySelector('#summary-content');
         if (!summaryContent) return;
@@ -326,6 +363,10 @@ export class WizardController {
 
         if (this.state.selectedLunarDay) {
             sections.push(this.renderLunarDaySection(this.state.selectedLunarDay));
+        }
+
+        if (this.state.loiDate?.selectedLOIDate) {
+            sections.push(this.renderLOIDateSection(this.state.loiDate.selectedLOIDate));
         }
 
         summaryContent.innerHTML = sections.length > 0
@@ -475,6 +516,23 @@ export class WizardController {
                 <div class="summary-item secondary">
                     <span class="summary-label">Duration:</span>
                     <span class="summary-value">${missionDays.toFixed(1)} days</span>
+                </div>
+            </div>
+        `;
+    }
+
+    private renderLOIDateSection(loiDate: Date): string {
+        return `
+            <div class="summary-section">
+                <div class="summary-section-header">
+                    <span class="summary-step-num">4</span>
+                    LOI Date
+                </div>
+                <div class="summary-section-content">
+                    <div class="summary-item">
+                        <span class="summary-label">Date:</span>
+                        <span class="summary-value">${this.formatDateTime(loiDate)}</span>
+                    </div>
                 </div>
             </div>
         `;
@@ -650,6 +708,8 @@ export class WizardController {
             } else if (this.currentStepInstance instanceof LandingWindowStep) {
                 this.state.landingWindow = this.currentStepInstance.getState();
                 this.state.selectedLunarDay = this.currentStepInstance.getSelectedLunarDay();
+            } else if (this.currentStepInstance instanceof LOIDateStep) {
+                this.state.loiDate = this.currentStepInstance.getState();
             }
         }
     }
