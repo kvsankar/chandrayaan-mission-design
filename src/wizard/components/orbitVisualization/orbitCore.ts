@@ -275,7 +275,8 @@ export function formatDate(date: Date, timeZone: string = 'UTC'): string {
         hour: '2-digit',
         minute: '2-digit',
         hour12: false,
-        timeZone
+        timeZone,
+        timeZoneName: 'short'
     }).format(date);
 }
 

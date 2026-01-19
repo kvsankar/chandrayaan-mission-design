@@ -69,6 +69,13 @@ export class TimelineControls {
         this.updateSpeedButtons();
     }
 
+    private formatNumber(value: number, decimals: number = 2): string {
+        const fixed = value.toFixed(decimals);
+        const parts = fixed.split('.');
+        parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        return parts.join('.');
+    }
+
     private render(): void {
         // Calculate marker positions
         const tliPos = calculateMarkerPosition(this.timeline.tliDate, this.startDate, this.totalDays);
@@ -272,7 +279,7 @@ export class TimelineControls {
         const moonDistEl = this.panel?.querySelector('#orbit-moon-distance');
         if (moonDistEl) {
             moonDistEl.textContent = moonDistance !== null
-                ? `${moonDistance.toFixed(2)} km`
+                ? `${this.formatNumber(moonDistance, 2)} km`
                 : '--';
         }
     }

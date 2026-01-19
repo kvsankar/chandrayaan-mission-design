@@ -483,11 +483,16 @@ export class LandingWindowStep {
     }
 
     private formatDateTime(date: Date): string {
-        const month = MONTH_NAMES[date.getUTCMonth()];
-        const day = date.getUTCDate();
-        const hours = date.getUTCHours().toString().padStart(2, '0');
-        const minutes = date.getUTCMinutes().toString().padStart(2, '0');
-        return `${month} ${day}, ${hours}:${minutes} UT`;
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: this.timezone,
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+            timeZoneName: 'short'
+        });
+        return formatter.format(date);
     }
 
     private formatDateRange(start: Date, end: Date): string {

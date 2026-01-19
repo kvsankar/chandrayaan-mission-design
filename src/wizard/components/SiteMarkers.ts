@@ -154,13 +154,23 @@ export function isNearSide(longitude: number): boolean {
 }
 
 /**
+ * Format number with commas and decimals
+ */
+function formatNumber(value: number, decimals: number = 2): string {
+    const fixed = value.toFixed(decimals);
+    const parts = fixed.split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return parts.join('.');
+}
+
+/**
  * Format coordinates for display
  */
 export function formatCoordinates(lat: number, lon: number): string {
     const latDir = lat >= 0 ? 'N' : 'S';
     const lonDir = lon >= 0 ? 'E' : 'W';
 
-    return `${Math.abs(lat).toFixed(2)}°${latDir}, ${Math.abs(lon).toFixed(2)}°${lonDir}`;
+    return `${formatNumber(Math.abs(lat), 2)}°${latDir}, ${formatNumber(Math.abs(lon), 2)}°${lonDir}`;
 }
 
 /**

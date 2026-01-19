@@ -3,7 +3,7 @@
  */
 
 :root {
-    --steps-panel-width: 160px;
+    --steps-panel-width: 190px;
     --content-horizontal-padding: 16px;
 }
 
@@ -1516,7 +1516,7 @@
 }
 
 .wizard-summary {
-    width: 340px;
+    width: 420px;
     flex-shrink: 0;
     background: rgba(0, 0, 0, 0.25);
     border-left: 1px solid rgba(255, 255, 255, 0.08);
@@ -1602,7 +1602,7 @@
 
 .summary-label {
     color: #9aa0a6;
-    min-width: 70px;
+    min-width: 100px;
     flex-shrink: 0;
     font-weight: 400;
 }
@@ -1613,8 +1613,21 @@
     font-weight: 500;
 }
 
+.summary-value-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.summary-value-group .summary-value.secondary {
+    color: #c2c7ce;
+    font-weight: 400;
+    font-size: 12px;
+}
+
 .summary-item.secondary .summary-label {
-    color: #8a9199;
+    color: #9aa0a6;
+    font-weight: 400;
 }
 
 .summary-item.secondary .summary-value {
@@ -1624,11 +1637,12 @@
 
 .summary-item.secondary.highlight-info .summary-label {
     color: #9aa0a6;
+    font-weight: 400;
 }
 
 .summary-item.secondary.highlight-info .summary-value {
     color: #4CAF50;
-    font-weight: 600;
+    font-weight: 500;
 }
 
 /* Subsection for site-specific mission times */
@@ -1684,7 +1698,7 @@
 }
 
 /* Responsive: hide side panels on small screens */
-@media (max-width: 1200px) {
+@media (max-width: 1400px) {
     .wizard-summary {
         display: none;
     }
@@ -2198,7 +2212,7 @@
     background: rgba(0, 0, 0, 0.3);
     border-radius: 6px;
     overflow: hidden;
-    min-width: 400px;
+    min-width: 500px;
 }
 
 .orbit-header {
@@ -2418,15 +2432,6 @@ body.orbit-fullscreen-active {
     padding: 8px 12px;
     background: rgba(0, 0, 0, 0.3);
     border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.orbit-current-date {
-    font-size: 12px;
-    font-weight: 400;
-    color: #e8e8e8;
-    text-align: left;
-    margin-bottom: 0;
-    font-family: inherit;
 }
 
 .orbit-slider-row {
@@ -2687,8 +2692,8 @@ body.orbit-fullscreen-active {
 .orbit-panel-wrapper.orbit-fullscreen .orbit-sidebar {
     display: flex;
     flex: 1;
-    min-width: 260px;
-    max-width: 320px;
+    min-width: 280px;
+    max-width: 380px;
     background: rgba(0, 0, 0, 0.25);
     border-left: 1px solid rgba(255, 255, 255, 0.06);
     padding: 10px;
@@ -2744,7 +2749,8 @@ body.orbit-fullscreen-active {
 .orbit-current-date {
     font-size: 12px;
     font-weight: 400;
-    color: #e8e8e8;
+    line-height: 1.2;
+    color: #9aa0a6;
     font-family: inherit;
 }
 
@@ -2752,17 +2758,22 @@ body.orbit-fullscreen-active {
     display: flex;
     align-items: baseline;
     gap: 6px;
-    font-size: 12px;
 }
 
 .orbit-distance-label {
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.2;
     color: #9aa0a6;
+    font-family: inherit;
 }
 
 .orbit-distance-value {
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.2;
     color: #4CAF50;
     font-family: inherit;
-    font-weight: 400;
 }
 
 /* Row 2: Slider with markers */

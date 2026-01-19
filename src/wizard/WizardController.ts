@@ -463,14 +463,27 @@ export class WizardController {
         `;
     }
 
+    private formatNumber(value: number, decimals: number = 2): string {
+        const fixed = value.toFixed(decimals);
+        const parts = fixed.split('.');
+        parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        return parts.join('.');
+    }
+
+    private formatLatLon(lat: number, lon: number): string {
+        const latDir = lat >= 0 ? 'N' : 'S';
+        const lonDir = lon >= 0 ? 'E' : 'W';
+        return `${this.formatNumber(Math.abs(lat), 2)}°${latDir}, ${this.formatNumber(Math.abs(lon), 2)}°${lonDir}`;
+    }
+
     private renderSiteItem(label: string, site: { name: string; latitude: number; longitude: number }): string {
         return `
             <div class="summary-item">
                 <span class="summary-label">${label}:</span>
-                <span class="summary-value">${site.name}</span>
-            </div>
-            <div class="summary-item secondary">
-                <span class="summary-value">${site.latitude.toFixed(2)}°, ${site.longitude.toFixed(2)}°</span>
+                <div class="summary-value-group">
+                    <span class="summary-value">${site.name}</span>
+                    <span class="summary-value secondary">${this.formatLatLon(site.latitude, site.longitude)}</span>
+                </div>
             </div>
         `;
     }
@@ -602,7 +615,7 @@ export class WizardController {
                 </div>
                 <div class="summary-item secondary highlight-info">
                     <span class="summary-label">Landing window:</span>
-                    <span class="summary-value">${landingWindowHours.toFixed(1)} hrs</span>
+                    <span class="summary-value">${this.formatNumber(landingWindowHours, 2)} hrs</span>
                 </div>
                 <div class="summary-item secondary highlight-info">
                     <span class="summary-label">Landing chances:</span>
@@ -610,7 +623,7 @@ export class WizardController {
                 </div>
                 <div class="summary-item secondary highlight-info">
                     <span class="summary-label">RAAN range:</span>
-                    <span class="summary-value">${raanAt6Deg.toFixed(1)}° – ${raanAt9Deg.toFixed(1)}°</span>
+                    <span class="summary-value">${this.formatNumber(raanAt6Deg, 2)}° – ${this.formatNumber(raanAt9Deg, 2)}°</span>
                 </div>
                 <div class="summary-item secondary">
                     <span class="summary-label">6° setting:</span>
@@ -618,7 +631,7 @@ export class WizardController {
                 </div>
                 <div class="summary-item secondary">
                     <span class="summary-label">Duration:</span>
-                    <span class="summary-value">${missionDays.toFixed(1)} days</span>
+                    <span class="summary-value">${this.formatNumber(missionDays, 2)} days</span>
                 </div>
             </div>
         `;
@@ -742,10 +755,10 @@ export class WizardController {
         const raStr = moonData ? `${raHours}h ${raMinutes}m` : '--';
 
         // Format Moon Dec
-        const decStr = moonData ? `${moonData.dec.toFixed(2)}°` : '--';
+        const decStr = moonData ? `${this.formatNumber(moonData.dec, 2)}°` : '--';
 
         // Format Moon distance
-        const distanceStr = moonData ? `${Math.round(moonData.distance).toLocaleString()} km` : '--';
+        const distanceStr = moonData ? `${this.formatNumber(moonData.distance, 2)} km` : '--';
 
         return `
             <div class="summary-section">
@@ -783,31 +796,31 @@ export class WizardController {
                         </div>
                         <div class="summary-item secondary">
                             <span class="summary-label">Inclination:</span>
-                            <span class="summary-value">${orbital ? orbital.inclination.toFixed(2) + '°' : '--'}</span>
+                            <span class="summary-value">${orbital ? this.formatNumber(orbital.inclination, 2) + '°' : '--'}</span>
                         </div>
                         <div class="summary-item secondary">
                             <span class="summary-label">RAAN:</span>
-                            <span class="summary-value">${orbital ? orbital.raan.toFixed(2) + '°' : '--'}</span>
+                            <span class="summary-value">${orbital ? this.formatNumber(orbital.raan, 2) + '°' : '--'}</span>
                         </div>
                         <div class="summary-item secondary">
                             <span class="summary-label">AoP (ω):</span>
-                            <span class="summary-value">${orbital ? orbital.omega.toFixed(2) + '°' : '--'}</span>
+                            <span class="summary-value">${orbital ? this.formatNumber(orbital.omega, 2) + '°' : '--'}</span>
                         </div>
                         <div class="summary-item secondary">
                             <span class="summary-label">Perigee:</span>
-                            <span class="summary-value">${perigeeAlt} km</span>
+                            <span class="summary-value">${this.formatNumber(perigeeAlt, 2)} km</span>
                         </div>
                         <div class="summary-item secondary">
                             <span class="summary-label">Apogee:</span>
-                            <span class="summary-value">${apogeeAlt} km</span>
+                            <span class="summary-value">${this.formatNumber(apogeeAlt, 2)} km</span>
                         </div>
                         <div class="summary-item secondary highlight-info">
                             <span class="summary-label">Closest approach:</span>
-                            <span class="summary-value">${closestKm !== undefined ? `${closestKm.toFixed(2)} km` : '--'} at ${this.formatDateTime(closestTime)}</span>
+                            <span class="summary-value">${closestKm !== undefined ? `${this.formatNumber(closestKm, 2)} km` : '--'} at ${this.formatDateTime(closestTime)}</span>
                         </div>
                         <div class="summary-item secondary">
                             <span class="summary-label">ΔV (from 180×180):</span>
-                            <span class="summary-value">${deltaV.toFixed(3)} km/s</span>
+                            <span class="summary-value">${this.formatNumber(deltaV, 2)} km/s</span>
                         </div>
                     </div>
                 </div>

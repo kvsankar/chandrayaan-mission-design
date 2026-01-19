@@ -226,8 +226,12 @@ export class OrbitVisualizationPanel {
         this.updateParamsDisplay();
     }
 
-    private formatNumber(value: number, decimals: number = 1): string {
-        return Number.isFinite(value) ? value.toFixed(decimals) : '--';
+    private formatNumber(value: number, decimals: number = 2): string {
+        if (!Number.isFinite(value)) return '--';
+        const fixed = value.toFixed(decimals);
+        const parts = fixed.split('.');
+        parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        return parts.join('.');
     }
 
     private updateParamsDisplay(): void {
@@ -239,8 +243,8 @@ export class OrbitVisualizationPanel {
                 <div><span class="label">Inclination</span><span>${this.formatNumber(p.inclination, 2)}°</span></div>
                 <div><span class="label">RAAN</span><span>${this.formatNumber(p.raan, 2)}°</span></div>
                 <div><span class="label">Arg Periapsis (ω)</span><span>${this.formatNumber(p.omega, 2)}°</span></div>
-                <div><span class="label">Perigee</span><span>${this.formatNumber(p.perigeeAlt, 0)} km</span></div>
-                <div><span class="label">Apogee</span><span>${this.formatNumber(p.apogeeAlt, 0)} km</span></div>
+                <div><span class="label">Perigee</span><span>${this.formatNumber(p.perigeeAlt, 2)} km</span></div>
+                <div><span class="label">Apogee</span><span>${this.formatNumber(p.apogeeAlt, 2)} km</span></div>
             </div>
         `;
     }
@@ -265,7 +269,8 @@ export class OrbitVisualizationPanel {
                 hour: '2-digit',
                 minute: '2-digit',
                 hour12: false,
-                timeZone: this.timezone
+                timeZone: this.timezone,
+                timeZoneName: 'short'
             }).format(date);
         } catch {
             return '--';
