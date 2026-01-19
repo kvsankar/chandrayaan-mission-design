@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import { resolve } from 'path';
 
 export default defineConfig({
   server: {
@@ -9,10 +10,16 @@ export default defineConfig({
     outDir: 'dist-pages',
     sourcemap: true,
     rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        explorer: resolve(__dirname, 'explorer.html'),
+        designer: resolve(__dirname, 'designer.html'),
+        wizard: resolve(__dirname, 'wizard.html')
+      },
       output: {
         // Keep filenames simple for GitHub Pages
-        entryFileNames: 'main.js',
-        chunkFileNames: '[name].js',
+        entryFileNames: '[name].js',
+        chunkFileNames: '[name]-chunk.js',
         assetFileNames: '[name].[ext]'
       }
     }

@@ -1,0 +1,4867 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GUI, Controller } from 'lil-gui';
+import * as Astronomy from 'astronomy-engine';
+import { events } from './events.js';
+import { showConfirmDialog, showAlert } from './ui/dialog.js';
+import {
+    setLaunchEventRaan,
+    setLaunchEventApogeeAlt,
+    setLaunchEventPerigeeAlt,
+    setLaunchEventInclination,
+    setLaunchEventOmega,
+    setLaunchEventTrueAnomaly,
+    setLaunchEventDate,
+    setLaunchEventMoonInterceptDate,
+    setLaunchEventSyncTLIWithLOI,
+    setLaunchEventOptimizedValues
+} from './launchEventSetters.js';
+import { computeTLIDate, computePeriodDisplay } from './launchEventComputed.js';
+import {
+    TIMELINE_MAX_DAYS,
+    SPHERE_RADIUS,
+    LUNAR_ORBIT_DISTANCE,
+    SCALE_FACTOR,
+    EARTH_RADIUS,
+    EARTH_MU,
+    CAMERA_FOV,
+    CAMERA_NEAR_PLANE,
+    CAMERA_FAR_PLANE,
+    CAMERA_INITIAL_X,
+    CAMERA_INITIAL_Y,
+    CAMERA_INITIAL_Z,
+    ORBIT_SEGMENTS_DETAILED,
+    ORBIT_SEGMENTS_STANDARD,
+    SPRITE_CANVAS_SIZE,
+    SPRITE_FONT_SIZE,
+    ZOOM_BASE_DISTANCE,
+    ZOOM_BASE_SCALE,
+    ZOOM_NODE_MIN_SCALE,
+    ZOOM_NODE_MAX_SCALE,
+    ZOOM_ARIES_MIN_SCALE,
+    ZOOM_ARIES_MAX_SCALE,
+    ZOOM_SPACECRAFT_MIN_SCALE,
+    ZOOM_SPACECRAFT_MAX_SCALE,
+    ARIES_MARKER_BASE_SIZE,
+    COLORS
+} from './constants.js';
+import type {
+    AppMode,
+    MoonMode,
+    OrbitalParams,
+    LaunchEvent,
+    Params,
+    CaptureState,
+    RealPositionsCache,
+    TimelineState,
+    RenderControl,
+    DraftState,
+    LunarControllers,
+    ChandrayaanControllers,
+    OrbitalElements,
+    RealMoonData,
+    Cache,
+    UpdateFunctionsMap,
+    StateManager
+} from './types.js';
+import {
+    findOptimalLOIDates,
+    calculateTimeToTrueAnomaly,
+    optimizeApogeeToMoonMultiStart
+} from './optimization.js';
+
+// ============================================================================
+// Three.js Scene Objects
+// ============================================================================
+
+let scene: THREE.Scene;
+let camera: THREE.PerspectiveCamera;
+let renderer: THREE.WebGLRenderer;
+let controls: OrbitControls;
+let celestialSphere: THREE.Mesh;
+let equatorCircle: THREE.Line;
+let lunarOrbitCircle: THREE.Line;
+let lunarOrbitFilledPlane: THREE.Mesh;
+let lunarOrbitEllipse: THREE.Line;  // Dashed ellipse showing actual lunar orbit
+let chandrayaanOrbitCircle: THREE.Line;
+let chandrayaanOrbitFilledPlane: THREE.Mesh;
+let lunarAscendingNode: THREE.Mesh;
+let lunarDescendingNode: THREE.Mesh;
+let chandrayaanAscendingNode: THREE.Mesh;
+let chandrayaanDescendingNode: THREE.Mesh;
+let chandrayaanOrbitCircle3D: THREE.Line;
+let chandrayaan: THREE.Mesh;
+let moon: THREE.Mesh;
+let xAxis: THREE.Line;
+let yAxis: THREE.Line;
+let zAxis: THREE.Line;
+let ariesMarker: THREE.Sprite;
+let raanLine1: THREE.Line;
+let raanLine2: THREE.Line;
+let raanArc: THREE.Line;
+let raanPie: THREE.Mesh;
+let raanLabel: THREE.Sprite;
+let aopLine1: THREE.Line;
+let aopLine2: THREE.Line;
+let aopArc: THREE.Line;
+let aopPie: THREE.Mesh;
+let aopLabel: THREE.Sprite;
+let raLabelsGroup: THREE.Group;
+
+// ============================================================================
+// Application State
+// ============================================================================
+
+// Parameters
+const params: Params = {
+    // Global mode
+    appMode: 'Plan',
+
+    // Visibility toggles
+    showEquator: true,
+    showAxes: true,
+    showLunarOrbitPlane: true,
+    showLunarOrbitFilledPlane: true,
+    showLunarNodes: true,
+    showMoon: true,
+    showChandrayaanOrbitPlane: true,
+    showChandrayaanOrbitFilledPlane: true,
+    showChandrayaanOrbit: true,
+    showChandrayaan: true,
+    showChandrayaanNodes: true,
+    showRAANAngle: false,
+    showAOPAngle: false,
+
+    // Moon mode
+    moonMode: 'Gamed',
+
+    // Lunar orbit parameters (plane only, with Moon on circular orbit)
+    lunarInclination: 23.44,
+    lunarNodes: 0,
+    moonRA: 0,
+    moonTrueAnomaly: 0,
+    moonRADisplay: '--',
+    moonDistanceDisplay: '--',
+
+    // Chandrayaan orbit parameters (elliptical)
+    chandrayaanInclination: 30,
+    chandrayaanNodes: 0,
+    chandrayaanOmega: 45,
+    chandrayaanPerigeeAlt: 180,
+    chandrayaanApogeeAlt: 378029,
+    chandrayaanRA: 0,
+    chandrayaanTrueAnomaly: 0,
+    chandrayaanPeriod: '--',
+    chandrayaanRADisplay: '--',
+    craftEarthDistance: '--',
+    craftMoonDistance: '--',
+    restrictOrbitalParams: false,
+};
+
+// Capture state
+const captureState: CaptureState = {
+    isCaptured: false,
+    captureDate: null,
+    captureThreshold: 2000
+};
+
+// Real positions cache (for accurate distance calculations)
+const realPositionsCache: RealPositionsCache = {
+    moonPositionKm: null,
+    craftPositionKm: null
+};
+
+// Update guard to prevent circular updates
+let isUpdatingFromCode: boolean = false;
+
+// Timeline state
+const TIMELINE_START_DATE = new Date('2023-07-01T00:00:00');
+
+const timelineState: TimelineState = {
+    startDate: new Date(TIMELINE_START_DATE),
+    currentDate: new Date(TIMELINE_START_DATE),
+    isPlaying: false,
+    speed: 0.25,
+    daysElapsed: 0
+};
+
+// Render control state
+const renderControl: RenderControl = {
+    activeSlider: 'timeline',
+    launchDays: 0,
+    interceptDays: 5,
+    renderDate: new Date()
+};
+
+// Game mode timeline state - separate from Plan mode
+const gameModeState = {
+    isFirstEntry: true,  // Track if this is the first time entering Game mode
+    savedTimelineDays: 0, // Save Game mode's timeline position separately
+    savedIsPlaying: false, // Save play state for Game mode
+    savedStartDate: new Date(TIMELINE_START_DATE)
+};
+
+// TLI (Trans Lunar Injection) event state
+const launchEvent: LaunchEvent = {
+    exists: false,
+    date: null,
+    inclination: 21.5,
+    raan: 5,
+    omega: 178,
+    perigeeAlt: 180,
+    apogeeAlt: 370000,
+    trueAnomaly: 0,
+    moonInterceptDate: null,
+    captureDistance: 5000,
+    syncTLIWithLOI: true,
+    autoLOI: false,
+    optimalLOIDates: []
+};
+
+function isE2ETestEnv(): boolean {
+    return typeof window !== 'undefined' && (window as any).__E2E_TESTING__ === true;
+}
+
+// Expose for E2E testing
+if (typeof window !== 'undefined') {
+    (window as any).launchEvent = launchEvent;
+    (window as any).params = params;
+    (window as any).realPositionsCache = realPositionsCache;
+    (window as any).updateRenderDate = updateRenderDate;
+    (window as any).timelineState = timelineState;
+    (window as any).switchAppModeForTest = (mode: AppMode) => switchAppMode(mode);
+
+    // Helper function to set the simulation time (for testing)
+    (window as any).setSimulationTime = (date: Date) => {
+        const daysSinceStart = (date.getTime() - timelineState.startDate.getTime()) / (24 * 60 * 60 * 1000);
+        timelineState.daysElapsed = daysSinceStart;
+        updateRenderDate();
+        // Must invalidate cache and update positions for accurate distance calculations
+        invalidateOrbitalParamsCache();
+        updateChandrayaanOrbit();
+        if (params.moonMode === 'Real') {
+            updateMoonFromRealPosition();
+        }
+    };
+
+    // Helper function to delete launch event for testing (bypasses confirmation)
+    (window as any).deleteLaunchEventForTest = () => {
+        deleteLaunchEventInternal();
+    };
+
+    // Helper function to enable/disable Auto LOI for testing
+    (window as any).setAutoLOI = (enabled: boolean) => {
+        launchEvent.autoLOI = enabled;
+        events.emit('launchEvent:autoLOI', enabled);
+    };
+
+    // Helper functions to test validation
+    (window as any).validateApogee = (value: number): { valid: boolean; message?: string } => {
+        if (value < launchEvent.perigeeAlt) {
+            return {
+                valid: false,
+                message: `Apogee (${value} km) must be >= Perigee (${launchEvent.perigeeAlt} km)`
+            };
+        }
+        return { valid: true };
+    };
+
+    (window as any).validatePerigee = (value: number): { valid: boolean; message?: string } => {
+        if (value > launchEvent.apogeeAlt) {
+            return {
+                valid: false,
+                message: `Perigee (${value} km) must be <= Apogee (${launchEvent.apogeeAlt} km)`
+            };
+        }
+        return { valid: true };
+    };
+}
+
+// Draft state for Plan mode
+const draftState: DraftState = {
+    isDirty: false,
+    savedLaunchEvent: null
+};
+
+// Parameter Set Class - Complete state isolation between modes
+class ParameterSet {
+    name: string;
+    lunarInclination: number;
+    lunarNodes: number;
+    moonRA: number;
+    moonTrueAnomaly: number;
+    moonMode: MoonMode;
+    chandrayaanInclination: number;
+    chandrayaanNodes: number;
+    chandrayaanOmega: number;
+    chandrayaanPerigeeAlt: number;
+    chandrayaanApogeeAlt: number;
+    chandrayaanRA: number;
+    chandrayaanTrueAnomaly: number;
+
+    constructor(name: string, config: {
+        lunarInclination: number;
+        lunarNodes: number;
+        moonRA: number;
+        moonTrueAnomaly: number;
+        moonMode: MoonMode;
+        chandrayaanInclination: number;
+        chandrayaanNodes: number;
+        chandrayaanOmega: number;
+        chandrayaanPerigeeAlt: number;
+        chandrayaanApogeeAlt: number;
+        chandrayaanRA: number;
+        chandrayaanTrueAnomaly: number;
+    }) {
+        this.name = name;
+        this.lunarInclination = config.lunarInclination;
+        this.lunarNodes = config.lunarNodes;
+        this.moonRA = config.moonRA;
+        this.moonTrueAnomaly = config.moonTrueAnomaly;
+        this.moonMode = config.moonMode;
+        this.chandrayaanInclination = config.chandrayaanInclination;
+        this.chandrayaanNodes = config.chandrayaanNodes;
+        this.chandrayaanOmega = config.chandrayaanOmega;
+        this.chandrayaanPerigeeAlt = config.chandrayaanPerigeeAlt;
+        this.chandrayaanApogeeAlt = config.chandrayaanApogeeAlt;
+        this.chandrayaanRA = config.chandrayaanRA;
+        this.chandrayaanTrueAnomaly = config.chandrayaanTrueAnomaly;
+    }
+
+    copyTo(params: Params): void {
+        params.lunarInclination = this.lunarInclination;
+        params.lunarNodes = this.lunarNodes;
+        params.moonRA = this.moonRA;
+        params.moonTrueAnomaly = this.moonTrueAnomaly;
+        params.moonMode = this.moonMode;
+        params.chandrayaanInclination = this.chandrayaanInclination;
+        params.chandrayaanNodes = this.chandrayaanNodes;
+        params.chandrayaanOmega = this.chandrayaanOmega;
+        params.chandrayaanPerigeeAlt = this.chandrayaanPerigeeAlt;
+        params.chandrayaanApogeeAlt = this.chandrayaanApogeeAlt;
+        params.chandrayaanRA = this.chandrayaanRA;
+        params.chandrayaanTrueAnomaly = this.chandrayaanTrueAnomaly;
+    }
+
+    copyFrom(params: Params): void {
+        this.lunarInclination = params.lunarInclination;
+        this.lunarNodes = params.lunarNodes;
+        this.moonRA = params.moonRA;
+        this.moonTrueAnomaly = params.moonTrueAnomaly;
+        this.moonMode = params.moonMode;
+        this.chandrayaanInclination = params.chandrayaanInclination;
+        this.chandrayaanNodes = params.chandrayaanNodes;
+        this.chandrayaanOmega = params.chandrayaanOmega;
+        this.chandrayaanPerigeeAlt = params.chandrayaanPerigeeAlt;
+        this.chandrayaanApogeeAlt = params.chandrayaanApogeeAlt;
+        this.chandrayaanRA = params.chandrayaanRA;
+        this.chandrayaanTrueAnomaly = params.chandrayaanTrueAnomaly;
+    }
+
+    loadFromLaunchEvent(launchEvent: LaunchEvent): void {
+        if (!launchEvent.exists) return;
+
+        this.chandrayaanInclination = launchEvent.inclination;
+        this.chandrayaanNodes = launchEvent.raan;
+        this.chandrayaanOmega = launchEvent.omega;
+        this.chandrayaanPerigeeAlt = launchEvent.perigeeAlt;
+        this.chandrayaanApogeeAlt = launchEvent.apogeeAlt;
+        this.chandrayaanTrueAnomaly = launchEvent.trueAnomaly || 0;
+    }
+}
+
+// Designer does not use Explore mode parameter set
+// const exploreParamSet = new ParameterSet('Explore', {
+//     lunarInclination: 23.44,
+//     lunarNodes: 0,
+//     moonRA: 0,
+//     moonTrueAnomaly: 0,
+//     moonMode: 'Gamed',
+//     chandrayaanInclination: 30,
+//     chandrayaanNodes: 0,
+//     chandrayaanOmega: 45,
+//     chandrayaanPerigeeAlt: 180,
+//     chandrayaanApogeeAlt: 378029,
+//     chandrayaanRA: 0,
+//     chandrayaanTrueAnomaly: 0
+// });
+
+// Set B: Plan/Game modes (real moon ephemeris, launch event driven)
+const planGameParamSet = new ParameterSet('Plan/Game', {
+    lunarInclination: 23.44,
+    lunarNodes: 0,
+    moonRA: 0,
+    moonTrueAnomaly: 0,
+    moonMode: 'Real',
+    chandrayaanInclination: 21.5,
+    chandrayaanNodes: 5,
+    chandrayaanOmega: 178,
+    chandrayaanPerigeeAlt: 180,
+    chandrayaanApogeeAlt: 370000,
+    chandrayaanRA: 0,
+    chandrayaanTrueAnomaly: 0
+});
+
+// Track which parameter set is currently active
+// Designer starts in Plan mode, so use planGameParamSet
+// Note: Designer only uses planGameParamSet (no Explore mode)
+// @ts-expect-error - Reserved for potential future use
+let _currentParamSet: ParameterSet = planGameParamSet;
+
+// Helper functions for GUI updates (extracted to reduce complexity)
+function updateLunarGUIDisplays(): void {
+    lunarControllers.inclination?.updateDisplay();
+    lunarControllers.nodes?.updateDisplay();
+    lunarControllers.moonRA?.updateDisplay();
+}
+
+function updateChandrayaanGUIDisplays(): void {
+    chandrayaanControllers.inclination?.updateDisplay();
+    chandrayaanControllers.nodes?.updateDisplay();
+    chandrayaanControllers.omega?.updateDisplay();
+    chandrayaanControllers.perigeeAlt?.updateDisplay();
+    chandrayaanControllers.apogeeAlt?.updateDisplay();
+    chandrayaanControllers.trueAnomaly?.updateDisplay();
+}
+
+// Helper functions for mode switching (extracted to reduce complexity)
+// Designer does not use Explore mode, so these are not needed
+// function enableLunarControls(): void {
+//     lunarControllers.inclination?.enable();
+//     lunarControllers.nodes?.enable();
+//     lunarControllers.moonRA?.enable();
+//     lunarControllers.moonTrueAnomaly?.enable();
+// }
+
+function disableLunarControls(): void {
+    lunarControllers.inclination?.disable();
+    lunarControllers.nodes?.disable();
+    lunarControllers.moonRA?.disable();
+    lunarControllers.moonTrueAnomaly?.disable();
+}
+
+// function enableChandrayaanControls(): void {
+//     chandrayaanControllers.inclination?.enable();
+//     chandrayaanControllers.nodes?.enable();
+//     chandrayaanControllers.omega?.enable();
+//     chandrayaanControllers.perigeeAlt?.enable();
+//     chandrayaanControllers.apogeeAlt?.enable();
+//     chandrayaanControllers.ra?.enable();
+//     chandrayaanControllers.trueAnomaly?.enable();
+// }
+
+function disableChandrayaanControls(): void {
+    chandrayaanControllers.inclination?.disable();
+    chandrayaanControllers.nodes?.disable();
+    chandrayaanControllers.omega?.disable();
+    chandrayaanControllers.perigeeAlt?.disable();
+    chandrayaanControllers.apogeeAlt?.disable();
+    chandrayaanControllers.ra?.disable();
+    chandrayaanControllers.trueAnomaly?.disable();
+}
+
+function setSyncButtonsEnabled(enabled: boolean): void {
+    if (chandrayaanControllers.syncInclinationBtn) chandrayaanControllers.syncInclinationBtn.disabled = !enabled;
+    if (chandrayaanControllers.syncRaanBtn) chandrayaanControllers.syncRaanBtn.disabled = !enabled;
+    if (chandrayaanControllers.syncAopBtn) chandrayaanControllers.syncAopBtn.disabled = !enabled;
+    if (chandrayaanControllers.syncApogeeBtn) chandrayaanControllers.syncApogeeBtn.disabled = !enabled;
+    if (chandrayaanControllers.syncRABtn) chandrayaanControllers.syncRABtn.disabled = !enabled;
+}
+
+function hideTimelineRows(): void {
+    const launchRow = document.querySelector('.timeline-row-selector:nth-child(3)');
+    const interceptRow = document.querySelector('.timeline-row-selector:nth-child(4)');
+    if (launchRow) (launchRow as HTMLElement).style.display = 'none';
+    if (interceptRow) (interceptRow as HTMLElement).style.display = 'none';
+}
+
+// State Manager - handles switching between Plan and Game modes (no Explore mode)
+const stateManager: StateManager = {
+    activateExploreParams(): void {
+        // Designer does not support Explore mode
+        console.warn('Designer does not support Explore mode');
+    },
+
+    activatePlanGameParams(): void {
+        // When switching between Plan and Game, save launch event
+        if (launchEvent.exists) {
+            planGameParamSet.loadFromLaunchEvent(launchEvent);
+        }
+
+        _currentParamSet = planGameParamSet;
+
+        if (launchEvent.exists) {
+            planGameParamSet.loadFromLaunchEvent(launchEvent);
+        }
+
+        planGameParamSet.copyTo(params);
+        this.updateAllGUIDisplays();
+    },
+
+    updateAllGUIDisplays(): void {
+        updateLunarGUIDisplays();
+        updateChandrayaanGUIDisplays();
+    },
+
+    saveParamsToLaunchEvent(): void {
+        if (!launchEvent.exists) return;
+
+        setLaunchEventInclination(launchEvent, params.chandrayaanInclination);
+        setLaunchEventRaan(launchEvent, params.chandrayaanNodes);
+        setLaunchEventOmega(launchEvent, params.chandrayaanOmega);
+        setLaunchEventPerigeeAlt(launchEvent, params.chandrayaanPerigeeAlt);
+        setLaunchEventApogeeAlt(launchEvent, params.chandrayaanApogeeAlt);
+        setLaunchEventTrueAnomaly(launchEvent, params.chandrayaanTrueAnomaly);
+
+        // Note: isDirty is set by GUI onChange handlers (via markDirtyAndUpdate),
+        // not here, because this function is called both for user changes and
+        // programmatic updates
+    }
+};
+
+// ============================================================================
+// EVENT-DRIVEN LAUNCH EVENT SYSTEM
+// ============================================================================
+
+// Helper functions to compute derived values (replaced reactive computed())
+// These are now called explicitly where needed and use event bus for updates
+
+// Launch event GUI instance
+let launchEventGUI: GUI | null = null;
+let launchEventGUIParams: any = null;
+let launchDateController: Controller | null = null;
+
+// GUI controller references
+const lunarControllers: LunarControllers = {};
+const chandrayaanControllers: ChandrayaanControllers = {};
+let lunarFolder: GUI;
+let chandrayaanFolder: GUI;
+// @ts-expect-error - Reserved for future conditional updates
+let _moonModeController: Controller;
+
+// Store unsubscribe functions for event subscriptions
+const eventUnsubscribers: (() => void)[] = [];
+let eventSubscriptionsInitialized: boolean = false;
+
+function setupEventSubscriptions(): void {
+    if (eventSubscriptionsInitialized) return;
+    eventSubscriptionsInitialized = true;
+
+    // Auto-sync TLI date when syncTLIWithLOI or moonInterceptDate changes
+    eventUnsubscribers.push(events.on('launchEvent:syncTLIWithLOI', () => {
+        if (!launchEvent.exists || !launchEvent.syncTLIWithLOI) return;
+
+        const tliDate = computeTLIDate(launchEvent, calculateOrbitalPeriod);
+        if (tliDate && tliDate !== launchEvent.date) {
+            if (!isUpdatingFromCode) {
+                isUpdatingFromCode = true;
+                setLaunchEventDate(launchEvent, tliDate);
+                isUpdatingFromCode = false;
+            }
+        }
+    }));
+
+    eventUnsubscribers.push(events.on('launchEvent:moonInterceptDate', () => {
+        if (!launchEvent.exists || !launchEvent.syncTLIWithLOI) return;
+
+        const tliDate = computeTLIDate(launchEvent, calculateOrbitalPeriod);
+        if (tliDate && tliDate !== launchEvent.date) {
+            if (!isUpdatingFromCode) {
+                isUpdatingFromCode = true;
+                setLaunchEventDate(launchEvent, tliDate);
+                isUpdatingFromCode = false;
+            }
+        }
+    }));
+
+    // Also handle perigee/apogee changes for TLI sync (affects orbital period)
+    eventUnsubscribers.push(events.on('launchEvent:perigeeAlt', () => {
+        if (!launchEvent.exists || !launchEvent.syncTLIWithLOI) return;
+
+        const tliDate = computeTLIDate(launchEvent, calculateOrbitalPeriod);
+        if (tliDate && tliDate !== launchEvent.date) {
+            if (!isUpdatingFromCode) {
+                isUpdatingFromCode = true;
+                setLaunchEventDate(launchEvent, tliDate);
+                isUpdatingFromCode = false;
+            }
+        }
+    }));
+
+    eventUnsubscribers.push(events.on('launchEvent:apogeeAlt', () => {
+        if (!launchEvent.exists || !launchEvent.syncTLIWithLOI) return;
+
+        const tliDate = computeTLIDate(launchEvent, calculateOrbitalPeriod);
+        if (tliDate && tliDate !== launchEvent.date) {
+            if (!isUpdatingFromCode) {
+                isUpdatingFromCode = true;
+                setLaunchEventDate(launchEvent, tliDate);
+                isUpdatingFromCode = false;
+            }
+        }
+    }));
+
+    // Auto-update TLI GUI display when TLI date changes
+    eventUnsubscribers.push(events.on('launchEvent:date', () => {
+        if (!launchEvent.exists || !launchDateController) return;
+
+        const tliDate = launchEvent.date;
+        if (tliDate && launchEventGUIParams) {
+            launchEventGUIParams.launchDate = formatDateForDisplay(tliDate);
+            launchDateController.updateDisplay();
+        }
+    }));
+
+    // Auto-update LOI GUI display when LOI date changes
+    eventUnsubscribers.push(events.on('launchEvent:moonInterceptDate', () => {
+        if (!launchEvent.exists) return;
+
+        const loiDate = launchEvent.moonInterceptDate;
+        if (loiDate && launchEventGUIParams) {
+            launchEventGUIParams.moonInterceptDate = formatDateForDisplay(loiDate);
+        }
+    }));
+
+    // Auto-update period display when perigee/apogee changes
+    const updatePeriodDisplay = () => {
+        if (!launchEvent.exists || !launchEventGUIParams) return;
+        launchEventGUIParams.period = computePeriodDisplay(
+            launchEvent,
+            calculateOrbitalPeriod,
+            formatPeriod
+        );
+    };
+
+    eventUnsubscribers.push(events.on('launchEvent:perigeeAlt', updatePeriodDisplay));
+    eventUnsubscribers.push(events.on('launchEvent:apogeeAlt', updatePeriodDisplay));
+
+    // Auto-handle sync toggle
+    eventUnsubscribers.push(events.on('launchEvent:syncTLIWithLOI', () => {
+        if (!launchEvent.exists || !launchDateController) return;
+
+        if (launchEvent.syncTLIWithLOI) {
+            launchDateController.disable();
+        } else {
+            launchDateController.enable();
+        }
+    }));
+
+    // Auto-update timeline sliders when dates change
+    const updateTimelineSliders = () => {
+        if (!launchEvent.exists) return;
+        syncRenderControlSlidersWithLaunchEvent();
+    };
+
+    eventUnsubscribers.push(events.on('launchEvent:date', updateTimelineSliders));
+    eventUnsubscribers.push(events.on('launchEvent:moonInterceptDate', updateTimelineSliders));
+
+    // Auto-update launch marker when TLI date changes
+    eventUnsubscribers.push(events.on('launchEvent:date', () => {
+        if (!launchEvent.exists) return;
+
+        const tliDate = launchEvent.date;
+        if (tliDate) {
+            updateLaunchMarker();
+        }
+    }));
+
+    // Auto-update visualization when orbital parameters change
+    const updateVisualization = () => {
+        if (!launchEvent.exists) return;
+
+        // Note: Don't set draftState.isDirty here - this event handler is triggered
+        // by both user changes AND programmatic updates. The isDirty flag should only
+        // be set in GUI onChange handlers where we know the user made the change.
+
+        // Don't call syncParamsToLaunchEvent() here - that would create circular event emission
+        // The launchEvent already has the updated values (that's why this event fired)
+        invalidateOrbitalParamsCache();
+        updateRenderDate();
+        updateChandrayaanOrbit();
+    };
+
+    eventUnsubscribers.push(events.on('launchEvent:inclination', updateVisualization));
+    eventUnsubscribers.push(events.on('launchEvent:raan', updateVisualization));
+    eventUnsubscribers.push(events.on('launchEvent:omega', updateVisualization));
+    eventUnsubscribers.push(events.on('launchEvent:perigeeAlt', updateVisualization));
+    eventUnsubscribers.push(events.on('launchEvent:apogeeAlt', updateVisualization));
+    eventUnsubscribers.push(events.on('launchEvent:trueAnomaly', updateVisualization));
+
+    // Auto-update visualization when dates change
+    const updateDateVisualization = () => {
+        if (!launchEvent.exists) return;
+        updateRenderDate();
+    };
+
+    eventUnsubscribers.push(events.on('launchEvent:date', updateDateVisualization));
+    eventUnsubscribers.push(events.on('launchEvent:moonInterceptDate', updateDateVisualization));
+}
+
+// @ts-expect-error - Reserved for cleanup on unmount
+function _cleanupEventSubscriptions(): void {
+    eventUnsubscribers.forEach(unsubscribe => unsubscribe());
+    eventUnsubscribers.length = 0;
+    eventSubscriptionsInitialized = false;
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/**
+ * Calculate true anomaly from Right Ascension using spherical trigonometry
+ * Inverts the formula: RA = RAAN + atan2(cos(i) * sin(u), cos(u))
+ *
+ * @param raDeg - Right Ascension in degrees
+ * @param raanDeg - Right Ascension of Ascending Node in degrees
+ * @param omegaDeg - Argument of Periapsis in degrees
+ * @param incDeg - Inclination in degrees
+ * @returns True anomaly in degrees
+ */
+function calculateTrueAnomalyFromRA(
+    raDeg: number,
+    raanDeg: number,
+    omegaDeg: number,
+    incDeg: number
+): number {
+    const raRad = THREE.MathUtils.degToRad(raDeg);
+    const raanRad = THREE.MathUtils.degToRad(raanDeg);
+    const incRad = THREE.MathUtils.degToRad(incDeg);
+    const omegaRad = THREE.MathUtils.degToRad(omegaDeg);
+
+    const deltaRA = raRad - raanRad;
+
+    // Solve for argument of latitude u from: RA = RAAN + atan2(cos(i) * sin(u), cos(u))
+    // Using the derived formula that preserves quadrant information
+    const k = 1 / Math.sqrt(Math.sin(deltaRA) ** 2 + Math.cos(deltaRA) ** 2 * Math.cos(incRad) ** 2);
+    const sinU = k * Math.sin(deltaRA);
+    const cosU = k * Math.cos(deltaRA) * Math.cos(incRad);
+    const uRad = Math.atan2(sinU, cosU);
+
+    // True anomaly = u - omega
+    const nuRad = uRad - omegaRad;
+    return THREE.MathUtils.radToDeg(nuRad);
+}
+
+/**
+ * Calculate Right Ascension from true anomaly using spherical trigonometry
+ * Forward formula: RA = RAAN + atan2(cos(i) * sin(u), cos(u))
+ * where u = omega + nu (argument of latitude)
+ */
+function calculateRAFromTrueAnomaly(
+    nuDeg: number,
+    raanDeg: number,
+    omegaDeg: number,
+    incDeg: number
+): number {
+    const nuRad = THREE.MathUtils.degToRad(nuDeg);
+    const raanRad = THREE.MathUtils.degToRad(raanDeg);
+    const incRad = THREE.MathUtils.degToRad(incDeg);
+    const omegaRad = THREE.MathUtils.degToRad(omegaDeg);
+
+    // Argument of latitude u = omega + nu
+    const uRad = omegaRad + nuRad;
+
+    // RA = RAAN + atan2(cos(i) * sin(u), cos(u))
+    const raRad = raanRad + Math.atan2(Math.cos(incRad) * Math.sin(uRad), Math.cos(uRad));
+
+    return THREE.MathUtils.radToDeg(raRad);
+}
+
+function calculateChandrayaanEccentricity(): number {
+    const perigeeDistance = EARTH_RADIUS + params.chandrayaanPerigeeAlt;
+    const apogeeDistance = EARTH_RADIUS + params.chandrayaanApogeeAlt;
+    const e = (apogeeDistance - perigeeDistance) / (apogeeDistance + perigeeDistance);
+    return e;
+}
+
+function getClosestAllowedInclination(currentInclination: number): number {
+    const allowed = [21.5, 41.8];
+    return allowed.reduce((prev, curr) =>
+        Math.abs(curr - currentInclination) < Math.abs(prev - currentInclination) ? curr : prev
+    );
+}
+
+function getAllowedOmegaValues(inclination: number): number[] {
+    if (inclination === 21.5) {
+        return [178];
+    } else if (inclination === 41.8) {
+        return [198, 203];
+    }
+    return [178];
+}
+
+function getClosestAllowedOmega(currentOmega: number, inclination: number): number {
+    const allowed = getAllowedOmegaValues(inclination);
+    return allowed.reduce((prev, curr) =>
+        Math.abs(curr - currentOmega) < Math.abs(prev - currentOmega) ? curr : prev
+    );
+}
+
+function calculateOrbitalPeriod(perigeeAlt: number, apogeeAlt: number): number {
+    const rp = EARTH_RADIUS + perigeeAlt;
+    const ra = EARTH_RADIUS + apogeeAlt;
+    const a = (rp + ra) / 2;
+    const T = 2 * Math.PI * Math.sqrt(Math.pow(a, 3) / EARTH_MU);
+    return T;
+}
+
+// ============================================================================
+// CENTRALIZED PARAMETER CHANGE SYSTEM
+// ============================================================================
+
+const ParameterDependencies: { [key: string]: string[] } = {
+    lunarInclination: [
+        'updateLunarOrbitCircle',
+        'updateLunarNodePositions',
+        'updateMoonPosition',
+        'updateOrbitalElements'
+    ],
+    lunarNodes: [
+        'updateLunarOrbitCircle',
+        'updateLunarNodePositions',
+        'updateMoonPosition',
+        'updateRAANLines',
+        'updateOrbitalElements'
+    ],
+    moonRA: [
+        'updateMoonPosition',
+        'updateCraftMoonDistance',
+        'updateOrbitalElements'
+    ],
+    moonTrueAnomaly: [
+        'updateMoonPosition',
+        'updateCraftMoonDistance',
+        'updateOrbitalElements'
+    ],
+    chandrayaanInclination: [
+        'updateChandrayaanOrbitCircle',
+        'updateChandrayaanOrbit',
+        'updateChandrayaanNodePositions',
+        'updateAOPLines',
+        'updateCraftMoonDistance',
+        'updateOrbitalElements'
+    ],
+    chandrayaanNodes: [
+        'updateChandrayaanOrbitCircle',
+        'updateChandrayaanOrbit',
+        'updateChandrayaanNodePositions',
+        'updateRAANLines',
+        'updateAOPLines',
+        'updateCraftMoonDistance',
+        'updateOrbitalElements'
+    ],
+    chandrayaanOmega: [
+        'updateChandrayaanOrbitCircle',
+        'updateChandrayaanOrbit',
+        'updateAOPLines',
+        'updateCraftMoonDistance',
+        'updateOrbitalElements'
+    ],
+    chandrayaanPerigeeAlt: [
+        'updateChandrayaanOrbit',
+        'updateCraftMoonDistance',
+        'updateOrbitalElements'
+    ],
+    chandrayaanApogeeAlt: [
+        'updateChandrayaanOrbit',
+        'updateCraftMoonDistance',
+        'updateOrbitalElements'
+    ],
+    chandrayaanRA: [
+        'updateChandrayaanOrbit',
+        'updateCraftMoonDistance',
+        'updateOrbitalElements'
+    ],
+    chandrayaanTrueAnomaly: [
+        'updateChandrayaanOrbit',
+        'updateCraftMoonDistance',
+        'updateOrbitalElements'
+    ]
+};
+
+const UpdateFunctions: UpdateFunctionsMap = {};
+
+function onParameterChange(paramName: string, newValue: any, skipSync: boolean = false): void {
+    if (isUpdatingFromCode) return;
+
+    isUpdatingFromCode = true;
+
+    try {
+        (params as any)[paramName] = newValue;
+
+        if (!skipSync) {
+            syncParamsToLaunchEvent();
+        }
+
+        if (paramName.startsWith('chandrayaan') || paramName.startsWith('moon')) {
+            invalidateOrbitalParamsCache();
+        }
+
+        const dependencies = ParameterDependencies[paramName] || [];
+        for (const funcName of dependencies) {
+            const func = UpdateFunctions[funcName];
+            if (func && typeof func === 'function') {
+                func();
+            } else {
+                console.warn(`Update function not found: ${funcName}`);
+            }
+        }
+    } finally {
+        isUpdatingFromCode = false;
+    }
+}
+
+// Helper functions for time conversion
+const secondsToHours = (seconds: number): number => Math.floor(seconds / 3600);
+const secondsToMinutes = (seconds: number): number => Math.floor((seconds % 3600) / 60);
+const secondsToSecs = (seconds: number): number => Math.floor(seconds % 60);
+const hoursToDays = (hours: number): number => Math.floor(hours / 24);
+const hoursRemainder = (hours: number): number => hours % 24;
+
+function formatPeriod(seconds: number): string {
+    const hours = secondsToHours(seconds);
+    const minutes = secondsToMinutes(seconds);
+    const secs = secondsToSecs(seconds);
+
+    if (hours > 24) {
+        const days = hoursToDays(hours);
+        const remainingHours = hoursRemainder(hours);
+        return `${days}d ${remainingHours}h ${minutes}m`;
+    }
+
+    return hours > 0
+        ? `${hours}h ${minutes}m ${secs}s`
+        : `${minutes}m ${secs}s`;
+}
+
+function getTrueAnomalyFromTime(timeSinceLaunch: number, perigeeAlt: number, apogeeAlt: number): number {
+    const rp = EARTH_RADIUS + perigeeAlt;
+    const ra = EARTH_RADIUS + apogeeAlt;
+    const a = (rp + ra) / 2;
+    const e = (ra - rp) / (ra + rp);
+
+    const n = Math.sqrt(EARTH_MU / Math.pow(a, 3));
+    const M = n * timeSinceLaunch;
+
+    let E = M;
+    for (let i = 0; i < 10; i++) {
+        E = E - (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+    }
+
+    const trueAnomaly = 2 * Math.atan2(
+        Math.sqrt(1 + e) * Math.sin(E / 2),
+        Math.sqrt(1 - e) * Math.cos(E / 2)
+    );
+
+    let trueAnomalyDeg = trueAnomaly * 180 / Math.PI;
+    if (trueAnomalyDeg < 0) trueAnomalyDeg += 360;
+
+    return trueAnomalyDeg;
+}
+
+function createCache<T>(): Cache<T> {
+    let cache = { value: null as T | null, key: null as unknown };
+
+    return {
+        get: (key: unknown): T | null => (key === cache.key && cache.value !== null) ? cache.value : null,
+        set: (value: T, key: unknown): T => {
+            cache = { value, key };
+            return value;
+        },
+        invalidate: (): void => {
+            cache = { value: null, key: null };
+        }
+    };
+}
+
+const orbitalParamsCache = createCache<OrbitalParams>();
+let currentAnimationFrame: number = 0;
+
+function invalidateOrbitalParamsCache(): void {
+    orbitalParamsCache.invalidate();
+}
+
+function getRenderDate(): Date {
+    return renderControl.renderDate ?? timelineState.currentDate;
+}
+
+function calculateChandrayaanParams(options: {
+    launchEvent: LaunchEvent;
+    manualParams: OrbitalParams;
+    renderDate: Date;
+    mode: AppMode;
+}): OrbitalParams {
+    const { launchEvent, manualParams, renderDate, mode } = options;
+
+    if (mode === 'Explore') {
+        return {
+            ...manualParams,
+            isLaunched: false
+        };
+    }
+
+    if (launchEvent.exists) {
+        const isLaunched = renderDate >= (launchEvent.date || new Date(0));
+
+        const trueAnomaly = isLaunched
+            ? getTrueAnomalyFromTime(
+                (renderDate.getTime() - (launchEvent.date?.getTime() || 0)) / 1000,
+                launchEvent.perigeeAlt,
+                launchEvent.apogeeAlt
+            )
+            : 0;
+
+        return {
+            inclination: launchEvent.inclination,
+            raan: launchEvent.raan,
+            omega: launchEvent.omega,
+            perigeeAlt: launchEvent.perigeeAlt,
+            apogeeAlt: launchEvent.apogeeAlt,
+            trueAnomaly,
+            isLaunched
+        };
+    }
+
+    return {
+        ...manualParams,
+        isLaunched: false
+    };
+}
+
+function getChandrayaanParams(): OrbitalParams {
+    const cached = orbitalParamsCache.get(currentAnimationFrame);
+    if (cached) {
+        return cached;
+    }
+
+    const result = calculateChandrayaanParams({
+        launchEvent,
+        manualParams: {
+            inclination: params.chandrayaanInclination,
+            raan: params.chandrayaanNodes,
+            omega: params.chandrayaanOmega,
+            perigeeAlt: params.chandrayaanPerigeeAlt,
+            apogeeAlt: params.chandrayaanApogeeAlt,
+            trueAnomaly: params.chandrayaanTrueAnomaly
+        },
+        renderDate: getRenderDate(),
+        mode: params.appMode
+    });
+
+    return orbitalParamsCache.set(result, currentAnimationFrame);
+}
+
+function calculateOrbitalElements(posVector: any, velVector: any): OrbitalElements {
+    const AU_TO_KM = 149597870.7;
+    const DAYS_TO_SEC = 86400.0;
+    const MU_EARTH = 398600.4418;  // km^3/s^2
+
+    const r = {
+        x: posVector.x * AU_TO_KM,
+        y: posVector.y * AU_TO_KM,
+        z: posVector.z * AU_TO_KM
+    };
+
+    const v = {
+        x: velVector.dx * AU_TO_KM / DAYS_TO_SEC,
+        y: velVector.dy * AU_TO_KM / DAYS_TO_SEC,
+        z: velVector.dz * AU_TO_KM / DAYS_TO_SEC
+    };
+
+    const rMag = Math.sqrt(r.x * r.x + r.y * r.y + r.z * r.z);
+    const vMag = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+
+    // Angular momentum vector
+    const h = {
+        x: r.y * v.z - r.z * v.y,
+        y: r.z * v.x - r.x * v.z,
+        z: r.x * v.y - r.y * v.x
+    };
+
+    const hMag = Math.sqrt(h.x * h.x + h.y * h.y + h.z * h.z);
+    const inclination = Math.acos(h.z / hMag) * 180 / Math.PI;
+
+    // Node vector
+    const n = {
+        x: -h.y,
+        y: h.x,
+        z: 0
+    };
+
+    const nMag = Math.sqrt(n.x * n.x + n.y * n.y);
+
+    let raan = 0;
+    if (nMag > 1e-10) {
+        raan = Math.acos(n.x / nMag) * 180 / Math.PI;
+        if (n.y < 0) raan = 360 - raan;
+    }
+
+    // Eccentricity vector
+    const rdotv = r.x * v.x + r.y * v.y + r.z * v.z;
+    const e = {
+        x: (vMag * vMag - MU_EARTH / rMag) * r.x - rdotv * v.x,
+        y: (vMag * vMag - MU_EARTH / rMag) * r.y - rdotv * v.y,
+        z: (vMag * vMag - MU_EARTH / rMag) * r.z - rdotv * v.z
+    };
+    const eMag = Math.sqrt(e.x * e.x + e.y * e.y + e.z * e.z) / MU_EARTH;
+
+    // Semi-major axis
+    const energy = vMag * vMag / 2 - MU_EARTH / rMag;
+    const a = -MU_EARTH / (2 * energy);
+
+    // Argument of periapsis
+    let omega = 0;
+    if (nMag > 1e-10 && eMag > 1e-10) {
+        const cosOmega = (n.x * e.x + n.y * e.y + n.z * e.z) / (nMag * eMag * MU_EARTH);
+        omega = Math.acos(Math.max(-1, Math.min(1, cosOmega))) * 180 / Math.PI;
+        if (e.z < 0) omega = 360 - omega;
+    }
+
+    // Perigee and apogee
+    const perigee = a * (1 - eMag) - EARTH_RADIUS;
+    const apogee = a * (1 + eMag) - EARTH_RADIUS;
+
+    return {
+        inclination: inclination,
+        raan: raan,
+        eccentricity: eMag,
+        omega: omega,
+        semiMajorAxis: a,
+        perigee: perigee,
+        apogee: apogee
+    };
+}
+
+function calculateRealMoonPosition(date: Date): RealMoonData {
+    const astroTime = Astronomy.MakeTime(date);
+    const state: any = Astronomy.GeoMoonState(astroTime);
+
+    // Handle both StateVector (x, y, z directly) and { position, velocity } formats
+    // The runtime library may differ from type definitions
+    const hasPosition = state.position !== undefined;
+
+    const geoVector = {
+        x: hasPosition ? state.position.x : state.x,
+        y: hasPosition ? state.position.y : state.y,
+        z: hasPosition ? state.position.z : state.z,
+        t: hasPosition ? state.position.t : state.t
+    };
+
+    const velVector = {
+        dx: hasPosition ? state.velocity.x : state.vx,
+        dy: hasPosition ? state.velocity.y : state.vy,
+        dz: hasPosition ? state.velocity.z : state.vz
+    };
+
+    const equatorial = Astronomy.EquatorFromVector(geoVector);
+
+    const ra = equatorial.ra * 15;
+    const dec = equatorial.dec;
+    const distanceKm = equatorial.dist * 149597870.7;
+
+    const elements = calculateOrbitalElements(geoVector, velVector);
+
+    // Convert from AU to km
+    const celestialPosKm = {
+        x: geoVector.x * 149597870.7,
+        y: geoVector.y * 149597870.7,
+        z: geoVector.z * 149597870.7
+    };
+
+    const positionKm = {
+        x: celestialPosKm.x,
+        y: celestialPosKm.z,
+        z: -celestialPosKm.y
+    };
+
+    return {
+        ra: ra % 360,
+        dec: dec,
+        distance: distanceKm,
+        inclination: elements.inclination,
+        raan: elements.raan,
+        positionKm: positionKm,
+        orbitalElements: elements
+    };
+}
+
+// ============================================================================
+// Initialization and Scene Creation
+// ============================================================================
+
+function init(): void {
+    scene = new THREE.Scene();
+
+    camera = new THREE.PerspectiveCamera(
+        CAMERA_FOV,
+        window.innerWidth / window.innerHeight,
+        CAMERA_NEAR_PLANE,
+        CAMERA_FAR_PLANE
+    );
+    camera.position.set(CAMERA_INITIAL_X, CAMERA_INITIAL_Y, CAMERA_INITIAL_Z);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.getElementById('container')!.appendChild(renderer.domElement);
+
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.minDistance = 10;
+    controls.maxDistance = 500;
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+
+    const pointLight = new THREE.PointLight(0xffffff, 0.8);
+    pointLight.position.set(200, 200, 200);
+    scene.add(pointLight);
+
+    createCelestialSphere();
+    createXAxis();
+    createYAxis();
+    createZAxis();
+    createAriesMarker();
+    createEquator();
+    createLunarOrbitCircle();
+    createLunarOrbitEllipse();
+    createChandrayaanOrbitCircle();
+    createLunarNodes();
+    createChandrayaanNodes();
+    createMoon();
+    createChandrayaanOrbit();
+    updateChandrayaanOrbitCircle();
+    createRAANLines();
+    createAOPLines();
+
+    UpdateFunctions.updateLunarOrbitCircle = updateLunarOrbitCircle;
+    UpdateFunctions.updateLunarNodePositions = updateLunarNodePositions;
+    UpdateFunctions.updateMoonPosition = updateMoonPosition;
+    UpdateFunctions.updateChandrayaanOrbitCircle = updateChandrayaanOrbitCircle;
+    UpdateFunctions.updateChandrayaanOrbit = updateChandrayaanOrbit;
+    UpdateFunctions.updateChandrayaanNodePositions = updateChandrayaanNodePositions;
+    UpdateFunctions.updateRAANLines = updateRAANLines;
+    UpdateFunctions.updateAOPLines = updateAOPLines;
+    UpdateFunctions.updateCraftMoonDistance = updateCraftMoonDistance;
+    UpdateFunctions.updateOrbitalElements = updateOrbitalElements;
+
+    setupGUI();
+    setupModeTabs();
+    setupActionsPanel();
+    setupTimeline();
+    setupCollapsiblePanels();
+    setupViewButtons();
+    updateOrbitalElements();
+
+    window.addEventListener('resize', onWindowResize, false);
+
+    animate();
+}
+
+function createCelestialSphere(): void {
+    const geometry = new THREE.SphereGeometry(SPHERE_RADIUS, 64, 64);
+    const material = new THREE.MeshBasicMaterial({
+        color: 0x1a1a2e,
+        transparent: true,
+        opacity: 0.3,
+        side: THREE.DoubleSide,
+        wireframe: false,
+        depthWrite: false
+    });
+    celestialSphere = new THREE.Mesh(geometry, material);
+    celestialSphere.renderOrder = 0;
+    scene.add(celestialSphere);
+}
+
+function createXAxis(): void {
+    const points = [
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(SPHERE_RADIUS * 1.2, 0, 0)
+    ];
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineDashedMaterial({
+        color: COLORS.xAxis,
+        linewidth: 1,
+        dashSize: 3,
+        gapSize: 2
+    });
+    xAxis = new THREE.Line(geometry, material);
+    xAxis.computeLineDistances();
+    scene.add(xAxis);
+}
+
+function createYAxis(): void {
+    const points = [
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0, 0, -SPHERE_RADIUS * 1.2)
+    ];
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineDashedMaterial({
+        color: COLORS.yAxis,
+        linewidth: 1,
+        dashSize: 3,
+        gapSize: 2
+    });
+    yAxis = new THREE.Line(geometry, material);
+    yAxis.computeLineDistances();
+    scene.add(yAxis);
+}
+
+function createZAxis(): void {
+    const points = [
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0, SPHERE_RADIUS * 1.2, 0)
+    ];
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineDashedMaterial({
+        color: COLORS.zAxis,
+        linewidth: 1,
+        dashSize: 3,
+        gapSize: 2
+    });
+    zAxis = new THREE.Line(geometry, material);
+    zAxis.computeLineDistances();
+    scene.add(zAxis);
+}
+
+function createAriesMarker(): void {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d')!;
+    canvas.width = SPRITE_CANVAS_SIZE;
+    canvas.height = SPRITE_CANVAS_SIZE;
+
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = '#ff0000';
+    context.font = `Bold ${SPRITE_FONT_SIZE}px Arial`;
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText('♈', canvas.width / 2, canvas.height / 2);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const spriteMaterial = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true
+    });
+    ariesMarker = new THREE.Sprite(spriteMaterial);
+    ariesMarker.scale.set(ARIES_MARKER_BASE_SIZE, ARIES_MARKER_BASE_SIZE, 1);
+    ariesMarker.position.set(SPHERE_RADIUS * 1.2, 0, 0);
+    scene.add(ariesMarker);
+}
+
+function createGreatCircle(radius: number, color: number, inclination: number = 0, raan: number = 0): THREE.Line {
+    const segments = ORBIT_SEGMENTS_STANDARD;
+    const inclinationRad = THREE.MathUtils.degToRad(inclination);
+    const raanRad = THREE.MathUtils.degToRad(raan);
+
+    const points = Array.from({ length: segments + 1 }, (_, i) => {
+        const theta = (i / segments) * Math.PI * 2;
+        const x = radius * Math.cos(theta);
+        const y = 0;
+        const z = -radius * Math.sin(theta);
+
+        const point = new THREE.Vector3(x, y, z);
+        point.applyAxisAngle(new THREE.Vector3(1, 0, 0), inclinationRad);
+        point.applyAxisAngle(new THREE.Vector3(0, 1, 0), raanRad);
+
+        return point;
+    });
+
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineBasicMaterial({
+        color: color,
+        linewidth: 2
+    });
+    const circle = new THREE.Line(geometry, material);
+
+    return circle;
+}
+
+function createEquator(): void {
+    equatorCircle = createGreatCircle(SPHERE_RADIUS, COLORS.equator);
+    scene.add(equatorCircle);
+
+    // Create RA labels on equator
+    createRALabels();
+}
+
+function createRALabels(): void {
+    raLabelsGroup = new THREE.Group();
+
+    const raPositions = [
+        { ra: 0, label: '0°' },
+        { ra: 90, label: '90°' },
+        { ra: 180, label: '180°' },
+        { ra: 270, label: '270°' }
+    ];
+
+    const labelRadius = SPHERE_RADIUS * 1.08; // Slightly outside the sphere
+
+    raPositions.forEach(({ ra, label }) => {
+        const sprite = createRALabelSprite(label);
+
+        // Convert RA to position: Celestial X = cos(ra), Y = sin(ra), Z = 0
+        // In Three.js: x = cos(ra), z = -sin(ra), y = 0
+        const raRad = (ra * Math.PI) / 180;
+        sprite.position.set(
+            labelRadius * Math.cos(raRad),
+            0,
+            -labelRadius * Math.sin(raRad)
+        );
+
+        sprite.scale.set(8, 4, 1);
+        raLabelsGroup.add(sprite);
+    });
+
+    scene.add(raLabelsGroup);
+}
+
+function createRALabelSprite(text: string): THREE.Sprite {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 64;
+    const context = canvas.getContext('2d')!;
+
+    context.fillStyle = 'rgba(0, 0, 0, 0)';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    context.font = 'Bold 40px Arial';
+    context.fillStyle = '#ffffff';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(text, canvas.width / 2, canvas.height / 2);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+
+    const spriteMaterial = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthWrite: false
+    });
+
+    return new THREE.Sprite(spriteMaterial);
+}
+
+function createLunarOrbitCircle(): void {
+    lunarOrbitCircle = createGreatCircle(
+        SPHERE_RADIUS,
+        COLORS.lunarOrbitPlane,
+        params.lunarInclination,
+        params.lunarNodes
+    );
+    scene.add(lunarOrbitCircle);
+}
+
+function createChandrayaanOrbitCircle(): void {
+    chandrayaanOrbitCircle = createGreatCircle(
+        SPHERE_RADIUS,
+        COLORS.chandrayaanPlane,
+        params.chandrayaanInclination,
+        params.chandrayaanNodes
+    );
+    scene.add(chandrayaanOrbitCircle);
+}
+
+function createLunarOrbitEllipse(): void {
+    // Create a placeholder - will be updated with actual orbital elements
+    const geometry = new THREE.BufferGeometry();
+    const material = new THREE.LineDashedMaterial({
+        color: COLORS.moon,
+        linewidth: 2,
+        dashSize: 3,
+        gapSize: 2
+    });
+    lunarOrbitEllipse = new THREE.Line(geometry, material);
+    lunarOrbitEllipse.visible = false;  // Initially hidden, shown only in Plan/Game modes
+    scene.add(lunarOrbitEllipse);
+}
+
+function updateLunarOrbitEllipse(elements: OrbitalElements): void {
+    if (!lunarOrbitEllipse) return;
+
+    scene.remove(lunarOrbitEllipse);
+
+    // Calculate orbital parameters
+    const e = elements.eccentricity;
+    const a = elements.semiMajorAxis;
+
+    const segments = 128;
+
+    const omega = THREE.MathUtils.degToRad(elements.omega);
+    const inc = THREE.MathUtils.degToRad(elements.inclination);
+    const raan = THREE.MathUtils.degToRad(elements.raan);
+
+    // Create elliptical orbit in XZ plane using polar form
+    const points = Array.from({ length: segments + 1 }, (_, i) => {
+        const theta = (i / segments) * Math.PI * 2;
+        const r = a * (1 - e * e) / (1 + e * Math.cos(theta));
+        const point = new THREE.Vector3(
+            r * SCALE_FACTOR * Math.cos(theta),
+            0,
+            -r * SCALE_FACTOR * Math.sin(theta)
+        );
+
+        // Apply rotations: omega, then inclination, then RAAN
+        point.applyAxisAngle(new THREE.Vector3(0, 1, 0), omega);
+        point.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+        point.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+
+        return point;
+    });
+
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineDashedMaterial({
+        color: COLORS.moon,
+        linewidth: 2,
+        dashSize: 3,
+        gapSize: 2
+    });
+    lunarOrbitEllipse = new THREE.Line(geometry, material);
+    lunarOrbitEllipse.computeLineDistances();
+
+    // Show only in Plan and Game modes
+    lunarOrbitEllipse.visible = (params.appMode === 'Plan' || params.appMode === 'Game') && params.showLunarOrbitPlane;
+
+    scene.add(lunarOrbitEllipse);
+}
+
+function createLunarNodes(): void {
+    const nodeGeometry = new THREE.SphereGeometry(1, 16, 16);
+
+    const lunarAscendingMaterial = new THREE.MeshBasicMaterial({ color: COLORS.lunarAscending });
+    lunarAscendingNode = new THREE.Mesh(nodeGeometry, lunarAscendingMaterial);
+    scene.add(lunarAscendingNode);
+
+    const lunarDescendingMaterial = new THREE.MeshBasicMaterial({ color: COLORS.lunarDescending });
+    lunarDescendingNode = new THREE.Mesh(nodeGeometry, lunarDescendingMaterial);
+    scene.add(lunarDescendingNode);
+
+    updateLunarNodePositions();
+}
+
+function createChandrayaanNodes(): void {
+    const nodeGeometry = new THREE.SphereGeometry(1, 16, 16);
+
+    const chandrayaanAscendingMaterial = new THREE.MeshBasicMaterial({ color: COLORS.chandrayaanAscending });
+    chandrayaanAscendingNode = new THREE.Mesh(nodeGeometry, chandrayaanAscendingMaterial);
+    scene.add(chandrayaanAscendingNode);
+
+    const chandrayaanDescendingMaterial = new THREE.MeshBasicMaterial({ color: COLORS.chandrayaanDescending });
+    chandrayaanDescendingNode = new THREE.Mesh(nodeGeometry, chandrayaanDescendingMaterial);
+    scene.add(chandrayaanDescendingNode);
+
+    updateChandrayaanNodePositions();
+}
+
+function updateLunarNodePositions(): void {
+    const inc = THREE.MathUtils.degToRad(params.lunarInclination);
+    const raan = THREE.MathUtils.degToRad(params.lunarNodes);
+
+    const ascendingPos = new THREE.Vector3(SPHERE_RADIUS, 0, 0);
+    ascendingPos.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+    ascendingPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+    lunarAscendingNode.position.copy(ascendingPos);
+
+    const descendingPos = new THREE.Vector3(-SPHERE_RADIUS, 0, 0);
+    descendingPos.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+    descendingPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+    lunarDescendingNode.position.copy(descendingPos);
+}
+
+function updateChandrayaanNodePositions(): void {
+    const inc = THREE.MathUtils.degToRad(params.chandrayaanInclination);
+    const raan = THREE.MathUtils.degToRad(params.chandrayaanNodes);
+
+    const ascendingPos = new THREE.Vector3(SPHERE_RADIUS, 0, 0);
+    ascendingPos.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+    ascendingPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+    chandrayaanAscendingNode.position.copy(ascendingPos);
+
+    const descendingPos = new THREE.Vector3(-SPHERE_RADIUS, 0, 0);
+    descendingPos.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+    descendingPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+    chandrayaanDescendingNode.position.copy(descendingPos);
+}
+
+function createMoon(): void {
+    const moonGeometry = new THREE.SphereGeometry(3, 32, 32);
+    const moonMaterial = new THREE.MeshPhongMaterial({ color: COLORS.moon });
+    moon = new THREE.Mesh(moonGeometry, moonMaterial);
+    scene.add(moon);
+    updateMoonPosition();
+}
+
+function updateMoonPosition(): void {
+    if (realPositionsCache.moonPositionKm && params.moonMode === 'Real') {
+        const moonPos = realPositionsCache.moonPositionKm;
+        moon.position.set(
+            moonPos.x * SCALE_FACTOR,
+            moonPos.y * SCALE_FACTOR,
+            moonPos.z * SCALE_FACTOR
+        );
+    } else {
+        // Gamed mode: Calculate Moon position from RA using proper spherical trigonometry
+        // For the Moon, omega (argument of periapsis) is 0 since it's a circular orbit
+        const angleInOrbitDeg = calculateTrueAnomalyFromRA(
+            params.moonRA,
+            params.lunarNodes,
+            0, // omega = 0 for circular orbit
+            params.lunarInclination
+        );
+        const angleInOrbit = THREE.MathUtils.degToRad(angleInOrbitDeg);
+
+        const inc = THREE.MathUtils.degToRad(params.lunarInclination);
+        const raan = THREE.MathUtils.degToRad(params.lunarNodes);
+
+        const posInOrbit = new THREE.Vector3(
+            SPHERE_RADIUS * Math.cos(angleInOrbit),
+            0,
+            -SPHERE_RADIUS * Math.sin(angleInOrbit)
+        );
+
+        posInOrbit.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+        posInOrbit.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+        moon.position.copy(posInOrbit);
+
+        params.moonDistanceDisplay = LUNAR_ORBIT_DISTANCE.toFixed(1) + ' km';
+        if (lunarControllers.moonDistanceDisplay) {
+            lunarControllers.moonDistanceDisplay?.updateDisplay();
+        }
+    }
+}
+
+function updateLunarOrbitCircle(): void {
+    scene.remove(lunarOrbitCircle);
+    scene.remove(lunarOrbitFilledPlane);
+
+    lunarOrbitCircle = createGreatCircle(
+        SPHERE_RADIUS,
+        COLORS.lunarOrbitPlane,
+        params.lunarInclination,
+        params.lunarNodes
+    );
+    scene.add(lunarOrbitCircle);
+    lunarOrbitCircle.visible = params.showLunarOrbitPlane;
+
+    const filledGeometry = new THREE.CircleGeometry(SPHERE_RADIUS, 64);
+    const inc = THREE.MathUtils.degToRad(params.lunarInclination);
+    const raan = THREE.MathUtils.degToRad(params.lunarNodes);
+
+    const positions = filledGeometry.attributes.position;
+    for (let i = 0; i < positions.count; i++) {
+        const v = new THREE.Vector3(
+            positions.getX(i),
+            positions.getY(i),
+            positions.getZ(i)
+        );
+        v.applyAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+        v.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+        v.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+
+        positions.setXYZ(i, v.x, v.y, v.z);
+    }
+    positions.needsUpdate = true;
+    filledGeometry.computeVertexNormals();
+
+    const filledMaterial = new THREE.MeshBasicMaterial({
+        color: COLORS.lunarOrbitPlane,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.1,
+        depthWrite: false
+    });
+    lunarOrbitFilledPlane = new THREE.Mesh(filledGeometry, filledMaterial);
+
+    scene.add(lunarOrbitFilledPlane);
+    lunarOrbitFilledPlane.visible = params.showLunarOrbitFilledPlane;
+}
+
+function updateChandrayaanOrbitCircle(): void {
+    scene.remove(chandrayaanOrbitCircle);
+    scene.remove(chandrayaanOrbitFilledPlane);
+
+    const orbitalParams = getChandrayaanParams();
+
+    chandrayaanOrbitCircle = createGreatCircle(
+        SPHERE_RADIUS,
+        COLORS.chandrayaanPlane,
+        orbitalParams.inclination,
+        orbitalParams.raan
+    );
+    scene.add(chandrayaanOrbitCircle);
+    chandrayaanOrbitCircle.visible = params.showChandrayaanOrbitPlane;
+
+    const filledGeometry = new THREE.CircleGeometry(SPHERE_RADIUS, 64);
+    const inc = THREE.MathUtils.degToRad(orbitalParams.inclination);
+    const raan = THREE.MathUtils.degToRad(orbitalParams.raan);
+
+    const positions = filledGeometry.attributes.position;
+    for (let i = 0; i < positions.count; i++) {
+        const v = new THREE.Vector3(
+            positions.getX(i),
+            positions.getY(i),
+            positions.getZ(i)
+        );
+        v.applyAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+        v.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+        v.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+
+        positions.setXYZ(i, v.x, v.y, v.z);
+    }
+    positions.needsUpdate = true;
+    filledGeometry.computeVertexNormals();
+
+    const filledMaterial = new THREE.MeshBasicMaterial({
+        color: COLORS.chandrayaanPlane,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.1,
+        depthWrite: false
+    });
+    chandrayaanOrbitFilledPlane = new THREE.Mesh(filledGeometry, filledMaterial);
+
+    scene.add(chandrayaanOrbitFilledPlane);
+    chandrayaanOrbitFilledPlane.visible = params.showChandrayaanOrbitFilledPlane;
+}
+
+function createChandrayaanOrbit(): void {
+    const e = calculateChandrayaanEccentricity();
+    const perigeeDistance = (EARTH_RADIUS + params.chandrayaanPerigeeAlt) * SCALE_FACTOR;
+    const a = perigeeDistance / (1 - e);
+    const segments = 128;
+
+    const points = Array.from({ length: segments + 1 }, (_, i) => {
+        const theta = (i / segments) * Math.PI * 2;
+        const r = a * (1 - e * e) / (1 + e * Math.cos(theta));
+        const x = r * Math.cos(theta);
+        const z = -r * Math.sin(theta);
+        return new THREE.Vector3(x, 0, z);
+    });
+
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineDashedMaterial({
+        color: COLORS.chandrayaanOrbit,
+        linewidth: 2,
+        dashSize: 3,
+        gapSize: 2
+    });
+    chandrayaanOrbitCircle3D = new THREE.Line(geometry, material);
+    chandrayaanOrbitCircle3D.computeLineDistances();
+    scene.add(chandrayaanOrbitCircle3D);
+
+    const spacecraftGeometry = new THREE.SphereGeometry(2, 16, 16);
+    const spacecraftMaterial = new THREE.MeshPhongMaterial({ color: COLORS.chandrayaan });
+    chandrayaan = new THREE.Mesh(spacecraftGeometry, spacecraftMaterial);
+    scene.add(chandrayaan);
+
+    updateChandrayaanOrbit();
+}
+
+function updateChandrayaanOrbit(): void {
+    // Recreate Chandrayaan orbit with current parameters (manual or launch)
+    scene.remove(chandrayaanOrbitCircle3D);
+
+    // Get current parameters (manual or from launch event)
+    const orbitalParams = getChandrayaanParams();
+
+    // Calculate orbital parameters
+    const rp = EARTH_RADIUS + orbitalParams.perigeeAlt;
+    const ra = EARTH_RADIUS + orbitalParams.apogeeAlt;
+    const e = (ra - rp) / (ra + rp);
+    const perigeeDistance = rp * SCALE_FACTOR;
+    const a = perigeeDistance / (1 - e); // Semi-major axis
+
+    const segments = ORBIT_SEGMENTS_DETAILED;
+
+    const omega = THREE.MathUtils.degToRad(orbitalParams.omega);
+    const inc = THREE.MathUtils.degToRad(orbitalParams.inclination);
+    const raan = THREE.MathUtils.degToRad(orbitalParams.raan);
+
+    // Create elliptical orbit in XZ plane using polar form
+    // Generate points functionally using Array.from
+    const points = Array.from({ length: segments + 1 }, (_, i) => {
+        const theta = (i / segments) * Math.PI * 2;
+        const r = a * (1 - e * e) / (1 + e * Math.cos(theta));
+        const point = new THREE.Vector3(
+            r * Math.cos(theta),
+            0,
+            -r * Math.sin(theta)  // Negative for counter-clockwise viewing from above
+        );
+
+        // Apply rotations: omega (argument of periapsis), then inclination, then RAAN
+        point.applyAxisAngle(new THREE.Vector3(0, 1, 0), omega);
+        point.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+        point.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+
+        return point;
+    });
+
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineDashedMaterial({
+        color: COLORS.chandrayaanOrbit,
+        linewidth: 2,
+        dashSize: 3,
+        gapSize: 2
+    });
+    chandrayaanOrbitCircle3D = new THREE.Line(geometry, material);
+    chandrayaanOrbitCircle3D.computeLineDistances(); // Required for dashed lines - call on Line object
+    chandrayaanOrbitCircle3D.visible = params.showChandrayaanOrbit;
+    scene.add(chandrayaanOrbitCircle3D);
+
+    updateChandrayaanPosition(orbitalParams);
+}
+
+function updateChandrayaanPosition(orbitalParams?: OrbitalParams): void {
+    const orbital = orbitalParams ?? getChandrayaanParams();
+
+    const rp = EARTH_RADIUS + orbital.perigeeAlt;
+    const ra = EARTH_RADIUS + orbital.apogeeAlt;
+    const e = (ra - rp) / (ra + rp);
+    const perigeeDistance = rp * SCALE_FACTOR;
+    const a = perigeeDistance / (1 - e);
+
+    const omega = THREE.MathUtils.degToRad(orbital.omega);
+    const inc = THREE.MathUtils.degToRad(orbital.inclination);
+    const raan = THREE.MathUtils.degToRad(orbital.raan);
+
+    // Update Chandrayaan position
+    let nu; // True anomaly in radians
+
+    if (params.appMode === 'Explore') {
+        // In Explore mode, use RA to calculate position
+        // Use centralized function to convert RA to true anomaly
+        nu = THREE.MathUtils.degToRad(calculateTrueAnomalyFromRA(
+            params.chandrayaanRA,
+            orbital.raan,
+            orbital.omega,
+            orbital.inclination
+        ));
+    } else {
+        // In Plan/Game modes, use true anomaly directly
+        nu = THREE.MathUtils.degToRad(orbital.trueAnomaly ?? 0);
+    }
+
+    const r = a * (1 - e * e) / (1 + e * Math.cos(nu));
+    const spacecraftPos = new THREE.Vector3(
+        r * Math.cos(nu),
+        0,
+        -r * Math.sin(nu)
+    );
+
+    // Apply same rotations as orbit
+    spacecraftPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), omega);
+    spacecraftPos.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+    spacecraftPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+
+    chandrayaan.position.copy(spacecraftPos);
+
+    // Calculate and store actual position in km for accurate distance calculations
+    const rpKm = EARTH_RADIUS + orbital.perigeeAlt;
+    const raKm = EARTH_RADIUS + orbital.apogeeAlt;
+    const aKm = (rpKm + raKm) / 2; // Semi-major axis in km
+    const rKm = aKm * (1 - e * e) / (1 + e * Math.cos(nu)); // Distance from Earth center in km
+
+    // Position in orbital plane (km)
+    const craftPosKm = new THREE.Vector3(
+        rKm * Math.cos(nu),
+        0,
+        -rKm * Math.sin(nu)
+    );
+
+    // Apply same rotations to get actual position in km
+    craftPosKm.applyAxisAngle(new THREE.Vector3(0, 1, 0), omega);
+    craftPosKm.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+    craftPosKm.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+
+    // Store in cache
+    realPositionsCache.craftPositionKm = {
+        x: craftPosKm.x,
+        y: craftPosKm.y,
+        z: craftPosKm.z
+    };
+
+    // Calculate and display craft's distance from Earth
+    const craftEarthDist = Math.sqrt(craftPosKm.x * craftPosKm.x + craftPosKm.y * craftPosKm.y + craftPosKm.z * craftPosKm.z);
+    params.craftEarthDistance = craftEarthDist.toFixed(1) + ' km';
+    if (chandrayaanControllers.craftEarthDistance) {
+        chandrayaanControllers.craftEarthDistance?.updateDisplay();
+    }
+
+    // Update spacecraft appearance and visibility based on status
+    updateSpacecraftAppearance(orbital);
+
+    // Update RA display
+    updateChandrayaanRADisplay();
+
+    // Update craft-Moon distance and check for capture
+    updateCraftMoonDistance();
+}
+
+function updateSpacecraftAppearance(orbital: OrbitalParams): void {
+    const material = chandrayaan.material as THREE.MeshPhongMaterial;
+    const isCapturedInGame = captureState.isCaptured && params.appMode === 'Game';
+    const isPreLaunchInPlanGame = params.appMode !== 'Explore' && launchEvent.exists && !orbital.isLaunched;
+
+    if (isCapturedInGame) {
+        chandrayaan.visible = false;
+    } else if (isPreLaunchInPlanGame) {
+        chandrayaan.visible = params.showChandrayaan;
+        material.color.setHex(0x888888);
+        material.emissive.setHex(0x000000);
+    } else {
+        chandrayaan.visible = params.showChandrayaan;
+        material.color.setHex(COLORS.chandrayaan);
+        material.emissive.setHex(0x222222);
+    }
+}
+
+// Calculate and update distance between craft and Moon
+function calculateCraftMoonDistanceKm(): number {
+    if (realPositionsCache.moonPositionKm && realPositionsCache.craftPositionKm) {
+        const moonPos = realPositionsCache.moonPositionKm;
+        const craftPos = realPositionsCache.craftPositionKm;
+        const dx = craftPos.x - moonPos.x;
+        const dy = craftPos.y - moonPos.y;
+        const dz = craftPos.z - moonPos.z;
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+    // Fallback to visualization-based distance (Explore mode)
+    return chandrayaan.position.distanceTo(moon.position) / SCALE_FACTOR;
+}
+
+function checkCaptureState(distanceKm: number): void {
+    if (params.appMode !== 'Game' || !launchEvent.exists) return;
+
+    // Reset capture if we've gone back in time
+    if (captureState.isCaptured && captureState.captureDate) {
+        if (getRenderDate() < captureState.captureDate) {
+            resetCaptureState();
+        }
+    }
+
+    // Check for new capture
+    const threshold = launchEvent.captureDistance || 2000;
+    if (!captureState.isCaptured && distanceKm <= threshold) {
+        captureState.isCaptured = true;
+        captureState.captureDate = new Date(getRenderDate());
+        showCaptureMessage();
+    }
+}
+
+function updateCraftMoonDistance(): void {
+    const distanceKm = calculateCraftMoonDistanceKm();
+    params.craftMoonDistance = distanceKm.toFixed(1) + ' km';
+    chandrayaanControllers.craftMoonDistance?.updateDisplay();
+    checkCaptureState(distanceKm);
+}
+
+// Show capture message when spacecraft is captured by Moon
+function showCaptureMessage(): void {
+    const messageEl = document.getElementById('capture-message');
+    if (messageEl) {
+        messageEl.style.display = 'block';
+    }
+}
+
+// Hide capture message
+function hideCaptureMessage(): void {
+    const messageEl = document.getElementById('capture-message');
+    if (messageEl) {
+        messageEl.style.display = 'none';
+    }
+}
+
+// Reset capture state
+function resetCaptureState(): void {
+    captureState.isCaptured = false;
+    captureState.captureDate = null;
+    hideCaptureMessage();
+}
+
+function updateOrbitalElements(): void {
+    // Info panel removed - orbital elements now shown in GUI controls
+}
+
+function createRAANLines(): void {
+    const lineLength = SPHERE_RADIUS; // Extend to celestial sphere
+    const edgeColor = 0xcccccc; // Light grey for all edges
+
+    // Line 1: From origin to First Point of Aries (along X-axis)
+    const points1 = [
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(lineLength, 0, 0)
+    ];
+    const geometry1 = new THREE.BufferGeometry().setFromPoints(points1);
+    const material1 = new THREE.LineBasicMaterial({
+        color: edgeColor,
+        linewidth: 2
+    });
+    raanLine1 = new THREE.Line(geometry1, material1);
+    raanLine1.visible = params.showRAANAngle;
+    scene.add(raanLine1);
+
+    // Line 2: From origin to ascending node
+    const raan = THREE.MathUtils.degToRad(params.chandrayaanNodes);
+    const points2 = [
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(
+            lineLength * Math.cos(raan),
+            0,
+            -lineLength * Math.sin(raan) // Negative for counter-clockwise
+        )
+    ];
+    const geometry2 = new THREE.BufferGeometry().setFromPoints(points2);
+    const material2 = new THREE.LineBasicMaterial({
+        color: edgeColor,
+        linewidth: 2
+    });
+    raanLine2 = new THREE.Line(geometry2, material2);
+    raanLine2.visible = params.showRAANAngle;
+    scene.add(raanLine2);
+
+    // Arc: Connect endpoints of the two lines
+    const arcPoints = [];
+    const segments = 64;
+    for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * raan; // From 0 to raan
+        arcPoints.push(new THREE.Vector3(
+            lineLength * Math.cos(angle),
+            0,
+            -lineLength * Math.sin(angle) // Negative for counter-clockwise
+        ));
+    }
+    const arcGeometry = new THREE.BufferGeometry().setFromPoints(arcPoints);
+    const arcMaterial = new THREE.LineBasicMaterial({
+        color: edgeColor,
+        linewidth: 2
+    });
+    raanArc = new THREE.Line(arcGeometry, arcMaterial);
+    raanArc.visible = params.showRAANAngle;
+    scene.add(raanArc);
+
+    // Filled pie sector with hatching
+    const vertices = [];
+    const indices = [];
+    const yOffset = 0.1; // Slight offset above equatorial plane to avoid z-fighting
+
+    // Center vertex
+    vertices.push(0, yOffset, 0);
+
+    // Edge vertices along the arc
+    for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * raan;
+        vertices.push(
+            lineLength * Math.cos(angle),
+            yOffset,
+            -lineLength * Math.sin(angle)
+        );
+    }
+
+    // Create triangles from center to arc (reversed winding for outward facing)
+    for (let i = 1; i <= segments; i++) {
+        indices.push(0, i + 1, i);
+    }
+
+    const pieGeometry = new THREE.BufferGeometry();
+    pieGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    pieGeometry.setIndex(indices);
+    pieGeometry.computeVertexNormals();
+
+    const pieMaterial = new THREE.MeshBasicMaterial({
+        color: 0xf0f0f0, // Very light grey/off-white
+        transparent: true,
+        opacity: 0.25,
+        side: THREE.DoubleSide,
+        depthWrite: false
+    });
+
+    raanPie = new THREE.Mesh(pieGeometry, pieMaterial);
+    raanPie.renderOrder = 10; // Render on top of celestial sphere
+    raanPie.visible = params.showRAANAngle;
+    scene.add(raanPie);
+
+    // Create text label for RAAN
+    createRAAnLabel(raan, lineLength);
+    raanLabel.visible = params.showRAANAngle;
+}
+
+function createRAAnLabel(raan: number, radius: number): void {
+    // Create canvas for text
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    canvas.width = 256;
+    canvas.height = 64;
+
+    context.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    context.font = 'Bold 40px Arial';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText('RAAN', canvas.width / 2, canvas.height / 2);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+    raanLabel = new THREE.Sprite(spriteMaterial);
+
+    // Position at midpoint of arc
+    const midAngle = raan / 2;
+    raanLabel.position.set(
+        radius * Math.cos(midAngle),
+        5, // Slightly above the plane
+        -radius * Math.sin(midAngle)
+    );
+    raanLabel.scale.set(10, 2.5, 1); // Scale the sprite
+
+    scene.add(raanLabel);
+}
+
+function updateRAANLines(): void {
+    // Remove old lines, arc, pie, and label
+    scene.remove(raanLine1);
+    scene.remove(raanLine2);
+    scene.remove(raanArc);
+    scene.remove(raanPie);
+    scene.remove(raanLabel);
+
+    const lineLength = SPHERE_RADIUS; // Extend to celestial sphere
+    const edgeColor = 0xcccccc; // Light grey for all edges
+
+    // Line 1: From origin to First Point of Aries (always along X-axis, doesn't change)
+    const points1 = [
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(lineLength, 0, 0)
+    ];
+    const geometry1 = new THREE.BufferGeometry().setFromPoints(points1);
+    const material1 = new THREE.LineBasicMaterial({
+        color: edgeColor,
+        linewidth: 2
+    });
+    raanLine1 = new THREE.Line(geometry1, material1);
+    raanLine1.visible = params.showRAANAngle;
+    scene.add(raanLine1);
+
+    // Line 2: From origin to ascending node (updates with RAAN)
+    const raan = THREE.MathUtils.degToRad(params.chandrayaanNodes);
+    const points2 = [
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(
+            lineLength * Math.cos(raan),
+            0,
+            -lineLength * Math.sin(raan)
+        )
+    ];
+    const geometry2 = new THREE.BufferGeometry().setFromPoints(points2);
+    const material2 = new THREE.LineBasicMaterial({
+        color: edgeColor,
+        linewidth: 2
+    });
+    raanLine2 = new THREE.Line(geometry2, material2);
+    raanLine2.visible = params.showRAANAngle;
+    scene.add(raanLine2);
+
+    // Arc: Connect endpoints of the two lines
+    const arcPoints = [];
+    const segments = 64;
+    for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * raan; // From 0 to raan
+        arcPoints.push(new THREE.Vector3(
+            lineLength * Math.cos(angle),
+            0,
+            -lineLength * Math.sin(angle)
+        ));
+    }
+    const arcGeometry = new THREE.BufferGeometry().setFromPoints(arcPoints);
+    const arcMaterial = new THREE.LineBasicMaterial({
+        color: edgeColor,
+        linewidth: 2
+    });
+    raanArc = new THREE.Line(arcGeometry, arcMaterial);
+    raanArc.visible = params.showRAANAngle;
+    scene.add(raanArc);
+
+    // Filled pie sector with hatching
+    const vertices = [];
+    const indices = [];
+    const yOffset = 0.1; // Slight offset above equatorial plane to avoid z-fighting
+
+    // Center vertex
+    vertices.push(0, yOffset, 0);
+
+    // Edge vertices along the arc
+    for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * raan;
+        vertices.push(
+            lineLength * Math.cos(angle),
+            yOffset,
+            -lineLength * Math.sin(angle)
+        );
+    }
+
+    // Create triangles from center to arc (reversed winding for outward facing)
+    for (let i = 1; i <= segments; i++) {
+        indices.push(0, i + 1, i);
+    }
+
+    const pieGeometry = new THREE.BufferGeometry();
+    pieGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    pieGeometry.setIndex(indices);
+    pieGeometry.computeVertexNormals();
+
+    const pieMaterial = new THREE.MeshBasicMaterial({
+        color: 0xf0f0f0, // Very light grey/off-white
+        transparent: true,
+        opacity: 0.25,
+        side: THREE.DoubleSide,
+        depthWrite: false
+    });
+
+    raanPie = new THREE.Mesh(pieGeometry, pieMaterial);
+    raanPie.renderOrder = 10; // Render on top of celestial sphere
+    raanPie.visible = params.showRAANAngle;
+    scene.add(raanPie);
+
+    // Create text label for RAAN
+    createRAAnLabel(raan, lineLength);
+    raanLabel.visible = params.showRAANAngle;
+}
+
+function createAOPLines(): void {
+    const lineLength = SPHERE_RADIUS; // Extend to celestial sphere
+    const edgeColor = 0xcccccc; // Light grey for all edges
+
+    const omega = THREE.MathUtils.degToRad(params.chandrayaanOmega);
+    const inc = THREE.MathUtils.degToRad(params.chandrayaanInclination);
+    const raan = THREE.MathUtils.degToRad(params.chandrayaanNodes);
+
+    // Line 1: From origin to ascending node (on orbital plane)
+    // Ascending node is at angle 0 in the orbital plane
+    const nodeDir = new THREE.Vector3(lineLength, 0, 0);
+    nodeDir.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+    nodeDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+
+    const points1 = [
+        new THREE.Vector3(0, 0, 0),
+        nodeDir
+    ];
+    const geometry1 = new THREE.BufferGeometry().setFromPoints(points1);
+    const material1 = new THREE.LineDashedMaterial({
+        color: edgeColor,
+        linewidth: 2,
+        dashSize: 3,
+        gapSize: 2
+    });
+    aopLine1 = new THREE.Line(geometry1, material1);
+    aopLine1.computeLineDistances();
+    aopLine1.visible = params.showAOPAngle;
+    scene.add(aopLine1);
+
+    // Line 2: From origin to periapsis
+    // Periapsis is at angle omega in the orbital plane
+    const periapsisDir = new THREE.Vector3(lineLength, 0, 0);
+    periapsisDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), omega); // Rotate by omega first
+    periapsisDir.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+    periapsisDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+
+    const points2 = [
+        new THREE.Vector3(0, 0, 0),
+        periapsisDir
+    ];
+    const geometry2 = new THREE.BufferGeometry().setFromPoints(points2);
+    const material2 = new THREE.LineDashedMaterial({
+        color: edgeColor,
+        linewidth: 2,
+        dashSize: 3,
+        gapSize: 2
+    });
+    aopLine2 = new THREE.Line(geometry2, material2);
+    aopLine2.computeLineDistances();
+    aopLine2.visible = params.showAOPAngle;
+    scene.add(aopLine2);
+
+    // Arc: Connect endpoints along the orbital plane
+    const arcPoints = [];
+    const segments = 64;
+    for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * omega; // From 0 to omega
+        const point = new THREE.Vector3(
+            lineLength * Math.cos(angle),
+            0,
+            -lineLength * Math.sin(angle)
+        );
+        point.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+        point.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+        arcPoints.push(point);
+    }
+    const arcGeometry = new THREE.BufferGeometry().setFromPoints(arcPoints);
+    const arcMaterial = new THREE.LineBasicMaterial({
+        color: edgeColor,
+        linewidth: 2
+    });
+    aopArc = new THREE.Line(arcGeometry, arcMaterial);
+    aopArc.visible = params.showAOPAngle;
+    scene.add(aopArc);
+
+    // Filled pie sector
+    const vertices = [];
+    const indices = [];
+    const yOffset = 0.1;
+
+    // Center vertex
+    vertices.push(0, yOffset, 0);
+
+    // Edge vertices along the arc
+    for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * omega;
+        const point = new THREE.Vector3(
+            lineLength * Math.cos(angle),
+            yOffset,
+            -lineLength * Math.sin(angle)
+        );
+        point.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+        point.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+        vertices.push(point.x, point.y, point.z);
+    }
+
+    // Create triangles from center to arc (reversed winding for outward facing)
+    for (let i = 1; i <= segments; i++) {
+        indices.push(0, i + 1, i);
+    }
+
+    const pieGeometry = new THREE.BufferGeometry();
+    pieGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    pieGeometry.setIndex(indices);
+    pieGeometry.computeVertexNormals();
+
+    const pieMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffe0e0, // Very light pink/rose
+        transparent: true,
+        opacity: 0.25,
+        side: THREE.DoubleSide,
+        depthWrite: false
+    });
+
+    aopPie = new THREE.Mesh(pieGeometry, pieMaterial);
+    aopPie.renderOrder = 10;
+    aopPie.visible = params.showAOPAngle;
+    scene.add(aopPie);
+
+    // Create text label for AOP
+    createAOPLabel(omega, inc, raan, lineLength);
+    aopLabel.visible = params.showAOPAngle;
+}
+
+function createAOPLabel(omega: number, inc: number, raan: number, radius: number): void {
+    // Create canvas for text
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    canvas.width = 256;
+    canvas.height = 64;
+
+    context.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    context.font = 'Bold 40px Arial';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText('AOP', canvas.width / 2, canvas.height / 2);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+    aopLabel = new THREE.Sprite(spriteMaterial);
+
+    // Position at midpoint of arc in orbital plane
+    const midAngle = omega / 2;
+    const labelPos = new THREE.Vector3(
+        radius * Math.cos(midAngle),
+        5,
+        -radius * Math.sin(midAngle)
+    );
+    labelPos.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+    labelPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+
+    aopLabel.position.copy(labelPos);
+    aopLabel.scale.set(10, 2.5, 1);
+
+    scene.add(aopLabel);
+}
+
+function updateAOPLines(): void {
+    // Remove old elements
+    scene.remove(aopLine1);
+    scene.remove(aopLine2);
+    scene.remove(aopArc);
+    scene.remove(aopPie);
+    scene.remove(aopLabel);
+
+    const lineLength = SPHERE_RADIUS;
+    const edgeColor = 0xcccccc;
+
+    const omega = THREE.MathUtils.degToRad(params.chandrayaanOmega);
+    const inc = THREE.MathUtils.degToRad(params.chandrayaanInclination);
+    const raan = THREE.MathUtils.degToRad(params.chandrayaanNodes);
+
+    // Line 1: From origin to ascending node
+    const nodeDir = new THREE.Vector3(lineLength, 0, 0);
+    nodeDir.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+    nodeDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+
+    const points1 = [
+        new THREE.Vector3(0, 0, 0),
+        nodeDir
+    ];
+    const geometry1 = new THREE.BufferGeometry().setFromPoints(points1);
+    const material1 = new THREE.LineDashedMaterial({
+        color: edgeColor,
+        linewidth: 2,
+        dashSize: 3,
+        gapSize: 2
+    });
+    aopLine1 = new THREE.Line(geometry1, material1);
+    aopLine1.computeLineDistances();
+    aopLine1.visible = params.showAOPAngle;
+    scene.add(aopLine1);
+
+    // Line 2: From origin to periapsis
+    const periapsisDir = new THREE.Vector3(lineLength, 0, 0);
+    periapsisDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), omega);
+    periapsisDir.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+    periapsisDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+
+    const points2 = [
+        new THREE.Vector3(0, 0, 0),
+        periapsisDir
+    ];
+    const geometry2 = new THREE.BufferGeometry().setFromPoints(points2);
+    const material2 = new THREE.LineDashedMaterial({
+        color: edgeColor,
+        linewidth: 2,
+        dashSize: 3,
+        gapSize: 2
+    });
+    aopLine2 = new THREE.Line(geometry2, material2);
+    aopLine2.computeLineDistances();
+    aopLine2.visible = params.showAOPAngle;
+    scene.add(aopLine2);
+
+    // Arc along orbital plane
+    const arcPoints = [];
+    const segments = 64;
+    for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * omega;
+        const point = new THREE.Vector3(
+            lineLength * Math.cos(angle),
+            0,
+            -lineLength * Math.sin(angle)
+        );
+        point.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+        point.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+        arcPoints.push(point);
+    }
+    const arcGeometry = new THREE.BufferGeometry().setFromPoints(arcPoints);
+    const arcMaterial = new THREE.LineBasicMaterial({
+        color: edgeColor,
+        linewidth: 2
+    });
+    aopArc = new THREE.Line(arcGeometry, arcMaterial);
+    aopArc.visible = params.showAOPAngle;
+    scene.add(aopArc);
+
+    // Filled pie sector
+    const vertices = [];
+    const indices = [];
+    const yOffset = 0.1;
+
+    // Center vertex
+    vertices.push(0, yOffset, 0);
+
+    // Edge vertices along the arc
+    for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * omega;
+        const point = new THREE.Vector3(
+            lineLength * Math.cos(angle),
+            yOffset,
+            -lineLength * Math.sin(angle)
+        );
+        point.applyAxisAngle(new THREE.Vector3(1, 0, 0), inc);
+        point.applyAxisAngle(new THREE.Vector3(0, 1, 0), raan);
+        vertices.push(point.x, point.y, point.z);
+    }
+
+    // Create triangles
+    for (let i = 1; i <= segments; i++) {
+        indices.push(0, i + 1, i);
+    }
+
+    const pieGeometry = new THREE.BufferGeometry();
+    pieGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    pieGeometry.setIndex(indices);
+    pieGeometry.computeVertexNormals();
+
+    const pieMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffe0e0, // Very light pink/rose
+        transparent: true,
+        opacity: 0.25,
+        side: THREE.DoubleSide,
+        depthWrite: false
+    });
+
+    aopPie = new THREE.Mesh(pieGeometry, pieMaterial);
+    aopPie.renderOrder = 10;
+    aopPie.visible = params.showAOPAngle;
+    scene.add(aopPie);
+
+    // Create label
+    createAOPLabel(omega, inc, raan, lineLength);
+    aopLabel.visible = params.showAOPAngle;
+}
+
+// Update Moon position from real ephemeris
+function updateMoonFromRealPosition(): void {
+    // Pull from single source of truth (respects active timeline)
+    const moonData = calculateRealMoonPosition(getRenderDate());
+
+    // Update parameters with real values
+    params.moonRA = moonData.ra;
+    params.lunarInclination = moonData.inclination;
+    params.lunarNodes = moonData.raan;
+
+    // Store real Moon position in km for accurate distance calculations
+    realPositionsCache.moonPositionKm = moonData.positionKm;
+
+    // Calculate and display Moon's distance from Earth
+    const moonPos = realPositionsCache.moonPositionKm;
+    const moonDistance = Math.sqrt(moonPos.x * moonPos.x + moonPos.y * moonPos.y + moonPos.z * moonPos.z);
+    params.moonDistanceDisplay = moonDistance.toFixed(1) + ' km';
+
+    // Update GUI display
+    if (lunarControllers.moonRA) lunarControllers.moonRA?.updateDisplay();
+    if (lunarControllers.inclination) lunarControllers.inclination?.updateDisplay();
+    if (lunarControllers.nodes) lunarControllers.nodes?.updateDisplay();
+    if (lunarControllers.moonDistanceDisplay) lunarControllers.moonDistanceDisplay?.updateDisplay();
+
+    // Update visual representation
+    updateLunarOrbitCircle();
+    updateLunarOrbitEllipse(moonData.orbitalElements);
+    updateLunarNodePositions();
+    updateMoonPosition();
+    updateOrbitalElements();
+
+    // Update RA display
+    updateMoonRADisplay();
+}
+
+// Mode-specific setup functions (extracted to reduce complexity)
+// Explore mode not supported in designer
+// function setupExploreMode(): void {
+//     stateManager.activateExploreParams();
+//     lunarFolder.show();
+//     chandrayaanFolder.show();
+//     enableLunarControls();
+//     enableChandrayaanControls();
+//     setSyncButtonsEnabled(true);
+//     chandrayaanControllers.restrictOrbitalParams?.show();
+
+//     const timelinePanel = document.getElementById('timeline-panel');
+//     if (timelinePanel) {
+//         timelinePanel.style.display = 'none';
+//         timelinePanel.classList.remove('plan-mode');
+//     }
+
+//     const launchContainer = document.getElementById('launch-event-container');
+//     const addLaunchBtn = document.getElementById('add-launch-action-btn');
+//     if (launchContainer) launchContainer.style.display = 'none';
+//     if (addLaunchBtn) addLaunchBtn.style.display = 'none';
+
+//     const actionsPanel = document.getElementById('actions-panel');
+//     if (actionsPanel) {
+//         actionsPanel.classList.remove('visible');
+//         actionsPanel.classList.remove('disabled');
+//     }
+
+//     updateLunarOrbitCircle();
+//     updateLunarNodePositions();
+//     updateMoonPosition();
+//     updateChandrayaanOrbit();
+//     updateChandrayaanPeriodDisplay();
+
+//     if (lunarOrbitEllipse) lunarOrbitEllipse.visible = false;
+//     hideTimelineRows();
+// }
+
+function setupPlanMode(): void {
+    stateManager.activatePlanGameParams();
+    lunarFolder.show();
+    chandrayaanFolder.show();
+    disableLunarControls();
+    disableChandrayaanControls();
+    setSyncButtonsEnabled(false);
+    chandrayaanControllers.restrictOrbitalParams?.hide();
+
+    const actionsPanel = document.getElementById('actions-panel');
+    if (actionsPanel) {
+        actionsPanel.classList.add('visible');
+        actionsPanel.classList.remove('disabled');
+    }
+
+    const timelinePanel = document.getElementById('timeline-panel');
+    if (timelinePanel) {
+        timelinePanel.style.display = 'block';
+        timelinePanel.classList.remove('disabled');
+        timelinePanel.classList.add('plan-mode');
+    }
+
+    updateMoonFromRealPosition();
+    updateChandrayaanPeriodDisplay();
+    setupPlanModeLaunchEvent();
+
+    const viewCheckbox = document.getElementById('timeline-slider-active');
+    if (viewCheckbox) (viewCheckbox as HTMLInputElement).disabled = false;
+    updateRenderControlSlidersState();
+}
+
+function setupPlanModeLaunchEvent(): void {
+    if (launchEvent.exists) {
+        const addBtn = document.getElementById('add-launch-action-btn');
+        if (addBtn) addBtn.style.display = 'none';
+        const container = document.getElementById('launch-event-container');
+        if (container) container.style.display = 'block';
+        createLaunchEventGUI();
+        if (launchEvent.moonInterceptDate) updateTimelineSliderFromInterceptDate();
+        updateLaunchMarker();
+        syncRenderControlSlidersWithLaunchEvent();
+    } else {
+        const addBtn = document.getElementById('add-launch-action-btn');
+        if (addBtn) addBtn.style.display = 'block';
+        const container = document.getElementById('launch-event-container');
+        if (container) container.style.display = 'none';
+    }
+}
+
+function setupGameMode(): void {
+    stateManager.activatePlanGameParams();
+    lunarFolder.show();
+    chandrayaanFolder.show();
+    disableLunarControls();
+    disableChandrayaanControls();
+    setSyncButtonsEnabled(false);
+    chandrayaanControllers.restrictOrbitalParams?.hide();
+
+    const timelinePanel = document.getElementById('timeline-panel');
+    if (timelinePanel) {
+        timelinePanel.style.display = 'block';
+        timelinePanel.classList.remove('disabled');
+        timelinePanel.classList.remove('plan-mode');
+    }
+
+    setupGameModeActionsPanel();
+    setupGameModeTimeline();
+
+    updateMoonFromRealPosition();
+    syncGUIWithLaunchEvent();
+    updateChandrayaanPeriodDisplay();
+    updateLaunchMarker();
+    hideTimelineRows();
+    setupGameModeViewCheckbox();
+}
+
+function setupGameModeActionsPanel(): void {
+    const actionsPanel = document.getElementById('actions-panel');
+    if (actionsPanel) {
+        if (launchEvent.exists) {
+            actionsPanel.classList.add('visible');
+            actionsPanel.classList.add('disabled');
+        } else {
+            actionsPanel.classList.remove('visible');
+            actionsPanel.classList.remove('disabled');
+        }
+    }
+}
+
+function setupGameModeTimeline(): void {
+    timelineState.startDate = new Date(gameModeState.savedStartDate);
+
+    if (gameModeState.isFirstEntry) {
+        timelineState.daysElapsed = 0;
+        timelineState.isPlaying = false;
+        gameModeState.savedTimelineDays = 0;
+        gameModeState.savedIsPlaying = false;
+        gameModeState.savedStartDate = new Date(TIMELINE_START_DATE);
+        gameModeState.isFirstEntry = false;
+    } else {
+        timelineState.daysElapsed = gameModeState.savedTimelineDays;
+        timelineState.isPlaying = gameModeState.savedIsPlaying;
+    }
+
+    const slider = document.getElementById('timeline-slider');
+    if (slider) (slider as HTMLInputElement).value = String(timelineState.daysElapsed);
+
+    const display = document.getElementById('timeline-slider-display');
+    if (display) display.textContent = `Day ${timelineState.daysElapsed.toFixed(1)}`;
+
+    const playPauseBtn = document.getElementById('play-pause-btn');
+    if (playPauseBtn) playPauseBtn.textContent = timelineState.isPlaying ? '⏸ Pause' : '▶ Play';
+
+    timelineState.currentDate = new Date(
+        timelineState.startDate.getTime() + timelineState.daysElapsed * 24 * 60 * 60 * 1000
+    );
+}
+
+function setupGameModeViewCheckbox(): void {
+    const viewCheckbox = document.getElementById('timeline-slider-active');
+    if (viewCheckbox) {
+        (viewCheckbox as HTMLInputElement).checked = true;
+        (viewCheckbox as HTMLInputElement).disabled = true;
+    }
+    activateTimelineView();
+}
+
+function switchAppMode(mode: AppMode): void {
+    // Designer only supports Plan and Game modes
+    if (mode === 'Explore') {
+        console.warn('Designer does not support Explore mode');
+        return;
+    }
+
+    // Save Game mode timeline state when leaving Game mode
+    if (params.appMode === 'Game' && mode !== 'Game') {
+        gameModeState.savedTimelineDays = timelineState.daysElapsed;
+        gameModeState.savedIsPlaying = timelineState.isPlaying;
+        gameModeState.savedStartDate = new Date(timelineState.startDate);
+    }
+
+    resetCaptureState();
+
+    if (mode === 'Plan') {
+        setupPlanMode();
+    } else if (mode === 'Game') {
+        setupGameMode();
+    }
+
+    // Update mode parameter AFTER all mode-specific logic has run
+    params.appMode = mode;
+    updateRenderDate();
+}
+
+// Update Chandrayaan orbital period display
+function updateChandrayaanPeriodDisplay(): void {
+    const orbitalParams = getChandrayaanParams();
+    const periodSeconds = calculateOrbitalPeriod(orbitalParams.perigeeAlt, orbitalParams.apogeeAlt);
+    params.chandrayaanPeriod = formatPeriod(periodSeconds);
+
+    if (chandrayaanControllers.period) {
+        chandrayaanControllers.period?.updateDisplay();
+    }
+}
+
+// Update Moon RA display (from ephemeris or manual input)
+function updateMoonRADisplay(): void {
+    // params.moonRA is already set from ephemeris in updateMoonFromRealPosition()
+    // or manually in Gamed mode
+    params.moonRADisplay = params.moonRA.toFixed(1) + '°';
+
+    if (lunarControllers.moonRADisplay) {
+        lunarControllers.moonRADisplay?.updateDisplay();
+    }
+}
+
+// Update Chandrayaan RA display (calculated from orbital elements)
+function updateChandrayaanRADisplay(): void {
+    const orbitalParams = getChandrayaanParams();
+
+    // Chandrayaan's RA in the equatorial plane is calculated from:
+    // RA = RAAN + angle of spacecraft position projected onto equatorial plane
+    // For a spacecraft at (RAAN, omega, true_anomaly):
+    // The RA depends on the orbital plane's orientation and position in orbit
+
+    // Use centralized function to calculate RA from true anomaly
+    const ra = calculateRAFromTrueAnomaly(
+        orbitalParams.trueAnomaly,
+        orbitalParams.raan,
+        orbitalParams.omega,
+        orbitalParams.inclination
+    );
+
+    // Normalize to 0-360
+    const raValue = ((ra % 360) + 360) % 360;
+    params.chandrayaanRADisplay = raValue.toFixed(1) + '°';
+
+    if (chandrayaanControllers.raDisplay) {
+        chandrayaanControllers.raDisplay?.updateDisplay();
+    }
+}
+
+// Update render control sliders state (enable/disable based on launch event existence)
+function setSliderDisabled(id: string, disabled: boolean): void {
+    const elem = document.getElementById(id);
+    if (elem) (elem as HTMLInputElement).disabled = disabled;
+}
+
+function fallbackToViewTimeline(): void {
+    if (renderControl.activeSlider !== 'launch' && renderControl.activeSlider !== 'intercept') return;
+
+    const viewCheckbox = document.getElementById('timeline-slider-active');
+    if (viewCheckbox) {
+        (viewCheckbox as HTMLInputElement).checked = true;
+        renderControl.activeSlider = 'timeline';
+        const activeIndicator = document.getElementById('active-timeline-indicator');
+        if (activeIndicator) activeIndicator.textContent = 'View';
+    }
+}
+
+function updateRenderControlSlidersState(): void {
+    const disabled = !launchEvent.exists;
+    setSliderDisabled('launch-slider', disabled);
+    setSliderDisabled('intercept-slider', disabled);
+    setSliderDisabled('launch-slider-active', disabled);
+    setSliderDisabled('intercept-slider-active', disabled);
+
+    if (disabled) fallbackToViewTimeline();
+}
+
+// Sync params to launch event in Plan mode (when GUI controls change)
+function syncParamsToLaunchEvent(): void {
+    if (params.appMode !== 'Plan') return;
+    if (!launchEvent.exists) return;
+    if (isUpdatingFromCode) return; // Prevent circular updates during programmatic changes
+
+    // Use centralized state manager
+    stateManager.saveParamsToLaunchEvent();
+
+    // Note: lil-gui will handle display updates automatically via .listen()
+}
+
+// Sync GUI controls with launch event parameters (Game and Plan modes)
+function syncGUIWithLaunchEvent(): void {
+    if (params.appMode !== 'Game' && params.appMode !== 'Plan') return;
+
+    const orbitalParams = getChandrayaanParams();
+
+    // Check if period-affecting parameters changed
+    const perigeeChanged = params.chandrayaanPerigeeAlt !== orbitalParams.perigeeAlt;
+    const apogeeChanged = params.chandrayaanApogeeAlt !== orbitalParams.apogeeAlt;
+
+    // Update params without triggering onChange events
+    params.chandrayaanInclination = orbitalParams.inclination;
+    params.chandrayaanNodes = orbitalParams.raan;
+    params.chandrayaanOmega = orbitalParams.omega;
+    params.chandrayaanPerigeeAlt = orbitalParams.perigeeAlt;
+    params.chandrayaanApogeeAlt = orbitalParams.apogeeAlt;
+    params.chandrayaanTrueAnomaly = orbitalParams.trueAnomaly;
+
+    // Update GUI display
+    updateChandrayaanGUIDisplays();
+
+    // Only update period display if perigee or apogee changed
+    if (perigeeChanged || apogeeChanged) {
+        updateChandrayaanPeriodDisplay();
+    }
+}
+
+function setupGUI(): void {
+    const gui = new GUI();
+
+    // Visibility folder
+    const visibilityFolder = gui.addFolder('Visibility');
+    visibilityFolder.add(params, 'showEquator').name('Show Equator').onChange(value => {
+        equatorCircle.visible = value;
+    });
+    visibilityFolder.add(params, 'showAxes').name('Show Axes').onChange(value => {
+        xAxis.visible = value;
+        yAxis.visible = value;
+        zAxis.visible = value;
+        ariesMarker.visible = value;
+    });
+
+    const lunarVisFolder = visibilityFolder.addFolder('Lunar Orbit');
+    lunarVisFolder.add(params, 'showMoon').name('Show Moon').onChange(value => {
+        moon.visible = value;
+    });
+    lunarVisFolder.add(params, 'showLunarOrbitPlane').name('Show Plane Circle').onChange(value => {
+        lunarOrbitCircle.visible = value;
+        // Also update ellipse visibility (only shown in Plan/Game modes)
+        if (lunarOrbitEllipse) {
+            lunarOrbitEllipse.visible = value && (params.appMode === 'Plan' || params.appMode === 'Game');
+        }
+    });
+    lunarVisFolder.add(params, 'showLunarOrbitFilledPlane').name('Show Filled Plane').onChange(value => {
+        if (lunarOrbitFilledPlane) lunarOrbitFilledPlane.visible = value;
+    });
+    lunarVisFolder.add(params, 'showLunarNodes').name('Show Nodes').onChange(value => {
+        lunarAscendingNode.visible = value;
+        lunarDescendingNode.visible = value;
+    });
+
+    const chandrayaanVisFolder = visibilityFolder.addFolder('Chandrayaan Orbit');
+    chandrayaanVisFolder.add(params, 'showChandrayaan').name('Show Chandrayaan').onChange(value => {
+        chandrayaan.visible = value;
+    });
+    chandrayaanVisFolder.add(params, 'showChandrayaanOrbitPlane').name('Show Plane Circle').onChange(value => {
+        chandrayaanOrbitCircle.visible = value;
+    });
+    chandrayaanVisFolder.add(params, 'showChandrayaanOrbitFilledPlane').name('Show Filled Plane').onChange(value => {
+        if (chandrayaanOrbitFilledPlane) chandrayaanOrbitFilledPlane.visible = value;
+    });
+    chandrayaanVisFolder.add(params, 'showChandrayaanOrbit').name('Show Orbit').onChange(value => {
+        chandrayaanOrbitCircle3D.visible = value;
+    });
+    chandrayaanVisFolder.add(params, 'showChandrayaanNodes').name('Show Nodes').onChange(value => {
+        chandrayaanAscendingNode.visible = value;
+        chandrayaanDescendingNode.visible = value;
+    });
+    chandrayaanVisFolder.add(params, 'showRAANAngle').name('Show RAAN Angle').onChange(value => {
+        raanLine1.visible = value;
+        raanLine2.visible = value;
+        raanArc.visible = value;
+        raanPie.visible = value;
+        raanLabel.visible = value;
+    });
+    chandrayaanVisFolder.add(params, 'showAOPAngle').name('Show AOP Angle').onChange(value => {
+        aopLine1.visible = value;
+        aopLine2.visible = value;
+        aopArc.visible = value;
+        aopPie.visible = value;
+        aopLabel.visible = value;
+    });
+    visibilityFolder.open();
+
+    // Lunar orbit folder
+    lunarFolder = gui.addFolder('Lunar Orbit Parameters');
+
+    // Store controller references for enable/disable
+    lunarControllers.nodes = lunarFolder.add(params, 'lunarNodes', 0, 360, 1).name('Nodes (RAAN) (°)').onChange((value) => {
+        // When RAAN changes, update RA to keep True Anomaly constant
+        // RA = RAAN + TrueAnomaly
+        let ra = value + params.moonTrueAnomaly;
+        while (ra < 0) ra += 360;
+        while (ra >= 360) ra -= 360;
+        params.moonRA = ra;
+        if (lunarControllers.moonRA) {
+            lunarControllers.moonRA?.updateDisplay();
+        }
+        onParameterChange('lunarNodes', value);
+    });
+    lunarControllers.inclination = lunarFolder.add(params, 'lunarInclination', 18.3, 28.6, 0.1).name('Inclination (°)').onChange((value) => {
+        onParameterChange('lunarInclination', value);
+    });
+    // Moon RA control (affects True Anomaly)
+    lunarControllers.moonRA = lunarFolder.add(params, 'moonRA', 0, 360, 1).name('Moon RA (°)').onChange((value) => {
+        // Update moonTrueAnomaly from moonRA
+        // For circular orbit: RA = RAAN + TrueAnomaly
+        let ta = value - params.lunarNodes;
+        // Normalize to 0-360
+        while (ta < 0) ta += 360;
+        while (ta >= 360) ta -= 360;
+        params.moonTrueAnomaly = ta;
+        if (lunarControllers.moonTrueAnomaly) {
+            lunarControllers.moonTrueAnomaly?.updateDisplay();
+        }
+        onParameterChange('moonRA', value);
+        updateMoonRADisplay();
+    });
+
+    // Moon True Anomaly control (affects RA)
+    lunarControllers.moonTrueAnomaly = lunarFolder.add(params, 'moonTrueAnomaly', 0, 360, 1).name('Moon True Anomaly (°)').onChange((value) => {
+        // Update moonRA from moonTrueAnomaly
+        // For circular orbit: RA = RAAN + TrueAnomaly
+        let ra = params.lunarNodes + value;
+        // Normalize to 0-360
+        while (ra < 0) ra += 360;
+        while (ra >= 360) ra -= 360;
+        params.moonRA = ra;
+        if (lunarControllers.moonRA) {
+            lunarControllers.moonRA?.updateDisplay();
+        }
+        onParameterChange('moonTrueAnomaly', value);
+        updateMoonRADisplay();
+    });
+
+    lunarControllers.moonRADisplay = lunarFolder.add(params, 'moonRADisplay').name('Moon RA (current)').disable();
+    lunarControllers.moonDistanceDisplay = lunarFolder.add(params, 'moonDistanceDisplay').name('Distance from Earth').disable();
+    lunarFolder.open();
+
+    // Helper function to add inline sync button (moon icon)
+    function addInlineSyncButton(controller: any, onClick: () => void): HTMLButtonElement {
+        const domElement = controller.domElement;
+        const widgetContainer = domElement.querySelector('.slider') || domElement.querySelector('input[type="number"]');
+
+        if (widgetContainer && widgetContainer.parentElement) {
+            const button = document.createElement('button');
+            button.innerHTML = '☽'; // Moon crescent symbol
+            button.title = 'Sync from Moon';
+            button.style.cssText = `
+                position: absolute;
+                left: -22px;
+                top: 50%;
+                transform: translateY(-50%);
+                width: 18px;
+                height: 18px;
+                padding: 0;
+                margin: 0;
+                font-size: 12px;
+                line-height: 18px;
+                border: 1px solid #555;
+                border-radius: 2px;
+                background: #1a1a1a;
+                color: #aaa;
+                cursor: pointer;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                font-family: Arial, sans-serif;
+                z-index: 10;
+            `;
+            button.addEventListener('mouseenter', () => {
+                button.style.background = '#2a2a2a';
+                button.style.color = '#fff';
+                button.style.borderColor = '#888';
+            });
+            button.addEventListener('mouseleave', () => {
+                button.style.background = '#1a1a1a';
+                button.style.color = '#aaa';
+                button.style.borderColor = '#555';
+            });
+            button.addEventListener('click', (e) => {
+                e.stopPropagation();
+                onClick();
+            });
+
+            // Make the parent container position relative for absolute positioning
+            const parent = widgetContainer.parentElement;
+            if (parent && getComputedStyle(parent).position === 'static') {
+                parent.style.position = 'relative';
+            }
+
+            // Append button to the widget container's parent
+            parent?.appendChild(button);
+            return button;
+        }
+        return null as any;
+    }
+
+    // Chandrayaan orbit folder
+    chandrayaanFolder = gui.addFolder('Chandrayaan Orbit Parameters');
+
+    // Restrict Orbital Parameters checkbox (Explore mode only)
+    chandrayaanControllers.restrictOrbitalParams = chandrayaanFolder.add(params, 'restrictOrbitalParams').name('Restrict to Launch Values').onChange(async (value) => {
+        if (value) {
+            // Show warning popup
+            const confirmed = await showConfirmDialog(
+                'This will restrict Inclination and Argument of Periapsis to allowed launch event values.\n\n' +
+                'Allowed Inclinations: 21.5° or 41.8°\n' +
+                'Allowed AoP values:\n' +
+                '  • 21.5° inclination: 178°\n' +
+                '  • 41.8° inclination: 198° or 203°\n\n' +
+                'Current values will be adjusted to the closest allowed values.\n\n' +
+                'Continue?',
+                'Restrict Orbital Parameters'
+            );
+
+            if (confirmed) {
+                // Clamp inclination to closest allowed value
+                const newInclination = getClosestAllowedInclination(params.chandrayaanInclination);
+                params.chandrayaanInclination = newInclination;
+                chandrayaanControllers.inclination?.updateDisplay();
+
+                // Clamp omega to closest allowed value for this inclination
+                const newOmega = getClosestAllowedOmega(params.chandrayaanOmega, newInclination);
+                params.chandrayaanOmega = newOmega;
+                chandrayaanControllers.omega?.updateDisplay();
+
+                // Update visualization
+                syncParamsToLaunchEvent();
+                invalidateOrbitalParamsCache();
+                updateChandrayaanOrbitCircle();
+                updateChandrayaanOrbit();
+                updateChandrayaanNodePositions();
+                updateAOPLines();
+                updateOrbitalElements();
+            } else {
+                // User cancelled - uncheck the box
+                params.restrictOrbitalParams = false;
+                chandrayaanControllers.restrictOrbitalParams?.updateDisplay();
+            }
+        }
+        // When unchecked, values stay as-is, user can now change them freely
+    });
+
+    // Inclination with sync button
+    // RAAN with sync button
+    chandrayaanControllers.nodes = chandrayaanFolder.add(params, 'chandrayaanNodes', 0, 360, 1).name('Nodes (RAAN) (°)').onChange((value) => {
+        // When RAAN changes, update RA to keep True Anomaly constant
+        // RA = RAAN + AOP + TrueAnomaly
+        let ra = value + params.chandrayaanOmega + params.chandrayaanTrueAnomaly;
+        while (ra < 0) ra += 360;
+        while (ra >= 360) ra -= 360;
+        params.chandrayaanRA = ra;
+        if (chandrayaanControllers.ra) {
+            chandrayaanControllers.ra?.updateDisplay();
+        }
+        onParameterChange('chandrayaanNodes', value);
+    });
+    // Add inline sync button for RAAN
+    chandrayaanControllers.syncRaanBtn = addInlineSyncButton(chandrayaanControllers.nodes, () => {
+        const value = params.lunarNodes;
+        params.chandrayaanNodes = value;
+        chandrayaanControllers.nodes?.updateDisplay();
+        onParameterChange('chandrayaanNodes', value);
+    });
+
+    chandrayaanControllers.inclination = chandrayaanFolder.add(params, 'chandrayaanInclination', 0, 90, 0.1).name('Inclination (°)').onChange((value) => {
+        // If restrictions are enabled, clamp to allowed values
+        if (params.restrictOrbitalParams) {
+            const newInclination = getClosestAllowedInclination(value);
+            if (newInclination !== value) {
+                value = newInclination;
+                chandrayaanControllers.inclination?.updateDisplay();
+            }
+            // Also update omega to valid value for this inclination
+            const newOmega = getClosestAllowedOmega(params.chandrayaanOmega, newInclination);
+            if (newOmega !== params.chandrayaanOmega) {
+                params.chandrayaanOmega = newOmega;
+                chandrayaanControllers.omega?.updateDisplay();
+            }
+        }
+        onParameterChange('chandrayaanInclination', value);
+    });
+    // Add inline sync button for Inclination
+    chandrayaanControllers.syncInclinationBtn = addInlineSyncButton(chandrayaanControllers.inclination, () => {
+        let value = params.lunarInclination;
+
+        // If restrictions are enabled, clamp to allowed values
+        if (params.restrictOrbitalParams) {
+            const newInclination = getClosestAllowedInclination(value);
+            value = newInclination;
+
+            // Also update omega to valid value for this inclination
+            const newOmega = getClosestAllowedOmega(params.chandrayaanOmega, newInclination);
+            params.chandrayaanOmega = newOmega;
+            chandrayaanControllers.omega?.updateDisplay();
+        }
+
+        params.chandrayaanInclination = value;
+        chandrayaanControllers.inclination?.updateDisplay();
+        onParameterChange('chandrayaanInclination', value);
+    });
+
+    // AoP with sync button (calculate to point apogee toward Moon)
+    chandrayaanControllers.omega = chandrayaanFolder.add(params, 'chandrayaanOmega', 0, 360, 1).name('ω (Arg. Periapsis) (°)').onChange((value) => {
+        // If restrictions are enabled, clamp to allowed values
+        if (params.restrictOrbitalParams) {
+            const newOmega = getClosestAllowedOmega(value, params.chandrayaanInclination);
+            if (newOmega !== value) {
+                value = newOmega;
+                chandrayaanControllers.omega?.updateDisplay();
+            }
+        }
+        // When AOP changes, update RA to keep True Anomaly constant
+        // RA = RAAN + AOP + TrueAnomaly
+        let ra = params.chandrayaanNodes + value + params.chandrayaanTrueAnomaly;
+        while (ra < 0) ra += 360;
+        while (ra >= 360) ra -= 360;
+        params.chandrayaanRA = ra;
+        if (chandrayaanControllers.ra) {
+            chandrayaanControllers.ra?.updateDisplay();
+        }
+        onParameterChange('chandrayaanOmega', value);
+    });
+    // Add inline sync button for AOP
+    chandrayaanControllers.syncAopBtn = addInlineSyncButton(chandrayaanControllers.omega, () => {
+        // Calculate AoP to point apogee toward Moon's current position
+        // Apogee is at true anomaly = 180°, so we need AoP such that AoP + 180° points to Moon
+        // Moon's position in orbital plane is at moonRA degrees from First Point of Aries
+        // We need to find the angle from the ascending node to the Moon in the spacecraft's orbital plane
+
+        const chandrayaanRAAN_rad = params.chandrayaanNodes * Math.PI / 180;
+        const chandrayaanInc_rad = params.chandrayaanInclination * Math.PI / 180;
+        const lunarInc_rad = params.lunarInclination * Math.PI / 180;
+        const lunarRAAN_rad = params.lunarNodes * Math.PI / 180;
+
+        // Get Moon's position in 3D space using proper spherical trigonometry
+        const angleInLunarOrbitDeg = calculateTrueAnomalyFromRA(
+            params.moonRA,
+            params.lunarNodes,
+            0, // omega = 0 for circular lunar orbit
+            params.lunarInclination
+        );
+        const angleInLunarOrbit = THREE.MathUtils.degToRad(angleInLunarOrbitDeg);
+
+        const moonPos = new THREE.Vector3(
+            SPHERE_RADIUS * Math.cos(angleInLunarOrbit),
+            0,
+            -SPHERE_RADIUS * Math.sin(angleInLunarOrbit)
+        );
+        moonPos.applyAxisAngle(new THREE.Vector3(1, 0, 0), lunarInc_rad);
+        moonPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), lunarRAAN_rad);
+
+        // Calculate the angle from Chandrayaan's ascending node to Moon
+        // First, get the ascending node position in 3D
+        const ascNodePos = new THREE.Vector3(SPHERE_RADIUS, 0, 0);
+        ascNodePos.applyAxisAngle(new THREE.Vector3(1, 0, 0), chandrayaanInc_rad);
+        ascNodePos.applyAxisAngle(new THREE.Vector3(0, 1, 0), chandrayaanRAAN_rad);
+
+        // Project both vectors onto Chandrayaan's orbital plane
+        // The orbital plane normal is (0, 1, 0) rotated by inclination and RAAN
+        const normal = new THREE.Vector3(0, 1, 0);
+        normal.applyAxisAngle(new THREE.Vector3(1, 0, 0), chandrayaanInc_rad);
+        normal.applyAxisAngle(new THREE.Vector3(0, 1, 0), chandrayaanRAAN_rad);
+
+        // Get vectors in the orbital plane
+        const nodeInPlane = ascNodePos.clone().projectOnPlane(normal).normalize();
+        const moonInPlane = moonPos.clone().projectOnPlane(normal).normalize();
+
+        // Calculate angle between them (this is where apogee should be)
+        let apogeeAngle = Math.acos(nodeInPlane.dot(moonInPlane)) * 180 / Math.PI;
+
+        // Determine sign using cross product
+        const cross = new THREE.Vector3().crossVectors(nodeInPlane, moonInPlane);
+        if (cross.dot(normal) < 0) {
+            apogeeAngle = 360 - apogeeAngle;
+        }
+
+        // Since apogee is at true anomaly = 180°, AoP = apogeeAngle - 180°
+        let aop = apogeeAngle - 180;
+        if (aop < 0) aop += 360;
+
+        params.chandrayaanOmega = aop;
+
+        // If restrictions are enabled, clamp to allowed values
+        if (params.restrictOrbitalParams) {
+            const newOmega = getClosestAllowedOmega(params.chandrayaanOmega, params.chandrayaanInclination);
+            params.chandrayaanOmega = newOmega;
+        }
+
+        chandrayaanControllers.omega?.updateDisplay();
+        onParameterChange('chandrayaanOmega', aop);
+    });
+
+    chandrayaanControllers.perigeeAlt = chandrayaanFolder.add(params, 'chandrayaanPerigeeAlt', 180, 600000, 100).name('Perigee Altitude (km)').onChange((value) => {
+        onParameterChange('chandrayaanPerigeeAlt', value);
+        updateChandrayaanPeriodDisplay();
+    });
+
+    // Apogee with sync button (sync to lunar orbit radius)
+    chandrayaanControllers.apogeeAlt = chandrayaanFolder.add(params, 'chandrayaanApogeeAlt', 180, 600000, 100).name('Apogee Altitude (km)').onChange((value) => {
+        onParameterChange('chandrayaanApogeeAlt', value);
+        updateChandrayaanPeriodDisplay();
+    });
+    // Add inline sync button for Apogee
+    chandrayaanControllers.syncApogeeBtn = addInlineSyncButton(chandrayaanControllers.apogeeAlt, () => {
+        // Set apogee to lunar orbit distance (384,400 km from Earth center - Earth radius)
+        params.chandrayaanApogeeAlt = LUNAR_ORBIT_DISTANCE - EARTH_RADIUS;
+        chandrayaanControllers.apogeeAlt?.updateDisplay();
+        syncParamsToLaunchEvent();
+        invalidateOrbitalParamsCache();
+        updateChandrayaanOrbit();
+        updateOrbitalElements();
+        updateChandrayaanPeriodDisplay();
+    });
+
+    // RA control (affects True Anomaly)
+    chandrayaanControllers.ra = chandrayaanFolder.add(params, 'chandrayaanRA', 0, 360, 1).name('Craft RA (°)').onChange(() => {
+        // Update chandrayaanTrueAnomaly from chandrayaanRA using proper spherical trigonometry
+        let ta = calculateTrueAnomalyFromRA(
+            params.chandrayaanRA,
+            params.chandrayaanNodes,
+            params.chandrayaanOmega,
+            params.chandrayaanInclination
+        );
+
+        // Normalize to 0-360
+        while (ta < 0) ta += 360;
+        while (ta >= 360) ta -= 360;
+        params.chandrayaanTrueAnomaly = ta;
+        if (chandrayaanControllers.trueAnomaly) {
+            chandrayaanControllers.trueAnomaly?.updateDisplay();
+        }
+        syncParamsToLaunchEvent();
+        invalidateOrbitalParamsCache();
+        updateChandrayaanOrbit();
+        updateOrbitalElements();
+    });
+
+    // Add inline sync button for RA
+    chandrayaanControllers.syncRABtn = addInlineSyncButton(chandrayaanControllers.ra, () => {
+        params.chandrayaanRA = params.moonRA;
+        chandrayaanControllers.ra?.updateDisplay();
+
+        // Calculate True Anomaly from RA using centralized function
+        let ta = calculateTrueAnomalyFromRA(
+            params.chandrayaanRA,
+            params.chandrayaanNodes,
+            params.chandrayaanOmega,
+            params.chandrayaanInclination
+        );
+
+        // Normalize to 0-360
+        while (ta < 0) ta += 360;
+        while (ta >= 360) ta -= 360;
+
+        params.chandrayaanTrueAnomaly = ta;
+        if (chandrayaanControllers.trueAnomaly) {
+            chandrayaanControllers.trueAnomaly?.updateDisplay();
+        }
+        syncParamsToLaunchEvent();
+        invalidateOrbitalParamsCache();
+        updateChandrayaanOrbit();
+        updateOrbitalElements();
+    });
+
+    // True Anomaly control (affects RA)
+    chandrayaanControllers.trueAnomaly = chandrayaanFolder.add(params, 'chandrayaanTrueAnomaly', 0, 360, 1).name('Craft True Anomaly (°)').onChange(() => {
+        // Update chandrayaanRA from chandrayaanTrueAnomaly using proper spherical trigonometry
+        let ra = calculateRAFromTrueAnomaly(
+            params.chandrayaanTrueAnomaly,
+            params.chandrayaanNodes,
+            params.chandrayaanOmega,
+            params.chandrayaanInclination
+        );
+        // Normalize to 0-360
+        while (ra < 0) ra += 360;
+        while (ra >= 360) ra -= 360;
+        params.chandrayaanRA = ra;
+        if (chandrayaanControllers.ra) {
+            chandrayaanControllers.ra?.updateDisplay();
+        }
+        syncParamsToLaunchEvent();
+        invalidateOrbitalParamsCache();
+        updateChandrayaanOrbit();
+        updateOrbitalElements();
+    });
+
+    chandrayaanControllers.period = chandrayaanFolder.add(params, 'chandrayaanPeriod').name('Orbital Period').disable();
+    chandrayaanControllers.raDisplay = chandrayaanFolder.add(params, 'chandrayaanRADisplay').name('Craft RA (current)').disable();
+    chandrayaanControllers.craftEarthDistance = chandrayaanFolder.add(params, 'craftEarthDistance').name('Distance from Earth').disable();
+    chandrayaanControllers.craftMoonDistance = chandrayaanFolder.add(params, 'craftMoonDistance').name('Distance to Moon').disable();
+    chandrayaanFolder.open();
+
+    // Initialize period display
+    updateChandrayaanPeriodDisplay();
+
+    // Initialize RA displays
+    updateMoonRADisplay();
+    updateChandrayaanRADisplay();
+
+    // Initialize app mode
+    switchAppMode(params.appMode);
+}
+
+// Update render date based on active timeline slider
+function updateRenderDate(): void {
+    let daysToUse;
+
+    if (renderControl.activeSlider === 'launch') {
+        daysToUse = renderControl.launchDays;
+    } else if (renderControl.activeSlider === 'intercept') {
+        daysToUse = renderControl.interceptDays;
+    } else {
+        daysToUse = timelineState.daysElapsed;
+    }
+
+    // Update renderDate - this is the single source of truth for rendering
+    renderControl.renderDate = new Date(
+        timelineState.startDate.getTime() + daysToUse * 24 * 60 * 60 * 1000
+    );
+
+    // Also update timelineState.currentDate to keep them in sync
+    timelineState.currentDate = new Date(renderControl.renderDate);
+
+    // Update current date display in first row to show the active timeline's date
+    const currentDateSpan = document.getElementById('current-date');
+    if (currentDateSpan) {
+        if (currentDateSpan) currentDateSpan.textContent = renderControl.renderDate.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+
+    // Update countdown timer to reflect active timeline's date
+    updateCountdownTimer();
+
+    // Update visualization - functions will pull from getRenderDate() automatically
+    if (params.moonMode === 'Real') {
+        updateMoonFromRealPosition();
+    }
+
+    // Refresh spacecraft position based on the new render date without rebuilding geometry
+    invalidateOrbitalParamsCache();
+    updateChandrayaanPosition();
+
+    // Note: We still avoid rebuilding orbit geometry every frame to prevent perf issues.
+    // Geometry updates happen when orbital parameters change (GUI/mode/launch updates).
+    // Here we only reposition the existing craft mesh using the new true anomaly.
+
+    // Note: Do NOT sync GUI here - this function is called every animation frame (60 fps)
+    // and syncing GUI every frame causes massive performance issues.
+    // GUI syncing happens when:
+    // 1. Switching modes (in switchAppMode)
+    // 2. When launch event is created/modified (via event handlers)
+    // 3. When timeline sliders change dates (in timeline handlers)
+}
+
+function setupTimeline(): void {
+    const startDateInput = document.getElementById('start-date');
+    const timelineSlider = document.getElementById('timeline-slider');
+    const currentDateSpan = document.getElementById('current-date');
+    const playPauseBtn = document.getElementById('play-pause-btn');
+    const resetBtn = document.getElementById('reset-btn');
+    const playbackSpeedSelect = document.getElementById('playback-speed');
+
+    // Use the default start date from timelineState (July 1, 2023)
+    // Don't overwrite it with current date
+
+    // Set datetime-local input value from existing timelineState
+    const localDateString = new Date(timelineState.startDate.getTime() - timelineState.startDate.getTimezoneOffset() * 60000)
+        .toISOString()
+        .slice(0, 16);
+    (startDateInput as HTMLInputElement).value = localDateString;
+
+    // Update current date display
+    function updateCurrentDateDisplay() {
+        if (currentDateSpan) currentDateSpan.textContent = timelineState.currentDate.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+    updateCurrentDateDisplay();
+
+    // Start date change handler
+    if (startDateInput) {
+        startDateInput.addEventListener('change', (e) => {
+            timelineState.startDate = new Date((e.target as HTMLInputElement).value);
+            if (timelineSlider) {
+                timelineState.daysElapsed = parseFloat((timelineSlider as HTMLInputElement).value);
+            }
+            timelineState.currentDate = new Date(
+                timelineState.startDate.getTime() + timelineState.daysElapsed * 24 * 60 * 60 * 1000
+            );
+
+            // Update renderDate and all visualization (single source of truth)
+            updateRenderDate();
+
+            // Update launch marker position
+            updateLaunchMarker();
+        });
+    }
+
+    // Timeline slider handler (fires while dragging)
+    if (timelineSlider) {
+        timelineSlider.addEventListener('input', (e) => {
+            timelineState.daysElapsed = parseFloat((e.target as HTMLInputElement).value);
+        timelineState.currentDate = new Date(
+            timelineState.startDate.getTime() + timelineState.daysElapsed * 24 * 60 * 60 * 1000
+        );
+
+        // Update timeline slider display if it exists
+        const timelineSliderDisplay = document.getElementById('timeline-slider-display');
+        if (timelineSliderDisplay) {
+            timelineSliderDisplay.textContent = `Day ${timelineState.daysElapsed.toFixed(1)}`;
+        }
+
+        // Only update visualization if timeline slider is active for rendering
+        if (renderControl.activeSlider === 'timeline') {
+            // Update renderDate and all visualization (single source of truth)
+            updateRenderDate();
+        }
+        });
+    }
+
+    // Timeline slider change handler removed - View timeline should not modify launch parameters
+
+    // Play/Pause button
+    if (playPauseBtn) playPauseBtn.addEventListener('click', () => {
+        timelineState.isPlaying = !timelineState.isPlaying;
+        if (timelineState.isPlaying) {
+            activateTimelineView();
+            updateRenderDate();
+            lastFrameTime = Date.now();
+        }
+        if (playPauseBtn) playPauseBtn.textContent = timelineState.isPlaying ? '⏸ Pause' : '▶ Play';
+    });
+
+    // Reset button
+    if (resetBtn) resetBtn.addEventListener('click', () => {
+        timelineState.isPlaying = false;
+        timelineState.daysElapsed = 0;
+        (timelineSlider as HTMLInputElement).value = String(0);
+        timelineState.currentDate = new Date(timelineState.startDate);
+        if (playPauseBtn) playPauseBtn.textContent = '▶ Play';
+
+        // Update timeline slider display
+        const timelineSliderDisplay = document.getElementById('timeline-slider-display');
+        if (timelineSliderDisplay) {
+            timelineSliderDisplay.textContent = 'Day 0.0';
+        }
+
+        // Update renderDate and all visualization (single source of truth)
+        updateRenderDate();
+    });
+
+    // Playback speed
+    if (playbackSpeedSelect) playbackSpeedSelect.addEventListener('change', (e) => {
+        timelineState.speed = parseFloat((e.target as HTMLInputElement).value);
+        updateSpeedButtons();
+    });
+
+    // Speed control buttons
+    const speedDownBtn = document.getElementById('speed-down-btn');
+    const speedUpBtn = document.getElementById('speed-up-btn');
+
+    const speedOptions = [
+        { value: 0.000011574, label: 'Realtime' },
+        { value: 0.000694, label: '1 min/sec' },
+        { value: 0.006944, label: '10 min/sec' },
+        { value: 0.020833, label: '30 min/sec' },
+        { value: 0.041667, label: '1 hr/sec' },
+        { value: 0.125, label: '3 hr/sec' },
+        { value: 0.25, label: '6 hr/sec' },
+        { value: 0.5, label: '12 hr/sec' },
+        { value: 1, label: '1 day/sec' },
+        { value: 2, label: '2 days/sec' },
+        { value: 5, label: '5 days/sec' }
+    ];
+
+    function updateSpeedButtons() {
+        const currentValue = parseFloat((playbackSpeedSelect as HTMLSelectElement).value);
+        const currentIndex = speedOptions.findIndex(opt => Math.abs(opt.value - currentValue) < 0.0001);
+
+        // Update down button
+        if (currentIndex > 0) {
+            (speedDownBtn as HTMLInputElement).disabled = false;
+            if (speedDownBtn) speedDownBtn.textContent = `◄ ${speedOptions[currentIndex - 1].label}`;
+        } else {
+            (speedDownBtn as HTMLInputElement).disabled = true;
+            if (speedDownBtn) speedDownBtn.textContent = '◄';
+        }
+
+        // Update up button
+        if (currentIndex < speedOptions.length - 1) {
+            (speedUpBtn as HTMLInputElement).disabled = false;
+            if (speedUpBtn) speedUpBtn.textContent = `${speedOptions[currentIndex + 1].label} ►`;
+        } else {
+            (speedUpBtn as HTMLInputElement).disabled = true;
+            if (speedUpBtn) speedUpBtn.textContent = '►';
+        }
+    }
+
+    if (speedDownBtn) speedDownBtn.addEventListener('click', () => {
+        const currentValue = parseFloat((playbackSpeedSelect as HTMLSelectElement).value);
+        const currentIndex = speedOptions.findIndex(opt => Math.abs(opt.value - currentValue) < 0.0001);
+        if (currentIndex > 0) {
+            (playbackSpeedSelect as HTMLSelectElement).value = String(speedOptions[currentIndex - 1].value);
+            timelineState.speed = speedOptions[currentIndex - 1].value;
+            updateSpeedButtons();
+        }
+    });
+
+    if (speedUpBtn) speedUpBtn.addEventListener('click', () => {
+        const currentValue = parseFloat((playbackSpeedSelect as HTMLSelectElement).value);
+        const currentIndex = speedOptions.findIndex(opt => Math.abs(opt.value - currentValue) < 0.0001);
+        if (currentIndex < speedOptions.length - 1) {
+            (playbackSpeedSelect as HTMLSelectElement).value = String(speedOptions[currentIndex + 1].value);
+            timelineState.speed = speedOptions[currentIndex + 1].value;
+            updateSpeedButtons();
+        }
+    });
+
+    // Initialize button states
+    updateSpeedButtons();
+
+    // Setup render control sliders (Plan mode only)
+    setupRenderControlSliders();
+}
+
+function setupRenderControlSliders(): void {
+    const launchSlider = document.getElementById('launch-slider');
+    const interceptSlider = document.getElementById('intercept-slider');
+    const launchSliderDisplay = document.getElementById('launch-slider-display');
+    const interceptSliderDisplay = document.getElementById('intercept-slider-display');
+    const timelineSliderDisplay = document.getElementById('timeline-slider-display');
+
+    const timelineCheckbox = document.getElementById('timeline-slider-active');
+    const launchCheckbox = document.getElementById('launch-slider-active');
+    const interceptCheckbox = document.getElementById('intercept-slider-active');
+
+    // Update slider displays
+    function updateSliderDisplays() {
+        if (launchSlider && launchSliderDisplay) launchSliderDisplay.textContent = `Day ${parseFloat((launchSlider as HTMLInputElement).value).toFixed(1)}`;
+        if (interceptSlider && interceptSliderDisplay) interceptSliderDisplay.textContent = `Day ${parseFloat((interceptSlider as HTMLInputElement).value).toFixed(1)}`;
+        if (timelineSliderDisplay) timelineSliderDisplay.textContent = `Day ${timelineState.daysElapsed.toFixed(1)}`;
+    }
+
+    // Checkbox change handlers (radio button behavior)
+    function handleCheckboxChange(selectedCheckbox: any, sliderType: any): void {
+        // Uncheck all others
+        [timelineCheckbox, launchCheckbox, interceptCheckbox].forEach(cb => {
+            if (cb !== selectedCheckbox) (cb as HTMLInputElement).checked = false;
+        });
+
+        // Ensure the selected one is checked
+        if (!(selectedCheckbox as HTMLInputElement).checked) {
+            (selectedCheckbox as HTMLInputElement).checked = true;
+        }
+
+        // Update active slider
+        renderControl.activeSlider = sliderType;
+
+        // Update active timeline indicator
+        const indicator = document.getElementById('active-timeline-indicator');
+        if (indicator) {
+            if (sliderType === 'timeline') {
+                indicator.textContent = 'View';
+            } else if (sliderType === 'launch') {
+                indicator.textContent = 'Launch';
+            } else if (sliderType === 'intercept') {
+                indicator.textContent = 'Intercept';
+            }
+        }
+
+        // Update render date
+        updateRenderDate();
+    }
+
+    if (timelineCheckbox) {
+        timelineCheckbox.addEventListener('change', () => {
+            if ((timelineCheckbox as HTMLInputElement).checked) {
+                handleCheckboxChange(timelineCheckbox, 'timeline');
+            } else {
+                // If the user tries to uncheck it, re-check it, as one must be active.
+                (timelineCheckbox as HTMLInputElement).checked = true;
+            }
+        });
+    }
+
+    if (launchCheckbox) {
+        launchCheckbox.addEventListener('change', () => {
+            if ((launchCheckbox as HTMLInputElement).checked) {
+                handleCheckboxChange(launchCheckbox, 'launch');
+            } else {
+                // If unchecked, fall back to the timeline checkbox
+                handleCheckboxChange(timelineCheckbox, 'timeline');
+            }
+        });
+    }
+
+    if (interceptCheckbox) {
+        interceptCheckbox.addEventListener('change', () => {
+            if ((interceptCheckbox as HTMLInputElement).checked) {
+                handleCheckboxChange(interceptCheckbox, 'intercept');
+            } else {
+                // If unchecked, fall back to the timeline checkbox
+                handleCheckboxChange(timelineCheckbox, 'timeline');
+            }
+        });
+    }
+
+    // Launch slider handler
+    if (launchSlider) {
+        launchSlider.addEventListener('input', (e) => {
+            renderControl.launchDays = parseFloat((e.target as HTMLInputElement).value);
+
+            // Update launch date - event bus handles all updates automatically!
+            if (launchEvent.exists) {
+                setLaunchEventDate(launchEvent, new Date(
+                    timelineState.startDate.getTime() + renderControl.launchDays * 24 * 60 * 60 * 1000
+                ));
+            }
+
+            updateSliderDisplays();
+        });
+    }
+
+    // Intercept slider handler
+    if (interceptSlider) {
+        interceptSlider.addEventListener('input', (e) => {
+            renderControl.interceptDays = parseFloat((e.target as HTMLInputElement).value);
+
+            // Update intercept date - event bus handles all updates automatically!
+            if (launchEvent.exists) {
+                setLaunchEventMoonInterceptDate(launchEvent, new Date(
+                    timelineState.startDate.getTime() + renderControl.interceptDays * 24 * 60 * 60 * 1000
+                ));
+            }
+
+            updateSliderDisplays();
+        });
+    }
+
+    // Initialize displays
+    updateSliderDisplays();
+
+    // Initialize renderDate to match the current timeline state
+    // This ensures getRenderDate() returns correct date from the start
+    updateRenderDate();
+}
+
+function activateTimelineView(): void {
+    const timelineCheckbox = document.getElementById('timeline-slider-active') as HTMLInputElement | null;
+    const launchCheckbox = document.getElementById('launch-slider-active') as HTMLInputElement | null;
+    const interceptCheckbox = document.getElementById('intercept-slider-active') as HTMLInputElement | null;
+
+    if (timelineCheckbox) timelineCheckbox.checked = true;
+    if (launchCheckbox) launchCheckbox.checked = false;
+    if (interceptCheckbox) interceptCheckbox.checked = false;
+
+    renderControl.activeSlider = 'timeline';
+
+    const indicator = document.getElementById('active-timeline-indicator');
+    if (indicator) indicator.textContent = 'View';
+}
+
+function syncRenderControlSlidersWithLaunchEvent(): void {
+    if (!launchEvent.exists) return;
+
+    // This function is called when updating from code (e.g., when switching modes)
+    // We're already protected by isUpdatingFromCode flag in the callers
+
+    const launchSlider = document.getElementById('launch-slider');
+    const interceptSlider = document.getElementById('intercept-slider');
+
+    if (launchEvent.date && launchSlider) {
+        // Calculate days from start for launch date
+        const launchDays = (launchEvent.date.getTime() - timelineState.startDate.getTime()) / (24 * 60 * 60 * 1000);
+        renderControl.launchDays = Math.max(0, Math.min(TIMELINE_MAX_DAYS, launchDays));
+        (launchSlider as HTMLInputElement).value = String(renderControl.launchDays);
+    }
+
+    if (launchEvent.moonInterceptDate && interceptSlider) {
+        // Calculate days from start for intercept date
+        const interceptDays = (launchEvent.moonInterceptDate.getTime() - timelineState.startDate.getTime()) / (24 * 60 * 60 * 1000);
+        renderControl.interceptDays = Math.max(0, Math.min(TIMELINE_MAX_DAYS, interceptDays));
+        (interceptSlider as HTMLInputElement).value = String(renderControl.interceptDays);
+    }
+
+    // Update displays
+    const launchSliderDisplay = document.getElementById('launch-slider-display');
+    const interceptSliderDisplay = document.getElementById('intercept-slider-display');
+    if (launchSliderDisplay) if (launchSliderDisplay) launchSliderDisplay.textContent = `Day ${renderControl.launchDays.toFixed(1)}`;
+    if (interceptSliderDisplay) if (interceptSliderDisplay) interceptSliderDisplay.textContent = `Day ${renderControl.interceptDays.toFixed(1)}`;
+}
+
+function updateCountdownTimer(): void {
+    const countdownEl = document.getElementById('countdown-timer');
+
+    if (!launchEvent.exists) {
+        if (countdownEl) countdownEl.style.display = 'none';
+        return;
+    }
+
+    if (countdownEl) countdownEl.style.display = 'block';
+
+    // Pull from single source of truth (respects active timeline)
+    const currentDate = getRenderDate();
+
+    // Calculate time difference in seconds
+    const diffMs = launchEvent.date ? currentDate.getTime() - launchEvent.date.getTime() : 0;
+    const diffSec = Math.abs(diffMs / 1000);
+
+    const hours = Math.floor(diffSec / 3600);
+    const minutes = Math.floor((diffSec % 3600) / 60);
+    const seconds = Math.floor(diffSec % 60);
+
+    const sign = diffMs < 0 ? '-' : '+';
+    const formattedTime = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+    if (countdownEl) if (countdownEl) countdownEl.textContent = `T${sign}${formattedTime}`;
+}
+
+// Update marker sizes based on camera distance (zoom-aware rendering)
+function updateMarkerSizes(): void {
+    // Node markers: cap scale to prevent huge spheres when zoomed in
+    const nodeMarkers = [
+        lunarAscendingNode,
+        lunarDescendingNode,
+        chandrayaanAscendingNode,
+        chandrayaanDescendingNode
+    ];
+
+    nodeMarkers.forEach(node => {
+        if (!node) return;
+
+        const distance = camera.position.distanceTo(node.position);
+
+        // Scale proportional to distance (farther = bigger to stay visible)
+        let scale = (distance / ZOOM_BASE_DISTANCE) * ZOOM_BASE_SCALE;
+
+        // Cap the scale to prevent tiny dots when far AND huge spheres when close
+        scale = Math.max(ZOOM_NODE_MIN_SCALE, Math.min(ZOOM_NODE_MAX_SCALE, scale));
+
+        node.scale.setScalar(scale);
+    });
+
+    // Aries marker (sprite): tighter caps than nodes to keep it small
+    if (ariesMarker) {
+        const distance = camera.position.distanceTo(ariesMarker.position);
+        let scale = (distance / ZOOM_BASE_DISTANCE) * ZOOM_BASE_SCALE;
+
+        // Tighter caps: keep marker smaller when zooming in
+        scale = Math.max(ZOOM_ARIES_MIN_SCALE, Math.min(ZOOM_ARIES_MAX_SCALE, scale));
+
+        // Sprites use uniform scale on X and Y (Z is always 1)
+        ariesMarker.scale.set(ARIES_MARKER_BASE_SIZE * scale, ARIES_MARKER_BASE_SIZE * scale, 1);
+    }
+
+    // Spacecraft: slightly larger caps
+    if (chandrayaan) {
+        const distance = camera.position.distanceTo(chandrayaan.position);
+
+        let scale = (distance / ZOOM_BASE_DISTANCE) * ZOOM_BASE_SCALE;
+
+        // Cap: allow slightly larger than nodes
+        scale = Math.max(ZOOM_SPACECRAFT_MIN_SCALE, Math.min(ZOOM_SPACECRAFT_MAX_SCALE, scale));
+
+        chandrayaan.scale.setScalar(scale);
+    }
+
+    // RA Labels on equator: scale with zoom
+    if (raLabelsGroup) {
+        const cameraDistance = camera.position.length();
+        let scale = (cameraDistance / ZOOM_BASE_DISTANCE) * ZOOM_BASE_SCALE;
+
+        // Cap scale to keep labels readable
+        scale = Math.max(0.4, Math.min(1.5, scale));
+
+        raLabelsGroup.children.forEach(sprite => {
+            (sprite as THREE.Sprite).scale.set(8 * scale, 4 * scale, 1);
+        });
+    }
+}
+
+function onWindowResize(): void {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+let lastFrameTime: number = Date.now();
+
+// Setup mode tabs
+function setupModeTabs(): void {
+    const modeTabs = document.querySelectorAll('.mode-tab');
+
+    modeTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const newMode = tab.getAttribute('data-mode') as AppMode;
+            if (!newMode) return;
+
+            // Check for unsaved changes before switching
+            if (draftState.isDirty && params.appMode === 'Plan') {
+                const confirmSwitch = confirm('You have unsaved changes. Are you sure you want to switch modes?');
+                if (!confirmSwitch) {
+                    return;
+                }
+                // Discard changes
+                draftState.isDirty = false;
+            }
+
+            // Update active tab
+            modeTabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+
+            // Switch mode (switchAppMode will update params.appMode)
+            switchAppMode(newMode);
+        });
+    });
+}
+
+// Setup actions panel
+function setupActionsPanel(): void {
+    // @ts-expect-error - Reserved for future conditional logic
+    const _actionsPanel = document.getElementById('actions-panel');
+    const addLaunchBtn = document.getElementById('add-launch-action-btn');
+    const launchEventContainer = document.getElementById('launch-event-container');
+
+    // Add Launch button click handler
+    if (addLaunchBtn) addLaunchBtn.addEventListener('click', () => {
+        // Create launch event if it doesn't exist
+        if (!launchEvent.exists) {
+            launchEvent.exists = true;
+            setLaunchEventDate(launchEvent, new Date('2023-07-30T21:36:00'));
+            setLaunchEventMoonInterceptDate(launchEvent, new Date('2023-08-05T16:56:00'));
+        }
+
+        // Show card, hide button
+        if (addLaunchBtn) addLaunchBtn.style.display = 'none';
+        if (launchEventContainer) launchEventContainer.style.display = 'block';
+
+        // Create launch event GUI
+        createLaunchEventGUI();
+
+        // Sync timeline slider with intercept date
+        if (launchEvent.moonInterceptDate) {
+            updateTimelineSliderFromInterceptDate();
+        }
+
+        // Update launch marker
+        updateLaunchMarker();
+
+        // Sync render control sliders with launch event
+        syncRenderControlSlidersWithLaunchEvent();
+
+        // Update slider enabled/disabled state
+        updateRenderControlSlidersState();
+    });
+}
+
+// Helper to setup date input attributes and title
+function setupDateInputElement(controller: Controller, title: string): void {
+    const input = controller.domElement.querySelector('input');
+    if (input) {
+        input.type = 'datetime-local';
+        input.title = title;
+    }
+    const nameElem = controller.domElement.querySelector('.name');
+    if (nameElem) (nameElem as HTMLElement).title = title;
+}
+
+// Helper to add timeline switch handlers to a date controller
+function addDateControllerTimelineHandlers(
+    controller: Controller,
+    timelineType: 'LOI' | 'TLI',
+    getDate: () => Date
+): void {
+    const input = controller.domElement.querySelector('input');
+    if (!input) return;
+
+    const switchToTimeline = () => {
+        if (params.appMode === 'Plan') {
+            showFloatingTimeline(timelineType, getDate());
+        } else {
+            const checkboxId = timelineType === 'LOI' ? 'intercept-slider-active' : 'launch-slider-active';
+            const checkbox = document.getElementById(checkboxId);
+            if (checkbox && !(checkbox as HTMLInputElement).disabled) {
+                (checkbox as HTMLInputElement).checked = true;
+                checkbox.dispatchEvent(new Event('change'));
+            }
+        }
+    };
+
+    input.addEventListener('focus', switchToTimeline);
+    input.addEventListener('click', switchToTimeline);
+
+    input.addEventListener('blur', () => {
+        if (params.appMode === 'Plan' && floatingTimelineType === timelineType) {
+            setTimeout(() => {
+                const overlay = document.getElementById('floating-timeline-overlay');
+                const slider = document.getElementById('floating-timeline-slider');
+                if (overlay && !overlay.matches(':hover') && slider && !slider.matches(':active')) {
+                    hideFloatingTimeline();
+                }
+            }, 100);
+        }
+    });
+}
+
+// Create launch event GUI using lil-gui
+// Helper function to get valid omega values based on inclination
+function getOmegaOptions(inc: number): { [key: string]: number } {
+    if (inc === 21.5) {
+        return { '178°': 178 };
+    } else if (inc === 41.8) {
+        return { '198°': 198, '203°': 203 };
+    }
+    return { '178°': 178 }; // default
+}
+
+// Helper to ensure omega is valid for current inclination
+function validateAndSetOmega(): void {
+    const validOmegaOptions = getOmegaOptions(launchEvent.inclination);
+    if (!Object.values(validOmegaOptions).includes(launchEvent.omega)) {
+        setLaunchEventOmega(launchEvent, Object.values(validOmegaOptions)[0]);
+    }
+}
+
+// Helper function to switch to View timeline when clicking on orbital parameter fields
+function switchToViewTimeline(): void {
+    // Hide floating timeline if it's showing
+    if (params.appMode === 'Plan' && floatingTimelineType) {
+        hideFloatingTimeline();
+    }
+
+    const viewCheckbox = document.getElementById('timeline-slider-active');
+    if (viewCheckbox && !(viewCheckbox as HTMLInputElement).disabled) {
+        (viewCheckbox as HTMLInputElement).checked = true;
+        viewCheckbox.dispatchEvent(new Event('change'));
+    }
+}
+
+// Helper to add both click, focus, and input handlers to a controller
+function addViewTimelineSwitchHandlers(controller: Controller, selector: string): void {
+    const element = controller.domElement.querySelector(selector);
+    if (element) {
+        element.addEventListener('focus', switchToViewTimeline);
+        element.addEventListener('click', switchToViewTimeline);
+        element.addEventListener('input', switchToViewTimeline);
+    }
+
+    // Also attach to the slider element if it exists (for lil-gui number controllers)
+    const slider = controller.domElement.querySelector('.slider');
+    if (slider) {
+        slider.addEventListener('mousedown', switchToViewTimeline);
+        slider.addEventListener('touchstart', switchToViewTimeline);
+    }
+}
+
+// Helper to check if a LOI date value from dropdown is valid (not a placeholder)
+function isValidLOIDateValue(value: string): boolean {
+    return Boolean(value && value !== 'None' && value !== 'Select Auto LOI first' && value !== 'No optimal dates found');
+}
+
+// Helper to insert a button into lil-gui
+function insertButtonIntoGUI(gui: GUI, button: HTMLElement): HTMLElement | null {
+    const guiElement = (gui as any).domElement;
+    const childrenContainer = guiElement?.querySelector('.children');
+    if (!childrenContainer) return null;
+    const buttonWrapper = document.createElement('div');
+    buttonWrapper.style.cssText = 'padding: 4px 8px;';
+    buttonWrapper.appendChild(button);
+    childrenContainer.appendChild(buttonWrapper);
+    return buttonWrapper;
+}
+
+// Helper to run the auto-optimization and return results (or null if no LOI date)
+function runAutoOptimization(): { raan: number; apogeeAlt: number; trueAnomaly: number; distance: number; newTLIDate: Date } | null {
+    const loiDate = launchEvent.moonInterceptDate;
+    if (!loiDate) {
+        showAlert('Please set LOI date first', 'Missing LOI Date');
+        return null;
+    }
+    if (isE2ETestEnv()) {
+        const fastTLIDate = new Date(loiDate.getTime() - 24 * 60 * 60 * 1000);
+        return {
+            raan: launchEvent.raan,
+            apogeeAlt: launchEvent.apogeeAlt,
+            trueAnomaly: 180,
+            distance: 1000,
+            newTLIDate: fastTLIDate
+        };
+    }
+
+    const result = optimizeApogeeToMoonMultiStart(loiDate, launchEvent.omega, launchEvent.inclination, launchEvent.apogeeAlt);
+    const timeToOptimalNu = calculateTimeToTrueAnomaly(result.trueAnomaly, launchEvent.perigeeAlt, result.apogeeAlt);
+    const newTLIDate = new Date(loiDate.getTime() - timeToOptimalNu * 1000);
+    return { ...result, newTLIDate };
+}
+
+// Helper function for marking launch event as dirty and updating visualization
+function markDirtyAndUpdate(): void {
+    draftState.isDirty = true;
+
+    // Sync launchEvent to BOTH params AND planGameParamSet
+    planGameParamSet.loadFromLaunchEvent(launchEvent);
+    planGameParamSet.copyTo(params);
+
+    // Update GUI controllers
+    updateChandrayaanGUIDisplays();
+
+    // Invalidate cache so fresh calculations use current renderDate
+    invalidateOrbitalParamsCache();
+
+    // Update orbital period display (depends on perigee/apogee which may have changed)
+    updateChandrayaanPeriodDisplay();
+
+    // Update visualization based on ACTIVE timeline
+    updateRenderDate();
+
+    // Update orbital geometry (nodes, planes, angle visualizations)
+    updateChandrayaanNodePositions();
+    updateChandrayaanOrbitCircle();
+    updateRAANLines();
+    updateAOPLines();
+    updateChandrayaanOrbit();
+}
+
+function destroyExistingLaunchGUI(): void {
+    if (launchEventGUI) {
+        launchEventGUI.destroy();
+    }
+}
+
+function exposeForTesting(name: string, fn: () => unknown): void {
+    if (typeof window !== 'undefined') {
+        (window as any)[name] = fn;
+    }
+}
+
+function setAutoOptimizeVisibility(wrapper: HTMLElement | null, visible: boolean): void {
+    if (wrapper) {
+        wrapper.style.display = visible ? 'block' : 'none';
+    }
+}
+
+function createLaunchEventGUI(): void {
+    const container = document.getElementById('launch-event-container');
+
+    // Destroy existing GUI if it exists
+    destroyExistingLaunchGUI();
+
+    // Create new GUI instance
+    launchEventGUI = new GUI({ container: container || undefined });
+    launchEventGUI.title('Launch Event');
+
+    // Variable to hold the Auto Optimize button wrapper for visibility control
+    let autoOptimizeBtnWrapper: HTMLElement | null = null;
+
+    // Validate and set initial omega based on inclination
+    validateAndSetOmega();
+
+    // Create a temporary params object for the GUI
+    const guiParams: any = {
+        moonInterceptDate: formatDateForDisplay(launchEvent.moonInterceptDate),
+        autoLOI: launchEvent.autoLOI,
+        optimalLOIDate: formatDateForDisplay(launchEvent.moonInterceptDate),  // For dropdown
+        syncTLIWithLOI: launchEvent.syncTLIWithLOI,
+        launchDate: formatDateForDisplay(launchEvent.date),
+        inclination: launchEvent.inclination,
+        raan: launchEvent.raan,
+        omega: launchEvent.omega,
+        perigeeAlt: launchEvent.perigeeAlt,
+        apogeeAlt: launchEvent.apogeeAlt,
+        trueAnomaly: launchEvent.trueAnomaly || 0,
+        captureDistance: launchEvent.captureDistance || 2000,
+        period: formatPeriod(calculateOrbitalPeriod(launchEvent.perigeeAlt, launchEvent.apogeeAlt)),
+        save: () => saveLaunchEvent(),
+        delete: () => deleteLaunchEvent()
+    };
+
+    // Store reference for updating from timeline sliders
+    launchEventGUIParams = guiParams;
+
+    // Variable to hold the optimal LOI controller reference
+    let optimalLOIController: any = null;
+
+    // Helper function to handle optimal LOI selection
+    const handleOptimalLOIChange = (value: string) => {
+        if (!isValidLOIDateValue(value)) return;
+        const newDate = new Date(value);
+        setLaunchEventMoonInterceptDate(launchEvent, newDate);
+        guiParams.moonInterceptDate = formatDateForDisplay(newDate);
+        updateRenderDate();
+    };
+
+    // Helper to enable Auto LOI mode
+    const enableAutoLOIMode = () => {
+        const searchStart = timelineState.startDate;
+        const searchEnd = new Date(timelineState.startDate.getTime() + TIMELINE_MAX_DAYS * 24 * 60 * 60 * 1000);
+        launchEvent.optimalLOIDates = findOptimalLOIDates(searchStart, searchEnd);
+
+        if (optimalLOIController) {
+            optimalLOIController.destroy();
+            optimalLOIController = null;
+        }
+
+        const options: Record<string, string> = {};
+        if (launchEvent.optimalLOIDates.length === 0) {
+            options['No optimal dates found'] = 'None';
+            guiParams.optimalLOIDate = 'None';
+        } else {
+            launchEvent.optimalLOIDates.forEach((date) => {
+                const formatted = formatDateForDisplay(date);
+                options[formatted] = formatted;
+            });
+            const firstDate = formatDateForDisplay(launchEvent.optimalLOIDates[0]);
+            guiParams.optimalLOIDate = firstDate;
+            setLaunchEventMoonInterceptDate(launchEvent, launchEvent.optimalLOIDates[0]);
+            guiParams.moonInterceptDate = formatDateForDisplay(launchEvent.optimalLOIDates[0]);
+            updateRenderDate();
+        }
+
+        optimalLOIController = launchEventGUI.add(guiParams, 'optimalLOIDate', options).name('Optimal LOI').onChange(handleOptimalLOIChange);
+        const autoLOIElement = autoLOIController.domElement;
+        const optimalLOIElement = optimalLOIController.domElement;
+        if (autoLOIElement && optimalLOIElement && autoLOIElement.parentElement) {
+            autoLOIElement.parentElement.insertBefore(optimalLOIElement, autoLOIElement.nextSibling);
+        }
+        optimalLOIController.show();
+        interceptDateController.hide();
+    };
+
+    // Helper to disable Auto LOI mode
+    const disableAutoLOIMode = () => {
+        if (optimalLOIController) {
+            optimalLOIController.destroy();
+            optimalLOIController = null;
+        }
+        interceptDateController.show();
+    };
+
+    // Create Automatic LOI checkbox
+    const autoLOIController = launchEventGUI.add(guiParams, 'autoLOI').name('Auto LOI').onChange((value: boolean) => {
+        launchEvent.autoLOI = value;
+        if (value) {
+            enableAutoLOIMode();
+        } else {
+            disableAutoLOIMode();
+        }
+        if (autoOptimizeBtnWrapper) {
+            autoOptimizeBtnWrapper.style.display = value ? 'block' : 'none';
+        }
+    });
+
+    // Create LOI Date manual input (appears after checkbox)
+    const interceptDateController = launchEventGUI.add(guiParams, 'moonInterceptDate').name('LOI Date').listen();
+    setupDateInputElement(interceptDateController, 'Lunar Orbit Insertion');
+    addDateControllerTimelineHandlers(interceptDateController, 'LOI', () => launchEvent.moonInterceptDate);
+
+    // Add change handler for LOI date input
+    const interceptInput = interceptDateController.domElement.querySelector('input');
+    if (interceptInput) interceptInput.addEventListener('change', (e: Event) => {
+        if (isUpdatingFromCode) return;
+        setLaunchEventMoonInterceptDate(launchEvent, new Date((e.target as HTMLInputElement).value));
+        guiParams.moonInterceptDate = (e.target as HTMLInputElement).value;
+    });
+
+    // Sync TLI with LOI checkbox
+    launchEventGUI.add(guiParams, 'syncTLIWithLOI').name('Sync TLI').onChange(value => {
+        // Just set the value - event bus handles everything!
+        setLaunchEventSyncTLIWithLOI(launchEvent, value);
+    });
+
+    // TLI Date controller
+    launchDateController = launchEventGUI.add(guiParams, 'launchDate').name('TLI Date').listen();
+    setupDateInputElement(launchDateController, 'Trans Lunar Injection');
+    addDateControllerTimelineHandlers(launchDateController, 'TLI', () => launchEvent.date);
+
+    // Set initial state (disabled if sync is enabled)
+    if (launchEvent.syncTLIWithLOI) launchDateController.disable();
+
+    // Add change handler for TLI date input
+    const launchInput = launchDateController.domElement.querySelector('input');
+    if (launchInput) launchInput.addEventListener('change', (e: Event) => {
+        if (isUpdatingFromCode) return;
+        setLaunchEventDate(launchEvent, new Date((e.target as HTMLInputElement).value));
+        guiParams.launchDate = (e.target as HTMLInputElement).value;
+    });
+
+    // RAAN controller
+    const raanController = launchEventGUI.add(guiParams, 'raan', 0, 360, 0.1).name('RAAN (Ω) (°)').onChange(value => {
+        setLaunchEventRaan(launchEvent, value);
+        markDirtyAndUpdate();
+    });
+    addViewTimelineSwitchHandlers(raanController, 'input');
+
+    // Declare omega controller variable (will be assigned after inclination)
+    let omegaController: Controller | undefined;
+
+    // Inclination dropdown (constrained to 21.5° or 41.8°)
+    const inclinationController = launchEventGUI.add(guiParams, 'inclination', { '21.5°': 21.5, '41.8°': 41.8 }).name('Inclination').onChange(value => {
+        setLaunchEventInclination(launchEvent, value);
+
+        // Update omega options based on new inclination
+        const validOmegaOptions = getOmegaOptions(value);
+
+        // Set omega to first valid option for this inclination
+        const newOmega = Object.values(validOmegaOptions)[0];
+        guiParams.omega = newOmega;
+        setLaunchEventOmega(launchEvent, newOmega);
+
+        // Recreate omega controller with new options
+        omegaController = launchEventGUI.add(guiParams, 'omega', validOmegaOptions).name('ω (Arg. Periapsis)').onChange(value => {
+            setLaunchEventOmega(launchEvent, value);
+            markDirtyAndUpdate();
+        });
+        // Add handlers to dynamically created omega controller
+        addViewTimelineSwitchHandlers(omegaController, 'select');
+
+        markDirtyAndUpdate();
+    });
+    // Add handlers to inclination
+    addViewTimelineSwitchHandlers(inclinationController, 'select');
+
+    // Omega dropdown (depends on inclination) - Created after inclination for proper UI order
+    omegaController = launchEventGUI.add(guiParams, 'omega', getOmegaOptions(guiParams.inclination)).name('ω (Arg. Periapsis)').onChange(value => {
+        setLaunchEventOmega(launchEvent, value);
+        markDirtyAndUpdate();
+    });
+    addViewTimelineSwitchHandlers(omegaController, 'select');
+
+    const perigeeController = launchEventGUI.add(guiParams, 'perigeeAlt', 180, 600000, 100).name('Perigee Alt (km)').onChange(value => {
+        setLaunchEventPerigeeAlt(launchEvent, value);
+        markDirtyAndUpdate();
+    });
+    addViewTimelineSwitchHandlers(perigeeController, 'input');
+
+    const apogeeController = launchEventGUI.add(guiParams, 'apogeeAlt', 180, 600000, 100).name('Apogee Alt (km)').onChange(value => {
+        setLaunchEventApogeeAlt(launchEvent, value);
+        markDirtyAndUpdate();
+    });
+    addViewTimelineSwitchHandlers(apogeeController, 'input');
+
+    // Auto-optimize button (placed after controllers so they're in scope)
+    const autoOptimizeBtn = document.createElement('button');
+    autoOptimizeBtn.textContent = 'Auto Optimize RAAN & Apogee';
+    autoOptimizeBtn.title = 'Optimize RAAN and Apogee to minimize closest approach distance to Moon at LOI';
+    autoOptimizeBtn.style.cssText = `
+        width: 100%;
+        padding: 10px 12px;
+        margin-bottom: 8px;
+        background: #555;
+        border: 1px solid #444;
+        border-radius: 4px;
+        color: #fff;
+        font-size: 12px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: background 0.2s;
+        font-family: Arial, sans-serif;
+        line-height: 1.4;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    `;
+
+    autoOptimizeBtn.addEventListener('mouseenter', () => {
+        autoOptimizeBtn.style.background = '#666';
+    });
+
+    autoOptimizeBtn.addEventListener('mouseleave', () => {
+        autoOptimizeBtn.style.background = '#555';
+    });
+
+    const formatAutoOptimizeMessage = (result: { raan: number; apogeeAlt: number; trueAnomaly: number; distance: number; newTLIDate: Date }): string => {
+        return `Optimization complete!\n\nOptimal RAAN: ${result.raan.toFixed(2)}°\nOptimal Apogee: ${result.apogeeAlt.toFixed(1)} km\nOptimal True Anomaly: ${result.trueAnomaly.toFixed(1)}°\n\nClosest approach: ${result.distance.toFixed(1)} km\n\nTLI date adjusted to ${result.newTLIDate.toISOString().slice(0, 16)}\nto reach ν=${result.trueAnomaly.toFixed(1)}° at LOI`;
+    };
+
+    const triggerAutoOptimize = (): string | null => {
+        const result = runAutoOptimization();
+        if (!result) return null;
+
+        // Prevent event handlers from reverting our changes
+        isUpdatingFromCode = true;
+
+        // Update launch event and GUI params
+        setLaunchEventOptimizedValues(launchEvent, { raan: result.raan, apogeeAlt: result.apogeeAlt });
+        guiParams.raan = result.raan;
+        guiParams.apogeeAlt = result.apogeeAlt;
+
+        // Update TLI date
+        setLaunchEventDate(launchEvent, result.newTLIDate);
+        guiParams.launchDate = result.newTLIDate.toISOString().slice(0, 16);
+        launchDateController?.updateDisplay();
+
+        // Update controllers and visualization
+        raanController.updateDisplay();
+        apogeeController.updateDisplay();
+        markDirtyAndUpdate();
+
+        isUpdatingFromCode = false;
+
+        const message = formatAutoOptimizeMessage(result);
+        alert(message);
+        return message;
+    };
+
+    autoOptimizeBtn.addEventListener('click', () => {
+        triggerAutoOptimize();
+    });
+
+    // Insert button into GUI
+    autoOptimizeBtnWrapper = insertButtonIntoGUI(launchEventGUI, autoOptimizeBtn);
+
+    exposeForTesting('triggerAutoOptimizeForTest', triggerAutoOptimize);
+    setAutoOptimizeVisibility(autoOptimizeBtnWrapper, launchEvent.autoLOI);
+
+    // Listen for autoLOI changes via event bus and update button visibility
+    // This ensures visibility updates even when changed programmatically (e.g., in tests)
+    const updateAutoOptimizeVisibility = () => {
+        setAutoOptimizeVisibility(autoOptimizeBtnWrapper, launchEvent.autoLOI);
+    };
+
+    // Subscribe to autoLOI changes
+    const autoLOIUnsubscriber = events.on('launchEvent:autoLOI', updateAutoOptimizeVisibility);
+
+    // Clean up when GUI is destroyed
+    const originalDestroy = launchEventGUI.destroy.bind(launchEventGUI);
+    launchEventGUI.destroy = () => {
+        autoLOIUnsubscriber();
+        originalDestroy();
+    };
+
+    // True anomaly is disabled because at launch the craft is always at perigee (ν = 0°)
+    const trueAnomalyController = launchEventGUI.add(guiParams, 'trueAnomaly', 0, 360, 1).name('True Anomaly (°)').onChange(value => {
+        setLaunchEventTrueAnomaly(launchEvent, value);
+        markDirtyAndUpdate();
+    }).disable();
+    addViewTimelineSwitchHandlers(trueAnomalyController, 'input');
+
+    const captureDistController = launchEventGUI.add(guiParams, 'captureDistance', 50, 400000, 10).name('Capture Dist (km)').onChange(value => {
+        launchEvent.captureDistance = value;
+        markDirtyAndUpdate();
+    });
+    addViewTimelineSwitchHandlers(captureDistController, 'input');
+
+    const periodController = launchEventGUI.add(guiParams, 'period').name('Period').disable();
+    addViewTimelineSwitchHandlers(periodController, 'input');
+
+    // Add save and delete buttons
+    launchEventGUI.add(guiParams, 'save').name('💾 Save');
+    launchEventGUI.add(guiParams, 'delete').name('🗑️ Delete');
+
+    // Setup event subscriptions after GUI is created
+    setupEventSubscriptions();
+}
+
+function saveLaunchEvent(): void {
+    // Save a copy
+    draftState.savedLaunchEvent = JSON.parse(JSON.stringify(launchEvent));
+    draftState.isDirty = false;
+
+    // Sync launchEvent to planGameParamSet and params (ensure consistency)
+    if (params.appMode === 'Plan' || params.appMode === 'Game') {
+        planGameParamSet.loadFromLaunchEvent(launchEvent);
+        planGameParamSet.copyTo(params);
+
+        // Update all GUI displays to reflect saved values
+        updateChandrayaanGUIDisplays();
+    }
+
+    // Invalidate cache so fresh calculations use current renderDate
+    invalidateOrbitalParamsCache();
+
+    // Update visualizations - will automatically use renderDate from active timeline
+    updateChandrayaanOrbit();
+    updateChandrayaanPeriodDisplay();
+
+    // Update launch marker on timeline
+    updateLaunchMarker();
+}
+
+function deleteLaunchEventInternal(): void {
+    // Destroy GUI
+    if (launchEventGUI) {
+        launchEventGUI.destroy();
+        launchEventGUI = null;
+        launchEventGUIParams = null;
+    }
+
+    // Clear launch event
+    launchEvent.exists = false;
+    setLaunchEventDate(launchEvent, null);
+    setLaunchEventMoonInterceptDate(launchEvent, null);
+
+    // Clear draft state
+    draftState.isDirty = false;
+    draftState.savedLaunchEvent = null;
+
+    // Reset capture state
+    resetCaptureState();
+
+    // Hide container, show button
+    const elem_launch_event_container = document.getElementById('launch-event-container');
+    if (elem_launch_event_container) elem_launch_event_container.style.display = 'none';
+    const elem_add_launch_action_btn = document.getElementById('add-launch-action-btn');
+    if (elem_add_launch_action_btn) elem_add_launch_action_btn.style.display = 'block';
+
+    // Invalidate cache
+    invalidateOrbitalParamsCache();
+
+    // Update visualizations to show manual parameters
+    updateChandrayaanOrbit();
+    updateChandrayaanPeriodDisplay();
+
+    // Hide launch marker
+    updateLaunchMarker();
+
+    // Update slider enabled/disabled state
+    updateRenderControlSlidersState();
+}
+
+function deleteLaunchEvent(): void {
+    const confirmDelete = confirm('Are you sure you want to delete this launch event?');
+    if (!confirmDelete) return;
+
+    deleteLaunchEventInternal();
+}
+
+function formatDateForDisplay(date: Date | null): string {
+    if (!date) return '';
+    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
+function updateTimelineSliderFromInterceptDate(): void {
+    if (!launchEvent.moonInterceptDate) return;
+
+    // Calculate days from timeline start to intercept date
+    const daysFromStart = (launchEvent.moonInterceptDate.getTime() - timelineState.startDate.getTime()) / (24 * 60 * 60 * 1000);
+
+    // Clamp to valid range [0, TIMELINE_MAX_DAYS]
+    const clampedDays = Math.max(0, Math.min(TIMELINE_MAX_DAYS, daysFromStart));
+
+    // Update timeline state
+    timelineState.daysElapsed = clampedDays;
+    timelineState.currentDate = new Date(
+        timelineState.startDate.getTime() + clampedDays * 24 * 60 * 60 * 1000
+    );
+
+    // Update slider and display
+    const slider = document.getElementById('timeline-slider');
+    if (slider) {
+        (slider as HTMLInputElement).value = String(clampedDays);
+    }
+
+    const currentDateSpan = document.getElementById('current-date');
+    if (currentDateSpan) {
+        if (currentDateSpan) currentDateSpan.textContent = timelineState.currentDate.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+
+    // Update moon position
+    if (params.moonMode === 'Real') {
+        updateMoonFromRealPosition();
+    }
+}
+
+function updateLaunchMarker(): void {
+    const launchMarker = document.getElementById('launch-marker');
+    if (!launchMarker) return;
+
+    if (!launchEvent.exists || !launchEvent.date) {
+        launchMarker.style.display = 'none';
+        return;
+    }
+
+    // Calculate days from start
+    const daysFromStart = (launchEvent.date.getTime() - timelineState.startDate.getTime()) / (24 * 60 * 60 * 1000);
+
+    // Clamp to [0, TIMELINE_MAX_DAYS] range to handle small timing differences
+    const clampedDays = Math.max(0, Math.min(TIMELINE_MAX_DAYS, daysFromStart));
+
+    // Hide if significantly outside window (more than 1 day before or after)
+    if (daysFromStart < -1 || daysFromStart > 91) {
+        launchMarker.style.display = 'none';
+        return;
+    }
+
+    // Show marker at relative position (0-100%)
+    const percentage = (clampedDays / TIMELINE_MAX_DAYS) * 100;
+    launchMarker.style.display = 'block';
+    launchMarker.style.left = `${percentage}%`;
+}
+
+function animate(): void {
+    requestAnimationFrame(animate);
+
+    // Increment frame counter to invalidate getChandrayaanParams() cache
+    currentAnimationFrame++;
+
+    // Handle timeline animation
+    if (timelineState.isPlaying) {
+        const now = Date.now();
+        const deltaTime = (now - lastFrameTime) / 1000; // seconds
+        lastFrameTime = now;
+
+        // Update days elapsed based on playback speed
+        const daysIncrement = timelineState.speed * deltaTime;
+        timelineState.daysElapsed += daysIncrement;
+
+        // Clamp to max timeline days
+        if (timelineState.daysElapsed >= TIMELINE_MAX_DAYS) {
+            timelineState.daysElapsed = TIMELINE_MAX_DAYS;
+            timelineState.isPlaying = false;
+            const playPauseBtn = document.getElementById('play-pause-btn');
+            if (playPauseBtn) playPauseBtn.textContent = '▶ Play';
+        }
+
+        // Update current date
+        timelineState.currentDate = new Date(
+            timelineState.startDate.getTime() + timelineState.daysElapsed * 24 * 60 * 60 * 1000
+        );
+
+        // Update slider position
+        const slider = document.getElementById('timeline-slider');
+        if (slider) (slider as HTMLInputElement).value = String(timelineState.daysElapsed);
+
+        // Update timeline slider display
+        const timelineSliderDisplay = document.getElementById('timeline-slider-display');
+        if (timelineSliderDisplay) {
+            timelineSliderDisplay.textContent = `Day ${timelineState.daysElapsed.toFixed(1)}`;
+        }
+
+        // Update renderDate and all visualization (single source of truth)
+        // This handles date display, countdown, Moon position, and Chandrayaan orbit
+        updateRenderDate();
+    } else {
+        lastFrameTime = Date.now();
+    }
+
+    // Update marker sizes based on zoom level
+    updateMarkerSizes();
+
+    controls.update();
+    renderer.render(scene, camera);
+}
+
+// Floating Timeline Logic
+let floatingTimelineType: 'TLI' | 'LOI' | null = null;
+
+function showFloatingTimeline(type: 'TLI' | 'LOI', currentDate: Date): void {
+    const overlay = document.getElementById('floating-timeline-overlay');
+    const label = document.getElementById('floating-timeline-label');
+    const slider = document.getElementById('floating-timeline-slider') as HTMLInputElement;
+    const display = document.getElementById('floating-timeline-display');
+    const timelinePanel = document.getElementById('timeline-panel');
+
+    if (!overlay || !label || !slider || !display) return;
+
+    floatingTimelineType = type;
+
+    // Set label
+    label.textContent = type === 'TLI' ? 'TLI Date' : 'LOI Date';
+
+    // Calculate days elapsed from start date
+    const startDate = timelineState.startDate;
+    const daysElapsed = (currentDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
+
+    // Update slider
+    slider.value = String(daysElapsed);
+    if (display) display.textContent = `Day ${daysElapsed.toFixed(1)}`;
+
+    // Show overlay
+    overlay.style.display = 'block';
+
+    // Disable main timeline
+    if (timelinePanel) timelinePanel.classList.add('floating-active');
+}
+
+function hideFloatingTimeline(): void {
+    const overlay = document.getElementById('floating-timeline-overlay');
+    const timelinePanel = document.getElementById('timeline-panel');
+
+    if (overlay) overlay.style.display = 'none';
+    if (timelinePanel) timelinePanel.classList.remove('floating-active');
+
+    floatingTimelineType = null;
+}
+
+function setupCollapsiblePanels(): void {
+    // Setup GUI (RHS) panel collapse button
+    const guiCollapseBtn = document.getElementById('gui-collapse-btn');
+    const gui = document.querySelector('.lil-gui') as HTMLElement;
+    const actionsPanel = document.getElementById('actions-panel');
+    const actionsCollapseBtn = document.getElementById('actions-collapse-btn');
+
+    if (guiCollapseBtn && gui) {
+        let guiCollapsed = false;
+
+        guiCollapseBtn.addEventListener('click', () => {
+            guiCollapsed = !guiCollapsed;
+
+            if (guiCollapsed) {
+                gui.classList.add('collapsed');
+                guiCollapseBtn.classList.add('collapsed');
+                guiCollapseBtn.innerHTML = '«';
+
+                // Move actions panel to the right when RHS is collapsed
+                if (actionsPanel) actionsPanel.classList.add('rhs-collapsed');
+                if (actionsCollapseBtn) actionsCollapseBtn.classList.add('rhs-collapsed');
+            } else {
+                gui.classList.remove('collapsed');
+                guiCollapseBtn.classList.remove('collapsed');
+                guiCollapseBtn.innerHTML = '»';
+
+                // Move actions panel back when RHS is expanded
+                if (actionsPanel) actionsPanel.classList.remove('rhs-collapsed');
+                if (actionsCollapseBtn) actionsCollapseBtn.classList.remove('rhs-collapsed');
+            }
+        });
+    }
+
+    // Setup Actions panel collapse button
+    if (actionsCollapseBtn && actionsPanel) {
+        let actionsCollapsed = false;
+
+        actionsCollapseBtn.addEventListener('click', () => {
+            actionsCollapsed = !actionsCollapsed;
+
+            if (actionsCollapsed) {
+                actionsPanel.classList.add('collapsed');
+                actionsCollapseBtn.classList.add('collapsed');
+                actionsCollapseBtn.innerHTML = '«';
+            } else {
+                actionsPanel.classList.remove('collapsed');
+                actionsCollapseBtn.classList.remove('collapsed');
+                actionsCollapseBtn.innerHTML = '»';
+            }
+        });
+
+        // Show/hide actions collapse button based on actions panel visibility
+        // Use both class and style observation to catch all visibility changes
+        const observer = new MutationObserver(() => {
+            const isVisible = actionsPanel.classList.contains('visible') &&
+                             actionsPanel.style.display !== 'none';
+
+            if (isVisible) {
+                actionsCollapseBtn.classList.add('visible');
+            } else {
+                actionsCollapseBtn.classList.remove('visible');
+                // Only remove collapsed class if it's present to avoid triggering observer infinitely
+                if (actionsPanel.classList.contains('collapsed')) {
+                    actionsPanel.classList.remove('collapsed');
+                }
+                actionsCollapseBtn.classList.remove('collapsed');
+                actionsCollapseBtn.innerHTML = '»';
+                actionsCollapsed = false;
+            }
+        });
+
+        observer.observe(actionsPanel, {
+            attributes: true,
+            attributeFilter: ['class', 'style']
+        });
+
+        // Also check initial state
+        if (actionsPanel.classList.contains('visible')) {
+            actionsCollapseBtn.classList.add('visible');
+        }
+    }
+}
+
+// Camera view presets
+interface ViewPreset {
+    position: { x: number; y: number; z: number };
+    target?: { x: number; y: number; z: number };
+}
+
+const viewPresets: Record<string, ViewPreset> = {
+    oblique: { position: { x: 240, y: 160, z: 240 } },
+    top: { position: { x: 0, y: 350, z: 0.1 } },  // Slight z offset to avoid gimbal lock
+    side: { position: { x: 350, y: 0, z: 0 } },
+    front: { position: { x: 0, y: 0, z: 350 } }
+};
+
+function setupViewButtons(): void {
+    const viewButtons = document.querySelectorAll('.view-btn');
+
+    viewButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const viewName = btn.getAttribute('data-view');
+            if (!viewName || !viewPresets[viewName]) return;
+
+            const preset = viewPresets[viewName];
+
+            // Animate camera to new position
+            animateCameraTo(preset.position);
+
+            // Update active button state
+            viewButtons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        });
+    });
+}
+
+function animateCameraTo(targetPos: { x: number; y: number; z: number }): void {
+    const startPos = { x: camera.position.x, y: camera.position.y, z: camera.position.z };
+    const duration = 500; // ms
+    const startTime = Date.now();
+
+    function animate() {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+
+        // Ease-out cubic
+        const eased = 1 - Math.pow(1 - progress, 3);
+
+        camera.position.x = startPos.x + (targetPos.x - startPos.x) * eased;
+        camera.position.y = startPos.y + (targetPos.y - startPos.y) * eased;
+        camera.position.z = startPos.z + (targetPos.z - startPos.z) * eased;
+
+        camera.lookAt(0, 0, 0);
+        controls.update();
+
+        if (progress < 1) {
+            requestAnimationFrame(animate);
+        }
+    }
+
+    animate();
+}
+
+function setupFloatingTimeline(): void {
+    const overlay = document.getElementById('floating-timeline-overlay');
+    const closeBtn = document.getElementById('floating-timeline-close');
+    const slider = document.getElementById('floating-timeline-slider') as HTMLInputElement;
+    const display = document.getElementById('floating-timeline-display');
+
+    if (!overlay || !closeBtn || !slider || !display) return;
+
+    // Close button handler
+    closeBtn.addEventListener('click', hideFloatingTimeline);
+
+    // ESC key handler
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && overlay.style.display === 'block') {
+            hideFloatingTimeline();
+        }
+    });
+
+    // Click outside to close
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+            hideFloatingTimeline();
+        }
+    });
+
+    // Slider input handler
+    slider.addEventListener('input', () => {
+        const days = parseFloat(slider.value);
+        if (display) display.textContent = `Day ${days.toFixed(1)}`;
+
+        // Calculate new date
+        const startDate = timelineState.startDate;
+        const newDate = new Date(startDate.getTime() + days * 24 * 60 * 60 * 1000);
+
+        // Update the appropriate date in launch event
+        if (floatingTimelineType === 'TLI') {
+            setLaunchEventDate(launchEvent, newDate);
+        } else if (floatingTimelineType === 'LOI') {
+            setLaunchEventMoonInterceptDate(launchEvent, newDate);
+
+            // If sync is enabled, TLI date will be auto-computed by event handlers
+            // The launchDateController will update via event subscription
+        }
+
+        // Trigger visualization update in Plan mode
+        if (params.appMode === 'Plan' && launchEvent.exists) {
+            // When dragging LOI slider, show Moon at LOI date
+            // When dragging TLI slider, show Moon at TLI date
+            const dateForRendering = floatingTimelineType === 'LOI' ? launchEvent.moonInterceptDate : launchEvent.date;
+            if (dateForRendering) {
+                renderControl.renderDate = dateForRendering;
+            }
+
+            // Invalidate cache so getChandrayaanParams() recalculates with new render date
+            invalidateOrbitalParamsCache();
+
+            // Update visualizations directly without syncing (which would cause infinite loop)
+            updateChandrayaanOrbit();
+
+            // Update Moon position based on the new render date
+            if (params.moonMode === 'Real') {
+                updateMoonFromRealPosition();
+            }
+        }
+    });
+}
+
+// Initialize when DOM is loaded
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        init();
+        setupFloatingTimeline();
+    });
+} else {
+    init();
+    setupFloatingTimeline();
+}

@@ -63,22 +63,39 @@ This mapping handles Three.js's Y-up convention while maintaining proper celesti
 - **Visibility**: Toggleable via "Show AOP Angle"
 - **Rotation**: Properly oriented by inclination → RAAN transformations
 
+## Application Architecture
+
+The project consists of a **unified landing page** that routes to **three separate applications**:
+
+1. **Landing Page** (`index.html`) - Entry point with three app cards
+2. **Chandrayaan Mission Designer** (`wizard.html`) - Backwards mission design wizard
+3. **Explorer** (`explorer.html`) - Interactive orbital visualization (Explore mode only)
+4. **Legacy Designer** (`designer.html`) - Mission planning with timeline (Plan + Game modes)
+
 ## File Structure
 
 ```
 cy3-orbit/
-├── index.html               # Main orbit visualization application
+├── index.html               # Landing page with three app entry points
+├── explorer.html            # Explorer app entry point (Explore mode only)
+├── designer.html            # Legacy Designer app entry point (Plan + Game modes)
+├── wizard.html              # Mission Design Wizard entry point
+├── index-old.html           # Backup of original three-mode application
 ├── CLAUDE.md                # This file (developer documentation)
 ├── package.json             # NPM dependencies and scripts
 ├── tsconfig.json            # TypeScript configuration
-├── vite.config.js           # Vite build configuration
+├── vite.config.js           # Vite multi-page build configuration
 ├── vitest.config.ts         # Unit test configuration
 ├── eslint.config.js         # ESLint configuration
 ├── playwright.config.ts     # E2E test config (projects: default, fast, slow)
 ├── .pre-commit-config.yaml  # Pre-commit hooks (ESLint, TypeScript, etc.)
 ├── src/                     # Source files
-│   ├── main.ts              # Three.js visualization logic (main app)
-│   ├── style.css            # Styling for main application
+│   ├── landing.ts           # Landing page entry point
+│   ├── landing.css          # Landing page styling
+│   ├── explorer.ts          # Explorer app entry (Explore mode only)
+│   ├── designer.ts          # Designer app entry (Plan + Game modes)
+│   ├── main.ts              # Original three-mode app (kept for reference)
+│   ├── style.css            # Styling for visualization apps
 │   ├── constants.ts         # Application-wide constants
 │   ├── events.ts            # Event bus for state management
 │   ├── types.ts             # TypeScript type definitions
@@ -91,7 +108,7 @@ cy3-orbit/
 │   ├── ui/
 │   │   └── dialog.ts        # UI dialog components
 │   └── wizard/              # Mission Design Wizard (separate application)
-│       ├── demo.html        # Wizard entry point
+│       ├── wizard-entry.ts  # Wizard app entry point
 │       ├── wizard.css       # Wizard-specific styling
 │       ├── WizardController.ts  # Main wizard controller/state machine
 │       ├── steps/           # Wizard step implementations
@@ -257,9 +274,97 @@ All distance measurements use **center-to-center distances** and are calculated 
 5. **Center-to-center distances**: All distance thresholds (capture, etc.) measure from object centers
 6. **Spherical Trigonometry**: RA↔True Anomaly conversions use proper spherical trig (NOT simple addition/subtraction)
 
+## Unified Landing Page Architecture
+
+The project now uses a **unified landing page architecture** that routes users to three specialized applications:
+
+### Landing Page (`index.html` + `src/landing.ts`)
+
+The landing page serves as the entry point to the application suite:
+
+- **Three Large Cards**: Each card represents one of the three applications
+- **Modern Design**: Gradient backgrounds, hover effects, smooth animations
+- **Responsive**: Works on desktop, tablet, and mobile devices
+- **Minimal JavaScript**: Only tracks card clicks for future analytics
+
+### Application Entry Points
+
+Each application is a separate HTML file with its own TypeScript entry point:
+
+1. **Chandrayaan Mission Designer** (`wizard.html`)
+   - Entry point: `src/wizard/wizard-entry.ts`
+   - Backwards mission design methodology
+   - 4-step guided workflow
+
+2. **Explorer** (`explorer.html`)
+   - Entry point: `src/explorer.ts`
+   - Explore mode only (no timeline, no mode switching)
+   - Manual Moon controls and orbital parameter adjustments
+   - All visualization features enabled
+
+3. **Legacy Designer** (`designer.html`)
+   - Entry point: `src/designer.ts`
+   - Plan + Game modes only (no Explore mode)
+   - Timeline-based mission planning
+   - TLI/LOI event management
+
+### Navigation Strategy
+
+- **No cross-app navigation**: Each app is standalone after selection
+- **Browser back button**: Returns to landing page naturally
+- **No breadcrumbs**: Clean, focused experience within each app
+
+### URL Structure
+
+```
+/                    → Landing page
+/explorer.html       → Explorer app
+/designer.html       → Legacy Designer app
+/wizard.html         → Mission Design Wizard
+```
+
+### Code Architecture
+
+**Landing Page**:
+- Minimal dependencies (just landing.css and landing.ts)
+- No Three.js or heavy libraries
+- Fast load time
+
+**Explorer App** (`explorer.ts`):
+- Based on original `main.ts` with Explore mode only
+- Removed: Mode tabs, timeline, launch events
+- Kept: All manual controls, sync buttons, visualization toggles
+
+**Designer App** (`designer.ts`):
+- Based on original `main.ts` with Plan/Game modes only
+- Removed: Explore mode tab and manual Moon controls
+- Kept: Timeline, launch events, optimization algorithms
+
+**Wizard App** (`wizard-entry.ts`):
+- Previously at `src/wizard/demo.html`
+- Now integrated as first-class app at root level
+- Full wizard functionality preserved
+
+### Build Configuration
+
+Vite is configured for **multi-page application** build:
+
+```javascript
+rollupOptions: {
+  input: {
+    main: resolve(__dirname, 'index.html'),
+    explorer: resolve(__dirname, 'explorer.html'),
+    designer: resolve(__dirname, 'designer.html'),
+    wizard: resolve(__dirname, 'wizard.html')
+  }
+}
+```
+
+This generates four separate HTML files with their own bundled JavaScript, while sharing common code chunks automatically.
+
 ## Mission Design Wizard Architecture
 
-The Mission Design Wizard is a **separate standalone application** (demo.html) that implements a guided, multi-step workflow for planning lunar missions using a **backwards mission design methodology**.
+The Mission Design Wizard is a **separate standalone application** (`wizard.html`) that implements a guided, multi-step workflow for planning lunar missions using a **backwards mission design methodology**.
 
 ### Philosophy: Backwards Mission Design
 
