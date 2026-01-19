@@ -172,8 +172,7 @@ test.describe('Mode Transition Tests', () => {
     test('should handle Plan → Game → Plan → Explore → Plan transitions', async ({ page }) => {
         console.log('\n=== COMPLEX MODE TRANSITION TEST ===');
 
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         console.log('\n--- Capture initial Explore params ---');
         const exploreSnapshot = await page.evaluate(() => ({

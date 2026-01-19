@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { gotoApp } from './test-helpers';
 
 test.describe('Visual Distance Verification Test', () => {
     test('should verify Moon-Craft distance in Game mode matches optimization result', async ({ page }) => {
@@ -9,8 +10,7 @@ test.describe('Visual Distance Verification Test', () => {
         console.log(`Using equator crossing: ${equatorCrossing}`);
 
         // Navigate to app
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         // Listen to console logs
         const logs: string[] = [];

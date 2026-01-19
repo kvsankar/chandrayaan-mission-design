@@ -10,18 +10,17 @@ body {
     font-family: 'Arial', sans-serif;
     background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%);
     color: #fff;
-    height: 100vh;
+    min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 20px;
-    overflow: hidden;
+    overflow: auto;
 }
 
 .landing-container {
     max-width: 1400px;
     width: 100%;
-    height: 100%;
     margin: 0 auto;
     display: flex;
     flex-direction: column;
@@ -57,19 +56,17 @@ body {
 .app-cards {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    grid-template-rows: 2fr 1fr;
+    grid-template-rows: auto auto;
     gap: 20px;
-    flex: 1;
-    min-height: 0;
 }
 
-/* Featured card (wizard) spans full width and has 2/3 height */
+/* Featured card (wizard) spans full width */
 .app-card.featured {
     grid-column: span 2;
     grid-row: 1;
 }
 
-/* Non-featured cards have 1/3 height */
+/* Non-featured cards */
 .app-card:not(.featured) {
     grid-row: 2;
 }
@@ -84,11 +81,30 @@ body {
     color: inherit;
     display: flex;
     flex-direction: column;
+    align-items: center;
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
     backdrop-filter: blur(10px);
     min-height: 0;
+}
+
+/* Constrain text content width within cards */
+.app-card .card-icon,
+.app-card h2,
+.app-card .card-description,
+.app-card .card-features,
+.app-card .card-footer {
+    max-width: 70%;
+}
+
+/* Featured card has narrower text width */
+.app-card.featured .card-icon,
+.app-card.featured h2,
+.app-card.featured .card-description,
+.app-card.featured .card-features,
+.app-card.featured .card-footer {
+    max-width: 60%;
 }
 
 .app-card::before {
@@ -126,7 +142,7 @@ body {
 /* Card Title */
 .app-card h2 {
     font-size: 22px;
-    margin-bottom: 10px;
+    margin-bottom: 20px;
     color: #fff;
     text-align: center;
 }
@@ -148,6 +164,11 @@ body {
     gap: 6px;
     margin-bottom: 12px;
     justify-content: center;
+}
+
+/* Single row feature tags (no wrapping) */
+.card-features.single-row {
+    flex-wrap: nowrap;
 }
 
 .feature-tag {

@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { gotoApp } from './test-helpers';
 
 test.describe('Complete User Workflow Tests', () => {
     test('should complete full workflow: Explore → Plan → Optimize → Game → Validate', async ({ page }) => {
         console.log('\n=== COMPLETE USER WORKFLOW TEST ===');
 
         // Navigate to app
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         console.log('\n--- Step 1: Start in Explore mode ---');
 
@@ -228,8 +228,7 @@ test.describe('Complete User Workflow Tests', () => {
     test('should handle launch event creation and deletion', async ({ page }) => {
         console.log('\n=== LAUNCH EVENT LIFECYCLE TEST ===');
 
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         // Switch to Plan mode
         await page.click('button:has-text("Plan")');

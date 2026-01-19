@@ -10,8 +10,7 @@ import { gotoApp, waitForAppMode, waitForLaunchEvent, waitForAutoLOI } from './t
 
 test.describe('Explore Mode - Parameter Controls', () => {
     test('should update Moon orbit visualization when lunar inclination changes', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page, 'Explore');
 
         // Get initial lunar inclination
         const initial = await page.evaluate(() => (window as any).params.lunarInclination);
@@ -30,8 +29,7 @@ test.describe('Explore Mode - Parameter Controls', () => {
     });
 
     test('should update Moon orbit visualization when lunar RAAN changes', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page, 'Explore');
 
         const initial = await page.evaluate(() => (window as any).params.lunarNodes);
 
@@ -47,8 +45,7 @@ test.describe('Explore Mode - Parameter Controls', () => {
     });
 
     test('should update Moon position when moonRA changes', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page, 'Explore');
 
         const initial = await page.evaluate(() => (window as any).params.moonRA);
 
@@ -64,8 +61,7 @@ test.describe('Explore Mode - Parameter Controls', () => {
     });
 
     test('should update Chandrayaan orbit when inclination changes', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page, 'Explore');
 
         const initial = await page.evaluate(() => (window as any).params.chandrayaanInclination);
 
@@ -81,8 +77,7 @@ test.describe('Explore Mode - Parameter Controls', () => {
     });
 
     test('should update Chandrayaan orbit when RAAN changes', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page, 'Explore');
 
         const initial = await page.evaluate(() => (window as any).params.chandrayaanNodes);
 
@@ -98,8 +93,7 @@ test.describe('Explore Mode - Parameter Controls', () => {
     });
 
     test('should update Chandrayaan orbit when omega (AOP) changes', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page, 'Explore');
 
         const initial = await page.evaluate(() => (window as any).params.chandrayaanOmega);
 
@@ -115,8 +109,7 @@ test.describe('Explore Mode - Parameter Controls', () => {
     });
 
     test('should update Chandrayaan orbit when perigee altitude changes', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page, 'Explore');
 
         const initial = await page.evaluate(() => (window as any).params.chandrayaanPerigeeAlt);
 
@@ -132,8 +125,7 @@ test.describe('Explore Mode - Parameter Controls', () => {
     });
 
     test('should update Chandrayaan position when true anomaly changes', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page, 'Explore');
 
         const initial = await page.evaluate(() => (window as any).params.chandrayaanTrueAnomaly);
 
@@ -149,8 +141,7 @@ test.describe('Explore Mode - Parameter Controls', () => {
     });
 
     test('should toggle Moon visibility when showMoon changes', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page, 'Explore');
 
         const initial = await page.evaluate(() => (window as any).params.showMoon);
 
@@ -164,8 +155,7 @@ test.describe('Explore Mode - Parameter Controls', () => {
     });
 
     test('should toggle equator visibility when showEquator changes', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page, 'Explore');
 
         const initial = await page.evaluate(() => (window as any).params.showEquator);
 
@@ -181,8 +171,7 @@ test.describe('Explore Mode - Parameter Controls', () => {
 
 test.describe('Plan Mode - Launch Event Parameters', () => {
     test('should NOT modify launch event when View timeline slider moves', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         // Switch to Plan mode
         await page.click('button:has-text("Plan")');
@@ -318,8 +307,7 @@ test.describe('Plan Mode - Launch Event Parameters', () => {
     });
 
     test('should update launch event apogee via GUI input', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         await page.click('button:has-text("Plan")');
         await page.waitForTimeout(1000);
@@ -341,8 +329,7 @@ test.describe('Plan Mode - Launch Event Parameters', () => {
     });
 
     test('should enable Auto Optimize button when Auto LOI is enabled', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         await page.click('button:has-text("Plan")');
         await page.waitForTimeout(1000);
@@ -364,8 +351,7 @@ test.describe('Plan Mode - Launch Event Parameters', () => {
 
 test.describe('Game Mode - Timeline and Simulation', () => {
     test('should start paused when entering Game mode', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         // Create launch event
         await page.click('button:has-text("Plan")');
@@ -387,8 +373,7 @@ test.describe('Game Mode - Timeline and Simulation', () => {
     });
 
     test('should advance time when Play button is clicked', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         await page.click('button:has-text("Plan")');
         await page.waitForTimeout(1000);
@@ -409,8 +394,7 @@ test.describe('Game Mode - Timeline and Simulation', () => {
     });
 
     test('should pause when Pause button is clicked', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         await page.click('button:has-text("Plan")');
         await page.waitForTimeout(1000);
@@ -433,8 +417,7 @@ test.describe('Game Mode - Timeline and Simulation', () => {
     });
 
     test('should reset time to start when Reset button is clicked', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         await page.click('button:has-text("Plan")');
         await page.waitForTimeout(1000);
@@ -459,8 +442,7 @@ test.describe('Game Mode - Timeline and Simulation', () => {
     });
 
     test('should change playback speed when speed selector changes', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         await page.click('button:has-text("Plan")');
         await page.waitForTimeout(1000);
@@ -482,8 +464,7 @@ test.describe('Game Mode - Timeline and Simulation', () => {
     });
 
     test('should update craft position as time advances', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         await page.click('button:has-text("Plan")');
         await page.waitForTimeout(1000);
@@ -510,8 +491,7 @@ test.describe('Game Mode - Timeline and Simulation', () => {
     });
 
     test('should show capture message when craft enters Moon SOI', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         await page.click('button:has-text("Plan")');
         await page.waitForTimeout(1000);
@@ -567,8 +547,7 @@ test.describe('Game Mode - Timeline and Simulation', () => {
 
 test.describe('Mode Transitions', () => {
     test('should preserve Explore parameters when switching to Plan and back', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         // Capture Explore params
         const exploreParams = await page.evaluate(() => ({
@@ -598,8 +577,7 @@ test.describe('Mode Transitions', () => {
     });
 
     test('should preserve Plan parameters when switching to Game and back', async ({ page }) => {
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         await page.click('button:has-text("Plan")');
         await page.waitForTimeout(1000);
