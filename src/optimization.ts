@@ -6,8 +6,38 @@ import * as THREE from 'three';
 import * as Astronomy from 'astronomy-engine';
 import { EARTH_RADIUS, EARTH_MU } from './constants.js';
 
+interface WindowWithE2E extends Window {
+    __E2E_TESTING__?: boolean;
+}
+
 function isAutomatedTestMode(): boolean {
-    return typeof window !== 'undefined' && (window as any).__E2E_TESTING__ === true;
+    return typeof window !== 'undefined' && (window as WindowWithE2E).__E2E_TESTING__ === true;
+}
+
+/**
+ * Extract position from GeoMoonState result (handles both old and new API formats)
+ */
+export function extractPositionFromState(state: ReturnType<typeof Astronomy.GeoMoonState>): Astronomy.Vector {
+    if ('position' in state) {
+        return state.position;
+    }
+    // Old API format: state itself is a Vector with vx, vy, vz properties
+    return state;
+}
+
+/**
+ * Extract velocity from GeoMoonState result (handles both old and new API formats)
+ */
+export function extractVelocityFromState(state: ReturnType<typeof Astronomy.GeoMoonState>): { x: number; y: number; z: number } {
+    if ('velocity' in state) {
+        return state.velocity;
+    }
+    // Old API format: vx, vy, vz properties
+    return {
+        x: (state as Astronomy.Vector & { vx: number }).vx,
+        y: (state as Astronomy.Vector & { vy: number }).vy,
+        z: (state as Astronomy.Vector & { vz: number }).vz
+    };
 }
 
 /**
@@ -69,13 +99,13 @@ function findMoonEquatorCrossings(startDate: Date, endDate: Date): Astronomy.Ast
 
     // Function that returns Moon's declination
     const declinationFunc = (t: Astronomy.AstroTime): number => {
-        const state: any = Astronomy.GeoMoonState(t);
-        const hasPosition = state.position !== undefined;
+        const state = Astronomy.GeoMoonState(t);
+        const position = extractPositionFromState(state);
         const geoVector = {
-            x: hasPosition ? state.position.x : state.x,
-            y: hasPosition ? state.position.y : state.y,
-            z: hasPosition ? state.position.z : state.z,
-            t: hasPosition ? state.position.t : state.t
+            x: position.x,
+            y: position.y,
+            z: position.z,
+            t: position.t
         };
         const equatorial = Astronomy.EquatorFromVector(geoVector);
         return equatorial.dec;  // Returns declination in degrees
@@ -86,7 +116,7 @@ function findMoonEquatorCrossings(startDate: Date, endDate: Date): Astronomy.Ast
     const stepDays = 1.0;  // Search in 1-day increments
 
     while (searchStart.ut < t2.ut) {
-        const searchEnd = (searchStart as any).AddDays(stepDays);
+        const searchEnd = searchStart.AddDays(stepDays);
         if (searchEnd.ut > t2.ut) break;
 
         // Check if there's a sign change in this interval
@@ -96,7 +126,7 @@ function findMoonEquatorCrossings(startDate: Date, endDate: Date): Astronomy.Ast
         // Detect BOTH ascending and descending crossings
         // This gives opportunities every ~13.7 days instead of ~27 days
         if (dec1 * dec2 < 0) {  // Sign change = equator crossing (either direction)
-            const crossing = (Astronomy as any).Search(declinationFunc, searchStart, searchEnd);
+            const crossing = Astronomy.Search(declinationFunc, searchStart, searchEnd);
             if (crossing) {
                 crossings.push(crossing);
             }
@@ -123,15 +153,15 @@ function _findMoonNodeCrossings(startDate: Date, endDate: Date): Astronomy.Astro
 
     // Function that returns Moon's ecliptic latitude
     const latitudeFunc = (t: Astronomy.AstroTime): number => {
-        const state: any = Astronomy.GeoMoonState(t);
-        const hasPosition = state.position !== undefined;
+        const state = Astronomy.GeoMoonState(t);
+        const position = extractPositionFromState(state);
         const geoVector = {
-            x: hasPosition ? state.position.x : state.x,
-            y: hasPosition ? state.position.y : state.y,
-            z: hasPosition ? state.position.z : state.z,
-            t: hasPosition ? state.position.t : state.t
+            x: position.x,
+            y: position.y,
+            z: position.z,
+            t: position.t
         };
-        const ecliptic = (Astronomy as any).Ecliptic(geoVector);
+        const ecliptic = Astronomy.Ecliptic(geoVector);
         return ecliptic.elat;  // Returns ecliptic latitude in degrees
     };
 
@@ -140,7 +170,7 @@ function _findMoonNodeCrossings(startDate: Date, endDate: Date): Astronomy.Astro
     const stepDays = 1.0;  // Search in 1-day increments
 
     while (searchStart.ut < t2.ut) {
-        const searchEnd = (searchStart as any).AddDays(stepDays);
+        const searchEnd = searchStart.AddDays(stepDays);
         if (searchEnd.ut > t2.ut) break;
 
         // Check if there's a sign change in this interval
@@ -149,7 +179,7 @@ function _findMoonNodeCrossings(startDate: Date, endDate: Date): Astronomy.Astro
 
         // Only detect ascending node crossings: lat1 < 0 and lat2 > 0 (south to north)
         if (lat1 < 0 && lat2 > 0) {  // Ascending node crossing
-            const crossing = (Astronomy as any).Search(latitudeFunc, searchStart, searchEnd);
+            const crossing = Astronomy.Search(latitudeFunc, searchStart, searchEnd);
             if (crossing) {
                 crossings.push(crossing);
             }
@@ -192,15 +222,15 @@ export function findOptimalLOIDates(startDate: Date, endDate: Date): Date[] {
  */
 export function calculateMoonPositionAtDate(date: Date): { x: number, y: number, z: number } {
     const astroTime = Astronomy.MakeTime(date);
-    const state: any = Astronomy.GeoMoonState(astroTime);
+    const state = Astronomy.GeoMoonState(astroTime);
 
-    // Get position from state
-    const hasPosition = state.position !== undefined;
+    // Get position from state (handles both old and new API formats)
+    const position = extractPositionFromState(state);
     const geoVector = {
-        x: hasPosition ? state.position.x : state.x,
-        y: hasPosition ? state.position.y : state.y,
-        z: hasPosition ? state.position.z : state.z,
-        t: hasPosition ? state.position.t : state.t
+        x: position.x,
+        y: position.y,
+        z: position.z,
+        t: position.t
     };
 
     // Convert AU to km (1 AU = 149597870.7 km)

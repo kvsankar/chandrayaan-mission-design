@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Event Bus - Observer pattern for decoupled state management
  *

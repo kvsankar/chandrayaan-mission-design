@@ -163,24 +163,24 @@ export function calculateSpacecraftPosition(
     // Matrix4.makeRotationY => x' =  c*x + s*z ; z' = -s*x + c*z
     const cosOmega = Math.cos(omega);
     const sinOmega = Math.sin(omega);
-    let x1 = cosOmega * x + sinOmega * z;
-    let z1 = -sinOmega * x + cosOmega * z;
+    const x1 = cosOmega * x + sinOmega * z;
+    const z1 = -sinOmega * x + cosOmega * z;
     x = x1;
     z = z1;
 
     // Apply inclination rotation (around X axis)
     const cosInc = Math.cos(inc);
     const sinInc = Math.sin(inc);
-    let y1 = cosInc * y - sinInc * z;
-    let z2 = sinInc * y + cosInc * z;
+    const y1 = cosInc * y - sinInc * z;
+    const z2 = sinInc * y + cosInc * z;
     y = y1;
     z = z2;
 
     // Apply RAAN rotation (around Y axis, Three.js convention)
     const cosRaan = Math.cos(raan);
     const sinRaan = Math.sin(raan);
-    let x2 = cosRaan * x + sinRaan * z;
-    let z3 = -sinRaan * x + cosRaan * z;
+    const x2 = cosRaan * x + sinRaan * z;
+    const z3 = -sinRaan * x + cosRaan * z;
 
     return { x: x2, y: y, z: z3 };
 }

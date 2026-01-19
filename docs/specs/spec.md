@@ -8,14 +8,24 @@
 
 ## 1. Project Overview
 
-The Chandrayaan-3 Orbit Visualization is an interactive web-based application that simulates and visualizes the orbital mechanics of India's Chandrayaan-3 lunar mission. The application provides three distinct modes for exploring, planning, and viewing orbital trajectories in a 3D celestial coordinate system.
+The Chandrayaan-3 Orbit Visualization is an interactive web-based application that simulates and visualizes the orbital mechanics of India's Chandrayaan-3 lunar mission. The project consists of **two separate applications**:
+
+1. **Main Orbit Visualization** (`index.html`): Three distinct modes for exploring, planning, and viewing orbital trajectories in a 3D celestial coordinate system
+2. **Mission Design Wizard** (`src/wizard/demo.html`): Guided multi-step workflow for backwards mission design
 
 ### 1.1 Purpose
 
+**Main Application:**
 - Educational tool for understanding orbital mechanics
 - Mission planning interface for defining launch parameters
 - Visualization platform for playback of planned missions
 - Interactive demonstration of Trans-Lunar Injection (TLI) and Lunar Orbit Insertion (LOI)
+
+**Mission Design Wizard:**
+- Goal-oriented mission planning starting from landing site selection
+- Demonstrates backwards design methodology (destination → orbital parameters)
+- Calculates optimal Sun illumination windows for landing
+- Determines required orbital geometry (RAAN) from landing constraints
 
 ### 1.2 Core Technologies
 
@@ -25,6 +35,7 @@ The Chandrayaan-3 Orbit Visualization is an interactive web-based application th
 - **Lunar Ephemeris:** astronomy-engine
 - **Build Tool:** Vite
 - **Testing:** Vitest (unit tests), Playwright (E2E tests)
+- **State Persistence (Wizard):** localStorage with versioning
 
 ---
 
@@ -67,7 +78,7 @@ The application operates in three distinct modes, each with specific capabilitie
 - **Inclination:** 21.5° or 41.8° (dropdown selection)
 - **Argument of Periapsis (ω):** 178°, 198°, or 203° (depends on inclination)
 - **RAAN (Ω):** 0-360° (continuous)
-- **Perigee Altitude:** 180-600,000 km
+- **Perigee Altitude:** 180-10,000 km
 - **Apogee Altitude:** Adjustable (default: ~384,400 km - lunar distance)
 
 **UI Features:**
@@ -360,7 +371,7 @@ Scale factor based on camera distance to maintain visual consistency.
 - Inclination (Explore: slider, Plan: dropdown 21.5°/41.8°)
 - RAAN (Ω): 0-360° (slider)
 - Argument of Periapsis (ω) (Explore: slider, Plan: dropdown)
-- Perigee altitude: 180-600,000 km (slider)
+- Perigee altitude: 180-10,000 km (slider)
 - Apogee altitude (slider)
 
 **Computed/Read-Only:**
@@ -412,7 +423,7 @@ Scale factor based on camera distance to maintain visual consistency.
 - RAAN (Ω): Slider (0-360°)
 - Argument of Periapsis (ω): Dropdown (178°, 198°, or 203°)
   - Options depend on selected inclination
-- Perigee altitude: Slider (180-600,000 km)
+- Perigee altitude: Slider (180-10,000 km)
 - Apogee altitude: Slider (adjustable)
 
 **Mission Parameters:**
@@ -705,9 +716,279 @@ Where:
 
 ---
 
-## 12. Code Architecture
+## 12. Mission Design Wizard (Separate Application)
 
-### 12.1 File Structure
+The Mission Design Wizard is a standalone application (`src/wizard/demo.html`) that implements a **backwards mission design methodology**.
+
+### 12.1 Design Philosophy
+
+**Backwards vs. Forward Design:**
+
+Traditional approach (Main App):
+- Adjust orbital parameters → See if trajectory reaches Moon
+
+Wizard approach:
+- Choose landing site → Find when Sun is optimal → Calculate required orbital parameters
+
+**Educational Value:**
+- Teaches **why** specific orbital parameters are chosen
+- Demonstrates real mission planning constraints
+- Shows relationship between landing requirements and orbital geometry
+
+### 12.2 Four-Step Workflow
+
+#### Step 1: Landing Site Selection
+
+**Features:**
+- Interactive 3D Moon globe using Three.js
+- Pre-defined landing sites (JSON data)
+- Site markers on Moon surface
+- Displays site coordinates (selenographic latitude/longitude)
+
+**Available Sites:**
+- Shackleton Crater (South Pole)
+- Malapert Massif
+- Apollo 17 landing site
+- Other historical/proposed sites
+
+**Component:** `LandingSiteStep.ts`, `MoonGlobeView.ts`, `SiteMarkers.ts`
+
+#### Step 2: Landing Window Selection
+
+**Sun Elevation Calculation:**
+- Computes Sun elevation angle at landing site over time
+- Uses astronomy-engine for accurate Sun/Moon positions
+- Accounts for lunar libration effects
+- Time step: 1 hour intervals (configurable)
+
+**Landing Window Criteria:**
+- Sun elevation: 6° to 9° above horizon
+- Provides adequate illumination without excessive heat
+- Avoids thermal extremes for spacecraft/instruments
+
+**Algorithm:** `src/wizard/calculations/sunElevation.ts`
+
+**Output:**
+- List of viable landing windows with start/end times
+- Visual chart showing Sun elevation over time
+- Allows user to select preferred window
+
+**Component:** `LandingWindowStep.ts`, `SunIlluminationPanel.ts`
+
+#### Step 3: Mission Window Selection
+
+**Purpose:** Connect landing window to launch planning timeline
+
+**Features:**
+- Select mission start date
+- Validate compatibility with landing window
+- Consider transfer time from Earth to Moon
+- Account for orbital mechanics constraints
+
+**Component:** `MissionWindowStep.ts`
+
+#### Step 4: LOI Date Optimization
+
+**Calculations:**
+
+1. **Required RAAN Calculation:**
+   - Determines spacecraft orbital plane orientation needed
+   - Based on Moon's RA at landing time
+   - Formula: `Required RAAN = Moon RA at landing - offset`
+   - Offset depends on landing site longitude and Moon libration
+
+2. **Optimal LOI Date Finding:**
+   - Works backwards from landing date
+   - Finds dates when spacecraft RAAN aligns properly
+   - Uses Moon equator crossing detection
+   - Minimizes apogee-to-Moon distance
+
+3. **Trajectory Visualization:**
+   - Full 3D orbit visualization
+   - Timeline showing key mission events
+   - Interactive controls for exploring trajectory
+
+**Algorithm:** `findOptimalLOIDates()` in `src/optimization.ts`
+
+**Components:**
+- `LOIDateStep.ts`
+- `OrbitVisualizationPanel.ts`
+- `OrbitScene.ts`
+- `orbitCore.ts`
+- `TimelineControls.ts`
+
+**Display:**
+- Calculated LOI date
+- Required RAAN value
+- Orbital parameters (inclination, ω, perigee, apogee)
+- Visual confirmation of Moon encounter
+
+### 12.3 State Management
+
+**WizardState Interface:**
+```typescript
+interface WizardState {
+  stateVersion: number;
+  currentStepIndex: number;
+  lastSavedAt: Date;
+  landingSite?: {
+    name: string;
+    latitude: number;
+    longitude: number;
+  };
+  landingWindow?: {
+    startDate: Date;
+    endDate: Date;
+    sunElevation: { min: number; max: number; };
+  };
+  missionWindow?: {
+    startDate: Date;
+    endDate: Date;
+  };
+  loiDate?: Date;
+  requiredRAAN?: number;
+  orbitalParameters?: {
+    inclination: number;
+    raan: number;
+    omega: number;
+    perigeeAlt: number;
+    apogeeAlt: number;
+  };
+}
+```
+
+### 12.4 State Persistence
+
+**localStorage Implementation:**
+
+**Storage Key:** `cy3-orbit:wizard-state`
+
+**Features:**
+- Automatic save after each step completion
+- Resume dialog on app restart
+- 30-day auto-expiration
+- Version-aware state migration
+
+**State Versioning:**
+- `stateVersion` field for schema changes
+- Migration function for backwards compatibility
+- Handles breaking changes gracefully
+
+**Example:**
+```typescript
+// Save
+localStorage.setItem('cy3-orbit:wizard-state', JSON.stringify(wizardState));
+
+// Load with validation
+const savedState = JSON.parse(localStorage.getItem('cy3-orbit:wizard-state'));
+if (savedState.stateVersion !== CURRENT_VERSION) {
+  migrateState(savedState);
+}
+```
+
+### 12.5 Sun Elevation Algorithm
+
+**Purpose:** Calculate Sun elevation angle at landing site over time
+
+**Steps:**
+1. Calculate Moon's orientation (libration) at given time
+2. Calculate Sun's position relative to Moon
+3. Transform to landing site local frame
+4. Calculate elevation angle from local horizon
+
+**Landing Window Detection:**
+- Scan time range in hourly steps
+- Identify continuous periods where 6° ≤ elevation ≤ 9°
+- Group into discrete landing windows
+- Return window start/end times
+
+**Key Functions:**
+- `calculateSunElevationAtSite(site, date)`
+- `findLandingWindows(site, startDate, endDate)`
+- `calculateRequiredRAAN(landingTime, site)`
+
+### 12.6 Orbital Optimization Algorithms
+
+**Moon Equator Crossing Detection:**
+
+**Function:** `findMoonEquatorCrossings(craftPos, moonPos, orbitParams)`
+
+**Algorithm:**
+1. Sample spacecraft position at regular intervals
+2. Calculate position relative to Moon
+3. Detect Z-coordinate sign changes (equator crossings)
+4. Refine using bisection method
+5. Classify as ascending/descending
+
+**Optimal LOI Date Finding:**
+
+**Function:** `findOptimalLOIDates(requiredRAAN, landingDate)`
+
+**Strategy:**
+1. Work backwards from landing date: `LOI = landing - transfer_time`
+2. Calculate Moon RA at landing time
+3. Find dates when spacecraft RAAN matches required value
+4. Verify equator crossing at apogee
+5. Optimize for minimum distance to Moon
+
+### 12.7 Integration with Main Application
+
+**Current Status:** **Standalone proof-of-concept**
+
+**Why Separate?**
+- Different educational philosophy
+- Different state management needs (persistent vs. ephemeral)
+- Different workflows (linear vs. free-form)
+- Independent development and testing
+
+**Future Integration Plans:**
+- Export wizard results to Plan mode
+- Populate LaunchEvent from WizardState
+- "Import from Wizard" button in Plan mode
+- Unified state format for interoperability
+
+### 12.8 Wizard Testing
+
+**Unit Tests:**
+- Sun elevation calculation accuracy
+- RAAN calculation from landing geometry
+- Landing window detection logic
+- State serialization/deserialization
+
+**E2E Tests:**
+- Complete 4-step workflow
+- Step navigation and validation
+- State persistence across page reloads
+- Resume functionality
+
+**Test Files:**
+- `tests/unit/sunElevation.test.ts`
+- `tests/e2e/e2e-wizard-demo.test.ts`
+
+### 12.9 Wizard vs. Main App Comparison
+
+| Aspect | Main App | Wizard |
+|--------|----------|--------|
+| **Entry Point** | `index.html` | `src/wizard/demo.html` |
+| **Approach** | Forward simulation | Backwards design |
+| **Workflow** | Free-form exploration | Linear 4-step process |
+| **State** | Ephemeral (no persistence) | Persistent (localStorage) |
+| **Education Focus** | Orbital geometry | Mission planning methodology |
+| **Architecture** | Event bus | State machine |
+| **Status** | Production | Proof-of-concept |
+
+### 12.10 Wizard Documentation
+
+**See Also:**
+- **Mission Design Wizard Specification:** `docs/specs/mission-design-wizard-spec.md`
+- **Wizard Architecture:** `docs/ARCHITECTURE.md#mission-design-wizard-architecture`
+- **Wizard Testing:** `docs/TESTING.md#mission-design-wizard-testing`
+
+---
+
+## 13. Code Architecture
+
+### 13.1 File Structure
 
 ```
 cy3-orbit/
@@ -852,9 +1133,9 @@ const confirmed = await showConfirmDialog(
 
 ---
 
-## 13. Testing Strategy
+## 14. Testing Strategy
 
-### 13.1 Unit Tests (Vitest)
+### 14.1 Unit Tests (Vitest)
 
 **Coverage:** 28+ tests
 
@@ -871,7 +1152,7 @@ const confirmed = await showConfirmDialog(
 - Event emission triggers handlers
 - Cache invalidation works correctly
 
-### 13.2 End-to-End Tests (Playwright)
+### 14.2 End-to-End Tests (Playwright)
 
 **Coverage:** 108+ tests
 
@@ -895,7 +1176,7 @@ const confirmed = await showConfirmDialog(
    - Missing launch event handling
    - Boundary condition testing
 
-### 13.3 Test Configuration
+### 14.3 Test Configuration
 
 **Single Playwright Config with Projects** (`playwright.config.ts`):
 
@@ -905,7 +1186,7 @@ const confirmed = await showConfirmDialog(
 | `fast` | `e2e-(simple\|exact\|behaviors\|workflow\|modes).test.ts` | 33 | ~2m | CI, pre-commit |
 | `slow` | `e2e-.+.test.ts` | 49 | ~5m | Releases |
 
-### 13.4 npm Test Scripts
+### 14.4 npm Test Scripts
 
 ```json
 {
@@ -922,9 +1203,9 @@ const confirmed = await showConfirmDialog(
 
 ---
 
-## 14. Code Quality & Linting
+## 15. Code Quality & Linting
 
-### 14.1 ESLint Configuration
+### 15.1 ESLint Configuration
 
 The project uses ESLint with TypeScript support for static code analysis.
 
@@ -944,7 +1225,7 @@ The project uses ESLint with TypeScript support for static code analysis.
 | C     | 11-15      | **Rejected** |
 | D-F   | 16+        | **Rejected** |
 
-### 14.2 Pre-commit Hooks
+### 15.2 Pre-commit Hooks
 
 Pre-commit hooks ensure code quality before commits using the `pre-commit` framework.
 
@@ -966,7 +1247,7 @@ pre-commit run --all-files  # Run all hooks
 pre-commit run eslint       # Run specific hook
 ```
 
-### 14.3 Code Organization Principles
+### 15.3 Code Organization Principles
 
 **Complexity Reduction Strategies:**
 - Extract helper functions for repeated logic
@@ -982,9 +1263,9 @@ pre-commit run eslint       # Run specific hook
 
 ---
 
-## 15. Configuration & Constants
+## 16. Configuration & Constants
 
-### 15.1 Physical Constants
+### 16.1 Physical Constants
 
 ```typescript
 const EARTH_RADIUS = 6371; // km
@@ -993,7 +1274,7 @@ const EARTH_MU = 398600.4418; // km³/s² (gravitational parameter)
 const SPHERE_RADIUS = 100; // Celestial sphere radius (arbitrary units)
 ```
 
-### 15.2 Rendering Constants
+### 16.2 Rendering Constants
 
 ```typescript
 const ORBIT_SEGMENTS = 512; // Ellipse path smoothness
@@ -1013,7 +1294,7 @@ const NODE_MARKER_SCALE_RANGE = { min: 0.3, max: 1.5 };
 const SPACECRAFT_SCALE_RANGE = { min: 0.5, max: 2.0 };
 ```
 
-### 15.3 Default Mission Parameters
+### 16.3 Default Mission Parameters
 
 ```typescript
 const DEFAULT_LAUNCH_EVENT = {
@@ -1031,7 +1312,7 @@ const TIMELINE_START_DATE = new Date("2023-07-01T00:00:00");
 const TIMELINE_DURATION_DAYS = 90;
 ```
 
-### 15.4 GUI Configuration
+### 16.4 GUI Configuration
 
 ```typescript
 // lil-gui settings
@@ -1056,9 +1337,9 @@ const TIMELINE_PLAYBACK_SPEEDS = [
 
 ---
 
-## 16. Browser Compatibility
+## 17. Browser Compatibility
 
-### 16.1 Supported Browsers
+### 17.1 Supported Browsers
 
 - Chrome/Edge: 90+
 - Firefox: 88+
@@ -1072,7 +1353,7 @@ const TIMELINE_PLAYBACK_SPEEDS = [
 - Date input type
 - Range input type
 
-### 16.2 Responsive Design
+### 17.2 Responsive Design
 
 **Viewport Handling:**
 - Canvas fills available viewport
@@ -1087,9 +1368,9 @@ const TIMELINE_PLAYBACK_SPEEDS = [
 
 ---
 
-## 17. Deployment
+## 18. Deployment
 
-### 17.1 Build Process
+### 18.1 Build Process
 
 **Development:**
 ```bash
@@ -1106,7 +1387,7 @@ npm run build  # TypeScript compilation + Vite build
 - Minified JavaScript
 - Optimized assets
 
-### 17.2 GitHub Actions Workflow
+### 18.2 GitHub Actions Workflow
 
 **CI Pipeline:**
 1. Checkout code
@@ -1122,7 +1403,7 @@ npm run build  # TypeScript compilation + Vite build
 3. Generate coverage report
 4. Deploy to GitHub Pages
 
-### 17.3 GitHub Pages Deployment
+### 18.3 GitHub Pages Deployment
 
 **Configuration:**
 - Branch: `gh-pages`
@@ -1133,7 +1414,7 @@ npm run build  # TypeScript compilation + Vite build
 
 ---
 
-## 18. Future Enhancements (Not Implemented)
+## 19. Future Enhancements (Not Implemented)
 
 The following features were discussed but not implemented in the current version:
 
@@ -1148,7 +1429,7 @@ The following features were discussed but not implemented in the current version
 
 ---
 
-## 19. Known Limitations
+## 20. Known Limitations
 
 1. **Simplified Physics:**
    - No perturbations (Earth oblateness, solar gravity, etc.)
@@ -1173,7 +1454,7 @@ The following features were discussed but not implemented in the current version
 
 ---
 
-## 20. License and Attribution
+## 21. License and Attribution
 
 **Project License:** [Specify license]
 
@@ -1187,7 +1468,7 @@ The following features were discussed but not implemented in the current version
 
 ---
 
-## 21. Appendix: Glossary
+## 22. Appendix: Glossary
 
 **AOP (Argument of Periapsis):** Angle from ascending node to periapsis, measured in the orbital plane (symbol: ω)
 

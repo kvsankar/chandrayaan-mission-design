@@ -31,7 +31,7 @@ This mapping handles Three.js's Y-up convention while maintaining proper celesti
 #### Chandrayaan-3 Orbit
 - **Type**: Highly elliptical (not circular)
 - **Perigee**: 180 km altitude (default, adjustable 180-10,000 km)
-- **Apogee**: Fixed at 384,400 km (lunar orbit distance)
+- **Apogee**: Adjustable (default ~384,400 km, lunar orbit distance)
 - **Eccentricity**: Automatically calculated from perigee and apogee
   - Formula: `e = (apogee - perigee) / (apogee + perigee)`
   - Default: ~0.967 (very elliptical)
@@ -67,7 +67,7 @@ This mapping handles Three.js's Y-up convention while maintaining proper celesti
 
 ```
 cy3-orbit/
-├── index.html               # Main HTML with legend panel and imports
+├── index.html               # Main orbit visualization application
 ├── CLAUDE.md                # This file (developer documentation)
 ├── package.json             # NPM dependencies and scripts
 ├── tsconfig.json            # TypeScript configuration
@@ -77,9 +77,9 @@ cy3-orbit/
 ├── playwright.config.ts     # E2E test config (projects: default, fast, slow)
 ├── .pre-commit-config.yaml  # Pre-commit hooks (ESLint, TypeScript, etc.)
 ├── src/                     # Source files
-│   ├── main.ts              # Three.js visualization logic
-│   ├── style.css            # Styling for UI elements
-│   ├── constants.ts         # Application constants
+│   ├── main.ts              # Three.js visualization logic (main app)
+│   ├── style.css            # Styling for main application
+│   ├── constants.ts         # Application-wide constants
 │   ├── events.ts            # Event bus for state management
 │   ├── types.ts             # TypeScript type definitions
 │   ├── launchEventSetters.ts    # Launch event update functions
@@ -88,14 +88,51 @@ cy3-orbit/
 │   ├── types/               # Type declarations
 │   │   ├── astronomy-engine.d.ts
 │   │   └── lil-gui.d.ts
-│   └── ui/
-│       └── dialog.ts        # UI dialog components
+│   ├── ui/
+│   │   └── dialog.ts        # UI dialog components
+│   └── wizard/              # Mission Design Wizard (separate application)
+│       ├── demo.html        # Wizard entry point
+│       ├── wizard.css       # Wizard-specific styling
+│       ├── WizardController.ts  # Main wizard controller/state machine
+│       ├── steps/           # Wizard step implementations
+│       │   ├── LandingSiteStep.ts     # Step 1: Select landing site
+│       │   ├── LandingWindowStep.ts   # Step 2: Choose landing window
+│       │   ├── MissionWindowStep.ts   # Step 3: Select mission window
+│       │   └── LOIDateStep.ts         # Step 4: Optimize LOI date
+│       ├── components/      # Wizard UI components
+│       │   ├── MoonGlobeView.ts       # 3D Moon globe with landing sites
+│       │   ├── SiteMarkers.ts         # Landing site markers on globe
+│       │   ├── SunIlluminationPanel.ts # Sun elevation visualization
+│       │   ├── OrbitVisualizationPanel.ts  # Complete orbit visualization
+│       │   ├── ORBIT_PANEL_SPEC.md    # Orbit panel specification
+│       │   └── orbitVisualization/    # Orbit visualization sub-components
+│       │       ├── index.ts           # Module exports
+│       │       ├── types.ts           # Component type definitions
+│       │       ├── OrbitScene.ts      # Three.js scene setup
+│       │       ├── orbitCore.ts       # Core orbital rendering logic
+│       │       ├── OrbitVisualizationPanel.ts  # Main panel component
+│       │       └── TimelineControls.ts # Timeline UI controls
+│       ├── calculations/    # Wizard-specific calculations
+│       │   └── sunElevation.ts        # Sun elevation algorithms
+│       ├── data/            # Static data for wizard
+│       │   └── landing-sites.json     # Pre-defined landing sites
+│       └── poc/             # Proof-of-concept code
+│           └── sun-elevation-poc.ts   # Initial sun elevation validation
 ├── tests/
 │   ├── unit/                # Unit tests (Vitest)
+│   │   ├── ra-calculations.test.ts
+│   │   ├── optimization.test.ts
+│   │   └── ...
 │   └── e2e/                 # E2E tests (Playwright)
+│       ├── e2e-wizard-demo.test.ts    # Wizard workflow tests
+│       ├── e2e-mode-transitions.test.ts
+│       └── ...
 ├── docs/                    # Documentation
 │   ├── ARCHITECTURE.md
 │   ├── TESTING.md
+│   ├── specs/
+│   │   ├── spec.md
+│   │   └── mission-design-wizard-spec.md
 │   └── ...
 └── .github/workflows/
     └── deploy.yml           # CI/CD: tests + GitHub Pages deployment
@@ -219,6 +256,285 @@ All distance measurements use **center-to-center distances** and are calculated 
 4. **Node Positions**: Calculated by rotating (±R, 0, 0) in orbital plane by inclination and RAAN
 5. **Center-to-center distances**: All distance thresholds (capture, etc.) measure from object centers
 6. **Spherical Trigonometry**: RA↔True Anomaly conversions use proper spherical trig (NOT simple addition/subtraction)
+
+## Mission Design Wizard Architecture
+
+The Mission Design Wizard is a **separate standalone application** (demo.html) that implements a guided, multi-step workflow for planning lunar missions using a **backwards mission design methodology**.
+
+### Philosophy: Backwards Mission Design
+
+Unlike the main visualization app (Explore/Plan/Game modes), the wizard works **backwards from the landing site**:
+
+1. **Start at the destination**: Select landing site on Moon
+2. **Work backwards**: Determine when Sun provides adequate illumination
+3. **Find required orbital geometry**: Calculate RAAN needed for landing window
+4. **Optimize timing**: Find optimal LOI date for mission success
+
+This approach teaches orbital mechanics through **goal-oriented problem solving** rather than forward simulation.
+
+### Four-Step Workflow
+
+**Step 1: Landing Site Selection**
+- Interactive 3D Moon globe with pre-defined landing sites
+- Sites include: Shackleton Crater, Malapert Massif, Apollo 17, etc.
+- Displays site coordinates (latitude, longitude)
+- Component: `LandingSiteStep.ts`, `MoonGlobeView.ts`, `SiteMarkers.ts`
+
+**Step 2: Landing Window Selection**
+- Calculates Sun elevation at selected site over time
+- Identifies viable landing windows (6°-9° Sun elevation)
+- Displays time windows with optimal lighting conditions
+- Algorithm: `sunElevation.ts` using astronomy-engine
+- Component: `LandingWindowStep.ts`, `SunIlluminationPanel.ts`
+
+**Step 3: Mission Window Selection**
+- Presents available mission timeframes
+- Allows selection of specific mission dates
+- Connects landing window to launch planning
+- Component: `MissionWindowStep.ts`
+
+**Step 4: LOI Date Optimization**
+- Calculates required RAAN from landing window timing
+- Finds optimal Lunar Orbit Insertion (LOI) dates
+- Uses Moon equator crossing detection
+- Displays full orbital timeline and visualization
+- Algorithm: `findOptimalLOIDates()` in `optimization.ts`
+- Component: `LOIDateStep.ts`, `OrbitVisualizationPanel.ts`
+
+### Component Hierarchy
+
+```
+WizardController (state machine)
+├── LandingSiteStep
+│   └── MoonGlobeView
+│       └── SiteMarkers
+├── LandingWindowStep
+│   └── SunIlluminationPanel
+├── MissionWindowStep
+├── LOIDateStep
+│   └── OrbitVisualizationPanel
+│       ├── OrbitScene
+│       ├── orbitCore
+│       └── TimelineControls
+```
+
+### State Management
+
+**WizardState Interface** (defined in `WizardController.ts`):
+- `currentStepIndex`: Current step (0-3)
+- `landingSite`: Selected landing location
+- `landingWindow`: Chosen time window with Sun elevation
+- `missionWindow`: Selected mission timeframe
+- `loiDate`: Optimized LOI date
+- `requiredRAAN`: Calculated RAAN from landing geometry
+
+**State Persistence**:
+- Stored in `localStorage` with key: `cy3-orbit:wizard-state`
+- Includes version field for migration: `stateVersion: 1`
+- Automatically saved after each step completion
+- Auto-clears after 30 days of inactivity
+- Resume dialog on app restart if saved state exists
+
+**State Versioning**:
+- Future-proof design for schema changes
+- Migration path for breaking changes
+- Version comparison on load
+
+### Integration with Main Application
+
+**Current Status**: The wizard is a **standalone proof-of-concept**. It demonstrates:
+- Feasibility of backwards mission design pedagogy
+- Sun elevation calculation algorithms
+- RAAN optimization from landing constraints
+
+**Future Integration** (not yet implemented):
+- Export wizard results to main app's Plan mode
+- Populate launch event parameters from wizard state
+- Unified state management between applications
+
+### Key Differences from Main App
+
+| Feature | Main App (index.html) | Wizard (demo.html) |
+|---------|----------------------|-------------------|
+| Approach | Forward simulation | Backwards design |
+| Entry Point | Three operating modes | Single guided workflow |
+| State | Launch events + GUI state | WizardState object |
+| Persistence | None (ephemeral) | localStorage (persistent) |
+| Education Focus | Interactive exploration | Step-by-step methodology |
+
+## Constants Module
+
+Defined in `src/constants.ts` - centralized application constants.
+
+### Physical Constants
+
+```typescript
+EARTH_RADIUS = 6371       // km
+MOON_RADIUS = 1737        // km
+LUNAR_ORBIT_DISTANCE = 384400  // km (average Earth-Moon distance)
+```
+
+### Visualization Constants
+
+```typescript
+SPHERE_RADIUS = 100       // Visual size of celestial sphere
+SCALE_FACTOR = 100 / 384400  // Scale for displaying lunar orbit
+```
+
+### Capture Thresholds
+
+```typescript
+CAPTURE_RADIUS_KM = 66000  // Distance for Moon capture detection
+MOON_RADIUS_KM = 1737      // Used in closest approach calculations
+```
+
+### Sun Elevation Parameters
+
+```typescript
+MIN_SUN_ELEVATION = 6      // Minimum Sun angle for landing (degrees)
+MAX_SUN_ELEVATION = 9      // Maximum Sun angle for landing (degrees)
+```
+
+Landing windows are defined as times when Sun elevation is within this range, providing adequate illumination without excessive heat.
+
+### Orbital Parameters
+
+```typescript
+PERIGEE_ALTITUDE_MIN = 180     // km
+PERIGEE_ALTITUDE_MAX = 10000   // km
+PERIGEE_ALTITUDE_DEFAULT = 180 // km
+```
+
+## Sun Elevation Calculations
+
+Algorithm in `src/wizard/calculations/sunElevation.ts` - calculates Sun elevation angle at landing site over time.
+
+### Algorithm Overview
+
+**Purpose**: Determine when the Sun is at optimal elevation (6°-9°) for safe landing at a specific lunar location.
+
+**Steps**:
+
+1. **Input Parameters**:
+   - Landing site latitude/longitude (selenographic coordinates)
+   - Time range (start date → end date)
+   - Time step (default: 1 hour)
+
+2. **For each time step**:
+   - Calculate Moon's orientation (libration) using astronomy-engine
+   - Calculate Sun's position relative to Moon
+   - Transform Sun position to landing site local frame
+   - Calculate elevation angle from local horizon
+
+3. **Landing Window Detection**:
+   - Identify continuous periods where `6° ≤ elevation ≤ 9°`
+   - Group into discrete landing windows
+   - Return window start/end times
+
+### Required RAAN Calculation
+
+Once a landing window is selected, the wizard calculates the **required RAAN** for the spacecraft orbit:
+
+**Formula**:
+```
+Required RAAN = Moon RA at landing time - offset
+```
+
+Where the offset depends on:
+- Landing site longitude
+- Moon's orientation (libration)
+- Desired approach geometry
+
+This RAAN ensures the spacecraft's orbital plane intersects the Moon when the landing site has proper illumination.
+
+### Key Functions
+
+- `calculateSunElevationAtSite(site, date)`: Single point calculation
+- `findLandingWindows(site, startDate, endDate)`: Window detection
+- `calculateRequiredRAAN(landingTime, site)`: Orbital geometry calculation
+
+## Orbital Optimization Algorithms
+
+Defined in `src/optimization.ts` - algorithms for finding optimal orbital parameters.
+
+### Moon Equator Crossing Detection
+
+**Function**: `findMoonEquatorCrossings(craftPos, moonPos, orbitParams)`
+
+**Purpose**: Identify when the spacecraft crosses the Moon's equatorial plane during its orbit.
+
+**Algorithm**:
+1. Sample spacecraft position at regular true anomaly intervals
+2. Calculate position relative to Moon
+3. Detect sign changes in Z-coordinate (equatorial plane crossings)
+4. Refine crossing points using bisection method
+5. Classify as ascending (south→north) or descending (north→south)
+
+**Returns**: Array of crossing events with:
+- `trueAnomaly`: Position in orbit where crossing occurs
+- `time`: Time of crossing (if using time-based orbit)
+- `type`: 'ascending' or 'descending'
+- `distanceFromMoon`: Distance to Moon center at crossing
+
+**Used in**: LOI date optimization, trajectory analysis
+
+### Optimal LOI Date Finding
+
+**Function**: `findOptimalLOIDates(requiredRAAN, landingDate, options)`
+
+**Purpose**: Find the best date for Lunar Orbit Insertion given landing constraints.
+
+**Strategy**:
+1. **Work backwards from landing**: `landingDate - transferTime`
+2. **Moon RA calculation**: Determine Moon's RA at landing time
+3. **RAAN matching**: Find dates when spacecraft RAAN aligns with required geometry
+4. **Equator crossing check**: Verify spacecraft crosses Moon's equator at apogee
+5. **Distance optimization**: Minimize apogee-to-Moon distance
+
+**Constraints**:
+- Spacecraft must reach Moon vicinity at the right RAAN
+- Apogee should occur near Moon equator crossing
+- Distance to Moon at apogee < capture radius
+
+**Returns**: Array of viable LOI dates with:
+- `date`: LOI date
+- `requiredRAAN`: RAAN value needed
+- `closestApproach`: Distance to Moon (km)
+- `equatorCrossing`: Crossing event details
+
+### Multi-Start Apogee Optimization
+
+**Function**: `optimizeApogeeToMoonMultiStart(params)`
+
+**Purpose**: Adjust apogee distance to minimize closest approach to Moon.
+
+**Algorithm**:
+1. **Grid search**: Try multiple initial apogee values
+2. **Local optimization**: Refine each using gradient descent
+3. **Constraint satisfaction**: Ensure physical validity
+4. **Best solution selection**: Choose minimum distance result
+
+**Parameters**:
+- Initial orbital parameters
+- Target Moon position
+- Distance tolerance
+
+**Used in**: Plan mode optimization, wizard LOI calculations
+
+### Kepler's Equation Solver
+
+**Function**: `getTrueAnomalyFromTime(time, period, eccentricity)`
+
+**Purpose**: Convert elapsed time to position in orbit (true anomaly).
+
+**Algorithm**:
+1. Calculate mean anomaly: `M = 2π * (time / period)`
+2. Solve Kepler's equation for eccentric anomaly: `M = E - e*sin(E)`
+3. Convert eccentric anomaly to true anomaly using eccentricity
+
+**Method**: Newton-Raphson iteration for high-accuracy solution
+
+**Used in**: Time-based orbit simulation, capture event timing
 
 ## Orbital Calculations
 

@@ -25,7 +25,9 @@ import {
 } from '../../constants.js';
 import {
     getTrueAnomalyFromTime,
-    calculateMoonPositionAtDate
+    calculateMoonPositionAtDate,
+    extractPositionFromState,
+    extractVelocityFromState
 } from '../../optimization.js';
 
 // Timeline speed options (days per second)
@@ -838,16 +840,19 @@ export class OrbitVisualizationPanel {
 
             // Calculate inclination from position and velocity
             // This is a simplified approach
-            // GeoMoonState returns { position: Vector, velocity: Vector }
+            // GeoMoonState returns { position: Vector, velocity: Vector } or old format
+            const position = extractPositionFromState(moonState);
+            const velocity = extractVelocityFromState(moonState);
+
             const pos = new THREE.Vector3(
-                moonState.position.x,
-                moonState.position.y,
-                moonState.position.z
+                position.x,
+                position.y,
+                position.z
             );
             const vel = new THREE.Vector3(
-                moonState.velocity.x,
-                moonState.velocity.y,
-                moonState.velocity.z
+                velocity.x,
+                velocity.y,
+                velocity.z
             );
 
             // Angular momentum vector

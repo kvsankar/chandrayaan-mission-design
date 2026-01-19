@@ -14,7 +14,14 @@ The animation has three modes: Explore, Plan, and Game. The Explore mode teaches
 
 ## Features
 
-### Three Operating Modes
+### Two Applications
+
+This project includes **two separate applications**:
+
+1. **Main Orbit Visualization** (`index.html`) - Interactive 3D visualization with three operating modes
+2. **Mission Design Wizard** (`src/wizard/demo.html`) - Guided multi-step mission planning workflow
+
+### Three Operating Modes (Main Application)
 
 #### Explore Mode
 - **Manual control** of all orbital parameters
@@ -29,7 +36,7 @@ The animation has three modes: Explore, Plan, and Game. The Explore mode teaches
 - Define launch parameters with realistic constraints:
   - Inclination: 21.5° or 41.8° (dropdown)
   - Argument of Periapsis: 178°, 198°, or 203° (depends on inclination)
-  - Perigee altitude: 180-600,000 km
+  - Perigee altitude: 180-10,000 km
   - Launch date and Moon intercept date
 - Three independent timeline sliders:
   - **View**: General timeline navigation
@@ -46,6 +53,69 @@ The animation has three modes: Explore, Plan, and Game. The Explore mode teaches
 - Timeline animation with playback controls
 - Spacecraft visualized based on saved launch event
 - Capture detection with toast notification when spacecraft reaches Moon
+
+### Mission Design Wizard (Separate Application)
+
+The wizard implements a **backwards mission design methodology** - starting from the landing site and working backwards to determine orbital parameters.
+
+#### Educational Philosophy
+
+**Backwards Design Approach:**
+1. Start with the destination (landing site on Moon)
+2. Determine when Sun provides proper illumination
+3. Calculate required orbital geometry (RAAN)
+4. Find optimal LOI (Lunar Orbit Insertion) date
+
+This goal-oriented approach helps students understand **why** specific orbital parameters are chosen, rather than just adjusting them freely.
+
+#### Four-Step Workflow
+
+**Step 1: Landing Site Selection**
+- Interactive 3D Moon globe with pre-defined landing sites
+- Sites include Shackleton Crater, Malapert Massif, Apollo 17, etc.
+- Visual markers on Moon surface showing site locations
+
+**Step 2: Landing Window Selection**
+- Calculates Sun elevation angles at selected site over time
+- Identifies viable landing windows (6°-9° Sun elevation)
+- Shows time periods with optimal lighting conditions
+- Prevents landing during extreme temperatures
+
+**Step 3: Mission Window Selection**
+- Presents available mission timeframes
+- Allows selection of specific mission dates
+- Connects landing constraints to launch planning
+
+**Step 4: LOI Date Optimization**
+- Calculates required RAAN from landing window timing
+- Finds optimal dates for Lunar Orbit Insertion
+- Displays complete orbital timeline with 3D visualization
+- Shows spacecraft trajectory and Moon encounter
+
+#### Key Features
+
+**Sun Elevation Calculations:**
+- Accurate Sun position relative to landing site
+- Libration effects included
+- Landing window detection algorithm
+- Visualization of Sun angles over time
+
+**Orbital Optimization:**
+- Automatic RAAN calculation from landing constraints
+- Moon equator crossing detection
+- Closest approach distance optimization
+- Multi-start optimization for robust solutions
+
+**State Persistence:**
+- Saves progress in browser localStorage
+- Resume capability after closing browser
+- Auto-clear after 30 days
+- Version-aware state migration
+
+**Relationship to Main Application:**
+- Currently a **standalone proof-of-concept**
+- Demonstrates backwards mission design feasibility
+- Future integration planned with main app's Plan mode
 
 ### Timeline System
 
@@ -199,21 +269,50 @@ This handles Three.js's Y-up convention while maintaining celestial semantics.
 
 ```
 cy3-orbit/
-├── index.html                    # Main HTML with UI components
-├── main.ts                       # Three.js visualization and orbital mechanics
+├── index.html                    # Main orbit visualization application
 ├── src/
+│   ├── main.ts                   # Three.js visualization and orbital mechanics
+│   ├── style.css                 # Main application styling
+│   ├── constants.ts              # Application-wide constants
 │   ├── events.ts                 # Event bus for state management
 │   ├── launchEventSetters.ts    # Launch event update functions
-│   └── types.ts                  # TypeScript type definitions
-├── style.css                     # Styling for all UI elements
-├── *.test.ts                     # Unit tests (Vitest)
-├── e2e-*.test.ts                 # E2E tests (Playwright)
-├── playwright.config.ts          # E2E test configuration (all tests)
-├── playwright.config.fast.ts    # Fast E2E tests for CI
-├── playwright.config.slow.ts    # Comprehensive E2E tests for releases
-├── TESTING.md                    # Testing strategy documentation
-├── ARCHITECTURE.md               # Event bus architecture documentation
-├── CLAUDE.md                     # Technical developer documentation
+│   ├── launchEventComputed.ts   # Computed launch event values
+│   ├── optimization.ts           # Orbital optimization algorithms
+│   ├── types.ts                  # TypeScript type definitions
+│   ├── ui/
+│   │   └── dialog.ts             # UI dialog components
+│   └── wizard/                   # Mission Design Wizard (separate app)
+│       ├── demo.html             # Wizard entry point
+│       ├── wizard.css            # Wizard styling
+│       ├── WizardController.ts   # Main wizard controller
+│       ├── steps/                # Four wizard steps
+│       │   ├── LandingSiteStep.ts
+│       │   ├── LandingWindowStep.ts
+│       │   ├── MissionWindowStep.ts
+│       │   └── LOIDateStep.ts
+│       ├── components/           # Wizard UI components
+│       │   ├── MoonGlobeView.ts
+│       │   ├── SiteMarkers.ts
+│       │   ├── SunIlluminationPanel.ts
+│       │   ├── OrbitVisualizationPanel.ts
+│       │   └── orbitVisualization/
+│       ├── calculations/
+│       │   └── sunElevation.ts   # Sun elevation algorithms
+│       └── data/
+│           └── landing-sites.json
+├── tests/
+│   ├── unit/                     # Unit tests (Vitest)
+│   └── e2e/                      # E2E tests (Playwright)
+│       ├── e2e-wizard-demo.test.ts
+│       └── ...
+├── docs/
+│   ├── ARCHITECTURE.md           # Event bus architecture
+│   ├── TESTING.md                # Testing strategy
+│   ├── CLAUDE.md                 # Technical documentation
+│   └── specs/
+│       ├── spec.md
+│       └── mission-design-wizard-spec.md
+├── playwright.config.ts          # E2E test configuration
 └── README.md                     # This file
 ```
 

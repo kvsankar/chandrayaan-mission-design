@@ -1,9 +1,9 @@
 declare module 'https://cdn.jsdelivr.net/npm/lil-gui@0.18/+esm' {
   export class GUI {
     constructor(options?: { autoPlace?: boolean; container?: HTMLElement; width?: number; title?: string });
-    add(object: any, property: string, options?: number | number[] | { [key: string]: number }, max?: number, step?: number): Controller;
+    add(object: Record<string, unknown>, property: string, options?: number | number[] | { [key: string]: number }, max?: number, step?: number): Controller;
     addFolder(title: string): GUI;
-    onChange(callback: (value: any) => void): this;
+    onChange(callback: (value: unknown) => void): this;
     title(title: string): this;
     destroy(): void;
     hide(): void;
@@ -13,10 +13,10 @@ declare module 'https://cdn.jsdelivr.net/npm/lil-gui@0.18/+esm' {
 
   export class Controller {
     name(name: string): this;
-    onChange(callback: (value: any) => void): this;
-    onFinishChange(callback: (value: any) => void): this;
-    setValue(value: any): this;
-    getValue(): any;
+    onChange(callback: (value: unknown) => void): this;
+    onFinishChange(callback: (value: unknown) => void): this;
+    setValue(value: unknown): this;
+    getValue(): unknown;
     disable(disabled?: boolean): this;
     enable(): this;
     show(): this;

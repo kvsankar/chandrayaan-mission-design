@@ -20,6 +20,11 @@ import {
     optimizeApogeeToMoonMultiStart
 } from '../../optimization.js';
 import { OrbitVisualizationPanel, OrbitalParams, TimelineConfig } from '../components/orbitVisualization/index.js';
+import * as Astronomy from 'astronomy-engine';
+
+interface WindowWithAstronomy extends Window {
+    Astronomy?: typeof Astronomy;
+}
 
 // Default orbital parameters for CY3-like mission
 const DEFAULT_PERIGEE_ALT = 180;  // km
@@ -193,7 +198,7 @@ export class LOIDateStep {
         const afterDate = new Date(date.getTime() + 60 * 60 * 1000);
 
         try {
-            const Astronomy = (window as any).Astronomy;
+            const Astronomy = (window as WindowWithAstronomy).Astronomy;
             if (!Astronomy) return true;
 
             const decBefore = this.getMoonDeclination(beforeDate);
@@ -207,15 +212,15 @@ export class LOIDateStep {
 
     private getMoonDeclination(date: Date): number {
         try {
-            const Astronomy = (window as any).Astronomy;
+            const Astronomy = (window as WindowWithAstronomy).Astronomy;
             const time = Astronomy.MakeTime(date);
             const state = Astronomy.GeoMoonState(time);
-            const hasPosition = state.position !== undefined;
+            const position = ('position' in state) ? state.position : state;
             const geoVector = {
-                x: hasPosition ? state.position.x : state.x,
-                y: hasPosition ? state.position.y : state.y,
-                z: hasPosition ? state.position.z : state.z,
-                t: hasPosition ? state.position.t : state.t
+                x: position.x,
+                y: position.y,
+                z: position.z,
+                t: position.t
             };
             const equatorial = Astronomy.EquatorFromVector(geoVector);
             return equatorial.dec;
@@ -630,6 +635,7 @@ export class LOIDateStep {
         return this.state.transferOrbit;
     }
 
+    // eslint-disable-next-line complexity
     private initOrbitVisualization(): void {
         const orbitContainer = this.container.querySelector('#orbit-container') as HTMLElement;
         if (!orbitContainer) return;
@@ -702,14 +708,11 @@ export class LOIDateStep {
                 }
             });
             // Connect inline expand control to the panel's fullscreen toggle
-            if (expandBtn) {
-                const toggleFn = (this.orbitPanel as any)?.toggleFullscreen;
-                if (typeof toggleFn === 'function') {
-                    expandBtn.classList.remove('hidden');
-                    expandBtn.addEventListener('click', () => toggleFn.call(this.orbitPanel));
-                } else {
-                    expandBtn.classList.add('hidden');
-                }
+            if (expandBtn && this.orbitPanel) {
+                expandBtn.classList.remove('hidden');
+                expandBtn.addEventListener('click', () => this.orbitPanel?.toggleFullscreen());
+            } else if (expandBtn) {
+                expandBtn.classList.add('hidden');
             }
         } catch (error) {
             console.warn('Failed to initialize orbit visualization:', error);
@@ -780,8 +783,7 @@ export class LOIDateStep {
         // Ensure expand button is visible when visualization is active
         const expandBtn = this.container.querySelector('#orbit-expand-btn') as HTMLButtonElement | null;
         if (expandBtn) {
-            const toggleFn = (this.orbitPanel as any)?.toggleFullscreen;
-            if (typeof toggleFn === 'function') {
+            if (this.orbitPanel) {
                 expandBtn.classList.remove('hidden');
             } else {
                 expandBtn.classList.add('hidden');

@@ -161,6 +161,200 @@ projects: [
 ]
 ```
 
+## Mission Design Wizard Testing
+
+The wizard application has its own dedicated test suite covering the backwards mission design workflow.
+
+### Test Structure
+
+```
+tests/
+├── unit/
+│   └── sunElevation.test.ts    # Sun elevation calculations
+└── e2e/
+    └── e2e-wizard-demo.test.ts  # Wizard workflow tests
+```
+
+### Unit Tests for Wizard
+
+**File**: `tests/unit/sunElevation.test.ts`
+
+Tests for Sun elevation calculation algorithms:
+- Accurate Sun position calculation at landing sites
+- Landing window detection (6°-9° elevation)
+- Required RAAN calculation from landing geometry
+- Edge cases (polar sites, libration effects)
+
+**Example**:
+```typescript
+test('calculates Sun elevation at Shackleton Crater', () => {
+    const site = { latitude: -89.9, longitude: 0 };
+    const date = new Date('2023-08-15T12:00:00Z');
+
+    const elevation = calculateSunElevation(site, date);
+
+    expect(elevation).toBeGreaterThan(6);
+    expect(elevation).toBeLessThan(9);
+});
+```
+
+### E2E Tests for Wizard
+
+**File**: `tests/e2e/e2e-wizard-demo.test.ts`
+
+Comprehensive wizard workflow tests:
+
+#### Step Navigation
+- Forward navigation through all 4 steps
+- Backward navigation preserves data
+- Step validation prevents premature advancement
+- Progress indicator updates correctly
+
+#### Landing Site Selection (Step 1)
+- Moon globe renders correctly
+- Site markers visible and clickable
+- Site selection updates state
+- Site details display properly
+
+#### Landing Window Selection (Step 2)
+- Sun elevation chart displays
+- Landing windows calculated correctly
+- Window selection updates state
+- Time range validation
+
+#### Mission Window Selection (Step 3)
+- Date inputs functional
+- Mission window validation
+- Compatibility with landing window
+
+#### LOI Date Optimization (Step 4)
+- RAAN calculation from landing constraints
+- Optimal LOI dates found
+- Orbital visualization displays
+- Timeline controls functional
+
+#### State Persistence
+- State saves to localStorage after each step
+- Resume dialog appears on page reload
+- State clears after 30 days
+- Version migration works correctly
+
+**Example Test**:
+```typescript
+test('wizard completes full workflow and persists state', async ({ page, context }) => {
+    await page.goto('/src/wizard/demo.html');
+
+    // Step 1: Select landing site
+    await expect(page.locator('h2')).toContainText('Step 1');
+    await page.click('[data-testid="site-shackleton"]');
+    await page.click('[data-testid="next-step"]');
+
+    // Step 2: Choose landing window
+    await expect(page.locator('h2')).toContainText('Step 2');
+    await page.click('[data-testid="window-0"]');
+    await page.click('[data-testid="next-step"]');
+
+    // Step 3: Select mission window
+    await expect(page.locator('h2')).toContainText('Step 3');
+    await page.fill('[data-testid="mission-start"]', '2023-07-14');
+    await page.click('[data-testid="next-step"]');
+
+    // Step 4: View LOI results
+    await expect(page.locator('h2')).toContainText('Step 4');
+    await expect(page.locator('[data-testid="loi-date"]')).toBeVisible();
+    await expect(page.locator('[data-testid="required-raan"]')).toContainText(/\d+/);
+
+    // Verify state persistence
+    await page.reload();
+    await expect(page.locator('.resume-dialog')).toBeVisible();
+    await page.click('[data-testid="resume-yes"]');
+    await expect(page.locator('h2')).toContainText('Step 4');
+});
+```
+
+### Window Exposure for Testing
+
+The wizard exposes state for E2E testing:
+
+```typescript
+window.wizardState      // Complete wizard state
+window.wizardController // Controller instance for step navigation
+```
+
+**Usage**:
+```typescript
+const state = await page.evaluate(() => {
+    return (window as any).wizardState;
+});
+
+expect(state.currentStepIndex).toBe(2);
+expect(state.landingSite.name).toBe('Shackleton Crater');
+```
+
+### Test Coverage Goals
+
+**Unit Tests**:
+- Sun elevation calculations: 100% coverage
+- RAAN calculation algorithms: 100% coverage
+- Landing window detection: Edge cases included
+
+**E2E Tests**:
+- All 4 steps navigable: ✓
+- State persistence: ✓
+- Resume functionality: ✓
+- Validation logic: ✓
+- Error handling: Partial (to be expanded)
+
+### Running Wizard Tests
+
+```bash
+# Unit tests
+npm test -- sunElevation.test.ts
+
+# E2E tests
+npm run test:e2e -- e2e-wizard-demo.test.ts
+
+# All wizard tests
+npm run test:wizard  # (if script added to package.json)
+```
+
+### Integration with Main Test Suite
+
+Wizard tests are **separate** from main app tests:
+- Different entry point (`demo.html` vs `index.html`)
+- Different state structure (`WizardState` vs `LaunchEvent`)
+- Different user workflows (linear vs free-form)
+
+**CI Strategy**:
+- Fast profile: Excludes wizard tests (main app only)
+- Slow profile: Includes wizard tests
+- Rationale: Wizard is proof-of-concept, main app is production
+
+### Common Wizard Test Patterns
+
+**Waiting for calculations**:
+```typescript
+await page.waitForSelector('[data-testid="calculation-complete"]', {
+    timeout: 10000 // Sun elevation calculations can take time
+});
+```
+
+**Checking localStorage**:
+```typescript
+const savedState = await page.evaluate(() => {
+    return localStorage.getItem('cy3-orbit:wizard-state');
+});
+expect(savedState).not.toBeNull();
+```
+
+**Step validation**:
+```typescript
+const nextButton = page.locator('[data-testid="next-step"]');
+await expect(nextButton).toBeDisabled(); // Before selection
+await page.click('[data-testid="site-shackleton"]');
+await expect(nextButton).toBeEnabled();  // After selection
+```
+
 ## CI/CD Integration
 
 ### Pre-commit Hooks

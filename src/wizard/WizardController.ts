@@ -630,14 +630,14 @@ export class WizardController {
     private getMoonEphemeris(date: Date): { distance: number; ra: number; dec: number } | null {
         try {
             const time = Astronomy.MakeTime(date);
-            const state: any = Astronomy.GeoMoonState(time);
+            const state = Astronomy.GeoMoonState(time);
 
-            // Handle both API versions (state.position.x vs state.x)
-            const hasPosition = state.position !== undefined;
-            const x = hasPosition ? state.position.x : state.x;
-            const y = hasPosition ? state.position.y : state.y;
-            const z = hasPosition ? state.position.z : state.z;
-            const t = hasPosition ? state.position.t : state.t;
+            // Use position from state (handles both old and new API formats)
+            const position = ('position' in state) ? state.position : state;
+            const x = position.x;
+            const y = position.y;
+            const z = position.z;
+            const t = position.t;
 
             // Distance in km (astronomy-engine returns AU, convert to km)
             // 1 AU = 149597870.7 km
@@ -679,13 +679,13 @@ export class WizardController {
     private getMoonDeclination(date: Date): number {
         try {
             const time = Astronomy.MakeTime(date);
-            const state: any = Astronomy.GeoMoonState(time);
-            const hasPosition = state.position !== undefined;
+            const state = Astronomy.GeoMoonState(time);
+            const position = ('position' in state) ? state.position : state;
             const geoVector = {
-                x: hasPosition ? state.position.x : state.x,
-                y: hasPosition ? state.position.y : state.y,
-                z: hasPosition ? state.position.z : state.z,
-                t: hasPosition ? state.position.t : state.t
+                x: position.x,
+                y: position.y,
+                z: position.z,
+                t: position.t
             };
             const equatorial = Astronomy.EquatorFromVector(geoVector);
             return equatorial.dec;
@@ -714,6 +714,7 @@ export class WizardController {
         return vTransfer - vCircular;  // km/s
     }
 
+    // eslint-disable-next-line complexity
     private renderLOIDateSection(loiState: LOIDateStepState): string {
         if (!loiState.selectedLOIDate) {
             return '';

@@ -25,7 +25,7 @@ import {
     calculateDistance,
     checkCaptureCondition
 } from './orbitCore.js';
-import { calculateMoonPositionAtDate } from '../../../optimization.js';
+import { calculateMoonPositionAtDate, extractPositionFromState, extractVelocityFromState } from '../../../optimization.js';
 import { EARTH_MU } from '../../../constants.js';
 
 const AU_TO_KM = 149597870.7;
@@ -207,7 +207,7 @@ export class OrbitVisualizationPanel {
                 const key = input.getAttribute('data-opt') as string;
                 const value = input.checked;
                 if (this.scene) {
-                    this.scene.setViewOptions({ [key]: value } as any);
+                    this.scene.setViewOptions({ [key]: value } as Record<string, boolean>);
                 }
             });
         });
@@ -339,6 +339,7 @@ export class OrbitVisualizationPanel {
     /**
      * Update Moon and spacecraft positions using functional core
      */
+    // eslint-disable-next-line complexity
     private updatePositions(): void {
         // Get Moon position from ephemeris
         try {
@@ -400,6 +401,7 @@ export class OrbitVisualizationPanel {
     /**
      * Check capture condition
      */
+    // eslint-disable-next-line complexity
     private checkCapture(): void {
         if (this.state.isCaptured) {
             // Check if we've rewound before capture
@@ -631,21 +633,25 @@ export class OrbitVisualizationPanel {
     /**
      * Estimate Moon orbital elements from ephemeris (matches main app approach)
      */
+
     private getMoonOrbitalElements(date: Date): { inclination: number; raan: number; eccentricity: number; semiMajorAxis: number; omega: number } | null {
         try {
             const time = Astronomy.MakeTime(date);
-            const state: any = Astronomy.GeoMoonState(time);
-            const hasPosition = state.position !== undefined;
+            const state = Astronomy.GeoMoonState(time);
+
+            // Handle both old and new API formats using helper functions
+            const position = extractPositionFromState(state);
+            const velocity = extractVelocityFromState(state);
 
             const pos = {
-                x: hasPosition ? state.position.x : state.x,
-                y: hasPosition ? state.position.y : state.y,
-                z: hasPosition ? state.position.z : state.z
+                x: position.x,
+                y: position.y,
+                z: position.z
             };
             const vel = {
-                x: hasPosition ? state.velocity.x : state.vx,
-                y: hasPosition ? state.velocity.y : state.vy,
-                z: hasPosition ? state.velocity.z : state.vz
+                x: velocity.x,
+                y: velocity.y,
+                z: velocity.z
             };
 
             // Convert to km / km/s

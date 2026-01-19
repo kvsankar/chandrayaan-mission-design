@@ -11,6 +11,7 @@ declare module 'astronomy-engine' {
     date: Date;
     tt: number;
     ut: number;
+    AddDays(days: number): AstroTime;
   }
 
   export class Equator {
@@ -59,7 +60,7 @@ declare module 'astronomy-engine' {
 
   export function MakeTime(date: Date | number): AstroTime;
   export function GeoMoon(time: AstroTime): Vector;
-  export function GeoMoonState(time: AstroTime): { position: Vector; velocity: Vector };
+  export function GeoMoonState(time: AstroTime): { position: Vector; velocity: Vector } | (Vector & { vx: number; vy: number; vz: number });
   export function GeoVector(body: Body, time: AstroTime, aberration: boolean): Vector;
   export function HelioVector(body: Body, time: AstroTime): Vector;
   export function Equator(body: string, time: AstroTime, observer: Observer | null, ofdate: boolean, aberration: boolean): Equator;
@@ -67,4 +68,6 @@ declare module 'astronomy-engine' {
   export function MoonPhase(time: AstroTime): number;
   export function Libration(time: AstroTime): LibrationInfo;
   export function RotationAxis(body: string, time: AstroTime): AxisInfo;
+  export function Search(func: (time: AstroTime) => number, t1: AstroTime, t2: AstroTime, options?: { dt_tolerance_seconds?: number }): AstroTime | null;
+  export function Ecliptic(vector: Vector): { elat: number; elon: number };
 }

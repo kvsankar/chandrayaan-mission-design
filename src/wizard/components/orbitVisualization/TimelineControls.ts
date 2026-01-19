@@ -161,6 +161,7 @@ export class TimelineControls {
         this.jumpClosestBtn = this.panel.querySelector('#orbit-jump-closest');
     }
 
+    // eslint-disable-next-line complexity
     private attachEventListeners(): void {
         // Play/Pause
         this.playPauseBtn?.addEventListener('click', () => {
@@ -307,6 +308,7 @@ export class TimelineControls {
     /**
      * Update timeline configuration (e.g., when LOI changes)
      */
+    // eslint-disable-next-line complexity
     updateTimeline(timeline: TimelineConfig, startDate: Date, totalDays: number): void {
         this.timeline = timeline;
         this.startDate = startDate;
