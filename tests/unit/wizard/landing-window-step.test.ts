@@ -79,9 +79,10 @@ describe('Lunar Day Cycles', () => {
             new Date('2023-10-31')
         );
 
-        // Should have ~8 lunar days for Mar-Oct 2023
+        // Should have ~8-10 lunar days for Mar-Oct 2023
+        // (10 when the last month is extended to include complete lunar day)
         expect(days.length).toBeGreaterThanOrEqual(7);
-        expect(days.length).toBeLessThanOrEqual(9);
+        expect(days.length).toBeLessThanOrEqual(10);
 
         // Each day should have sunrise, sunset, peakTime, peakElevation
         for (const day of days) {

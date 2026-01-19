@@ -2,6 +2,11 @@
  * Mission Design Wizard Styles
  */
 
+:root {
+    --steps-panel-width: 160px;
+    --content-horizontal-padding: 16px;
+}
+
 /* ============================================================================
  * Landing Site Step - Redesigned Layout
  * ============================================================================ */
@@ -831,7 +836,7 @@
  * ============================================================================ */
 
 .wizard-steps-panel {
-    width: 160px;
+    width: var(--steps-panel-width);
     flex-shrink: 0;
     background: rgba(0, 0, 0, 0.3);
     border-right: 1px solid rgba(255, 255, 255, 0.08);
@@ -1210,8 +1215,16 @@
 .timeline-header {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
+    align-items: center;
     margin-bottom: 8px;
+    gap: 8px;
+}
+
+.timeline-heading-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
 }
 
 .timeline-title {
@@ -1223,6 +1236,29 @@
 .timeline-subtitle {
     font-size: 11px;
     color: #888;
+}
+
+.timeline-legend-inline {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    font-size: 12px;
+    color: #aaa;
+    margin-top: 4px;
+    flex-wrap: wrap;
+}
+
+.timeline-header .timeline-legend-inline {
+    margin-top: 0;
+}
+
+.timeline-legend-inline .legend-inline-label {
+    font-weight: 600;
+    color: #ccc;
+}
+
+.timeline-legend-inline .legend-inline-item {
+    white-space: nowrap;
 }
 
 .timeline-container {
@@ -1241,6 +1277,24 @@
     overflow: hidden;
 }
 
+/* Vertical markers for LOI/Landing that span the track */
+.timeline-marker {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: rgba(255, 255, 255, 0.35);
+    pointer-events: none;
+}
+
+.timeline-marker.loi {
+    background: rgba(255, 200, 0, 0.5);
+}
+
+.timeline-marker.landing {
+    background: rgba(68, 255, 136, 0.6);
+}
+
 .timeline-labels {
     position: relative;
     height: 18px;
@@ -1249,66 +1303,49 @@
 
 /* Month Markers */
 .month-markers {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 16px;
-    z-index: 10;
-    pointer-events: none;
+    display: none;
 }
 
 .month-marker {
-    position: absolute;
-    top: 0;
-    height: 100%;
-    border-left: 1px solid rgba(255, 255, 255, 0.2);
+    display: none;
 }
 
 .month-label {
-    position: absolute;
-    top: 0;
-    left: 3px;
-    font-size: 11px;
-    color: #888;
-    white-space: nowrap;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    line-height: 14px;  /* Ensure text fits within container */
+    display: none;
 }
 
 /* Timeline Segments */
 .timeline-segment {
     position: absolute;
-    top: 14px;
-    height: 26px;
+    top: 2px;
+    height: 36px;
     border-radius: 3px;
     transition: all 0.2s;
 }
 
 .timeline-segment.night {
-    background: #0a1428;  /* Very dark blue */
-    border: 1px solid rgba(50, 80, 120, 0.3);
+    background: #1c2e5a;  /* Match legend dark blue */
+    border: 1px solid rgba(50, 80, 120, 0.5);
 }
 
 .timeline-segment.day {
-    background: #e8e0a0;  /* Light yellow */
-    border: 1px solid rgba(200, 180, 100, 0.5);
+    background: #f1d45c;  /* Match legend yellow */
+    border: 1px solid rgba(200, 180, 100, 0.8);
     border-radius: 0;  /* Square corners */
     cursor: pointer;
 }
 
 .timeline-segment.day:hover {
-    background: #f0e8a8;  /* Lighter yellow on hover */
-    border-color: rgba(220, 200, 100, 0.7);
+    background: #f6e07a;  /* Lighter yellow on hover */
+    border-color: rgba(220, 200, 100, 0.9);
     transform: scaleY(1.1);
     z-index: 5;
 }
 
 .timeline-segment.day.selected {
-    background: linear-gradient(180deg, #4f8 0%, #3c6 100%);
-    border-color: rgba(68, 255, 136, 0.6);
-    box-shadow: 0 0 12px rgba(68, 255, 136, 0.3);
+    background: linear-gradient(180deg, #3ecf8e 0%, #2ca56c 100%); /* Match legend green */
+    border-color: rgba(62, 207, 142, 0.8);
+    box-shadow: 0 0 12px rgba(62, 207, 142, 0.35);
     z-index: 6;
 }
 
@@ -1473,13 +1510,13 @@
 
 .wizard-content {
     flex: 1;
-    padding: 12px 16px;
+    padding: 12px var(--content-horizontal-padding);
     overflow-y: auto;
     min-width: 0;
 }
 
 .wizard-summary {
-    width: 300px;
+    width: 340px;
     flex-shrink: 0;
     background: rgba(0, 0, 0, 0.25);
     border-left: 1px solid rgba(255, 255, 255, 0.08);
@@ -1490,12 +1527,12 @@
 }
 
 .summary-header {
-    padding: 12px 16px;
-    font-size: 14px;
+    padding: 10px 12px;
+    font-size: 11px;
     font-weight: 600;
-    color: #fff;
+    color: #888;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 1px;
     background: rgba(0, 0, 0, 0.2);
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
@@ -1532,8 +1569,8 @@
     gap: 8px;
     margin-bottom: 8px;
     font-size: 14px;
-    font-weight: 500;
-    color: #aaa;
+    font-weight: 600;
+    color: #d5d7dd;
 }
 
 .summary-step-num {
@@ -1560,26 +1597,38 @@
     display: flex;
     gap: 8px;
     font-size: 13px;
-    line-height: 1.4;
+    line-height: 1.35;
 }
 
 .summary-label {
-    color: #777;
+    color: #9aa0a6;
     min-width: 70px;
     flex-shrink: 0;
+    font-weight: 400;
 }
 
 .summary-value {
-    color: #fff;
-    font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+    color: #f2f4f7;
+    font-family: inherit;
+    font-weight: 500;
 }
 
 .summary-item.secondary .summary-label {
-    color: #666;
+    color: #8a9199;
 }
 
 .summary-item.secondary .summary-value {
-    color: #aaa;
+    color: #c2c7ce;
+    font-weight: 400;
+}
+
+.summary-item.secondary.highlight-info .summary-label {
+    color: #9aa0a6;
+}
+
+.summary-item.secondary.highlight-info .summary-value {
+    color: #4CAF50;
+    font-weight: 600;
 }
 
 /* Subsection for site-specific mission times */
@@ -1593,6 +1642,45 @@
     margin-top: 6px;
     padding-top: 0;
     border-top: none;
+}
+
+/* Site tabs for Primary/Backup toggle */
+.summary-site-tabs {
+    display: flex;
+    gap: 2px;
+    margin: 8px 0 4px 0;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    padding: 2px;
+}
+
+.summary-site-tab {
+    flex: 1;
+    padding: 5px 8px;
+    background: transparent;
+    color: #888;
+    border: none;
+    border-radius: 3px;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.summary-site-tab:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #bbb;
+}
+
+.summary-site-tab.active {
+    background: rgba(51, 102, 204, 0.4);
+    color: #fff;
+}
+
+.summary-site-content {
+    margin-top: 4px;
 }
 
 /* Responsive: hide side panels on small screens */
@@ -1960,7 +2048,7 @@
 /* LOI Markers */
 .loi-marker {
     position: absolute;
-    top: 14px;  /* Align with timeline segments */
+    top: 2px;  /* Align with full track height */
     transform: translateX(-50%);
     cursor: pointer;
     z-index: 20;
@@ -1971,7 +2059,7 @@
 
 .loi-marker-line {
     width: 3px;
-    height: 26px;  /* Match timeline segment height */
+    height: 36px;  /* Match timeline segment height */
     background: #3366cc;
     border-radius: 1px;
     transition: all 0.2s;
@@ -1992,8 +2080,8 @@
 
 .loi-marker-label {
     position: absolute;
-    top: -32px;  /* Position above month markers */
-    font-size: 14px;
+    top: -24px;  /* Position above month markers */
+    font-size: 13px;
     color: #3366cc;
     font-weight: bold;
     white-space: nowrap;
@@ -2009,75 +2097,10 @@
     background: rgba(76, 175, 80, 0.2);
 }
 
-/* LOI Details Panel */
-.loi-details {
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 6px;
-    padding: 14px 16px;
-}
-
-.loi-details .no-selection {
-    color: #666;
-    font-style: italic;
-    text-align: center;
-    padding: 12px;
-}
-
-.loi-details .details-content {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.loi-details .detail-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    padding: 4px 0;
-}
-
-.loi-details .detail-row.highlight {
-    background: rgba(76, 175, 80, 0.1);
-    margin: 0 -8px;
-    padding: 8px;
-    border-radius: 4px;
-}
-
-.loi-details .detail-label {
-    font-size: 12px;
-    color: #888;
-}
-
-.loi-details .detail-value {
-    font-size: 13px;
-    color: #fff;
-    font-weight: 500;
-}
-
-.loi-details .detail-row.highlight .detail-value {
-    color: #4CAF50;
-}
-
-.loi-details .details-divider {
-    height: 1px;
-    background: rgba(255, 255, 255, 0.08);
-    margin: 6px 0;
-}
-
-.loi-details .detail-note {
-    font-size: 11px;
-    color: #888;
-    line-height: 1.5;
-    padding: 8px 0;
-}
-
-.loi-details .detail-note strong {
-    color: #aaa;
-}
-
 /* LOI Timeline Section */
 .loi-timeline-section {
-    margin-top: 8px;
+    margin-top: 4px;
+    padding: 8px 10px 10px;
 }
 
 .loi-timeline-section .timeline-track.loi-track {
@@ -2093,13 +2116,13 @@
 }
 
 .loi-timeline-section .timeline-container {
-    padding-top: 20px;  /* Space for labels above */
+    padding-top: 12px;  /* Space for labels above */
 }
 
 /* Landing marker on LOI timeline */
 .landing-marker {
     position: absolute;
-    top: 14px;  /* Align with timeline segments */
+    top: 10px;  /* Align with timeline segments */
     transform: translateX(-50%);
     z-index: 15;
     display: flex;
@@ -2154,4 +2177,826 @@
     font-size: 14px;
     color: #3366cc;
     margin-right: 4px;
+}
+
+/* LOI Content Row - side by side layout */
+.loi-content-row {
+    display: flex;
+    gap: 16px;
+    flex: 1;
+    min-height: 0;
+}
+
+/* ============================================================================
+ * Orbit Visualization Section (Step 4)
+ * ============================================================================ */
+
+.orbit-visualization-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 6px;
+    overflow: hidden;
+    min-width: 400px;
+}
+
+.orbit-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.orbit-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: #fff;
+}
+
+.orbit-subtitle {
+    font-size: 11px;
+    color: #888;
+    font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+}
+
+.orbit-container {
+    flex: 1;
+    min-height: 520px;
+    display: flex;
+    flex-direction: column;
+    background: #0a0a1e;
+}
+
+.orbit-expand-btn {
+    background: rgba(30, 60, 110, 0.7);
+    color: #e8f4ff;
+    border: 1px solid rgba(120, 180, 255, 0.6);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, transform 0.1s;
+}
+
+.orbit-expand-btn.hidden {
+    display: none;
+}
+
+.orbit-expand-btn:hover {
+    background: rgba(50, 90, 150, 0.9);
+    border-color: rgba(150, 200, 255, 0.8);
+    transform: translateY(-1px);
+}
+
+/* Larger orbit panel when expanded */
+.orbit-visualization-section.expanded .orbit-container {
+    min-height: 620px;
+}
+
+.orbit-visualization-panel {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.orbit-fullscreen-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    border: 1px solid rgba(120, 180, 255, 0.5);
+    background: rgba(30, 60, 110, 0.75);
+    color: #e8f4ff;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, transform 0.1s;
+    z-index: 40;
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.35);
+}
+
+.orbit-fullscreen-btn:hover {
+    background: rgba(50, 90, 150, 0.9);
+    border-color: rgba(150, 200, 255, 0.8);
+    transform: translateY(-1px);
+}
+
+.orbit-visualization-panel.orbit-fullscreen {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 9999;
+    background: #050510;
+    padding: 12px;
+    box-sizing: border-box;
+    border-radius: 0;
+}
+
+.orbit-visualization-panel.orbit-fullscreen canvas {
+    flex: 1;
+}
+
+.orbit-visualization-panel.orbit-fullscreen .orbit-timeline-controls {
+    margin-top: 8px;
+}
+
+body.orbit-fullscreen-active {
+    overflow: hidden;
+}
+
+.orbit-controls-container {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.orbit-view-options,
+.orbit-params,
+.orbit-info {
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 8px 12px;
+}
+
+.orbit-options-title,
+.orbit-params-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #cbe2ff;
+    margin-bottom: 6px;
+}
+
+.orbit-view-options label {
+    display: block;
+    margin: 4px 0;
+    font-size: 11px;
+    color: #cfd8e8;
+    user-select: none;
+}
+
+.orbit-view-options input[type="checkbox"] {
+    margin-right: 4px;
+}
+
+.orbit-params-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px 8px;
+    font-size: 11px;
+    color: #e5ecf7;
+}
+
+.orbit-params-grid .label {
+    display: block;
+    color: #8fa5c6;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.orbit-legend {
+    display: flex;
+    gap: 16px;
+    padding: 8px 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 11px;
+}
+
+.orbit-legend .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #888;
+}
+
+.legend-line {
+    width: 20px;
+    height: 2px;
+    border-radius: 1px;
+}
+
+.legend-line.lunar {
+    background: #ff00ff;
+}
+
+.legend-line.chandrayaan {
+    background: #ffff00;
+}
+
+.legend-marker {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.legend-marker.tli {
+    background: #00ff88;
+    box-shadow: 0 0 4px rgba(0, 255, 136, 0.5);
+}
+
+.legend-marker.loi {
+    background: #ff8800;
+    box-shadow: 0 0 4px rgba(255, 136, 0, 0.5);
+}
+
+/* ============================================================================
+ * Orbit Timeline Controls
+ * ============================================================================ */
+
+.orbit-timeline-controls {
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.orbit-current-date {
+    font-size: 12px;
+    font-weight: 400;
+    color: #e8e8e8;
+    text-align: left;
+    margin-bottom: 0;
+    font-family: inherit;
+}
+
+.orbit-slider-row {
+    margin-bottom: 8px;
+}
+
+.orbit-timeline-slider {
+    width: 100%;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+}
+
+.orbit-timeline-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    background: #3366cc;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid #fff;
+}
+
+.orbit-timeline-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    background: #3366cc;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid #fff;
+}
+
+.orbit-controls-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+}
+
+.orbit-play-btn,
+.orbit-reset-btn {
+    padding: 4px 12px;
+    background: rgba(51, 102, 204, 0.3);
+    color: #fff;
+    border: 1px solid rgba(51, 102, 204, 0.5);
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.orbit-play-btn:hover,
+.orbit-reset-btn:hover {
+    background: rgba(51, 102, 204, 0.5);
+    border-color: #3366cc;
+}
+
+.orbit-speed-select {
+    padding: 4px 8px;
+    background: rgba(0, 0, 0, 0.3);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.orbit-speed-select option {
+    background: #1a1a2e;
+    color: #fff;
+}
+
+.orbit-markers-row {
+    position: relative;
+    height: 16px;
+    margin-top: 8px;
+}
+
+.orbit-marker {
+    position: absolute;
+    transform: translateX(-50%);
+    font-size: 9px;
+    font-weight: 500;
+    padding: 1px 4px;
+    border-radius: 2px;
+    white-space: nowrap;
+}
+
+.orbit-marker.tli-marker {
+    color: #00ff88;
+    background: rgba(0, 255, 136, 0.15);
+}
+
+.orbit-marker.loi-marker {
+    color: #ff8800;
+    background: rgba(255, 136, 0, 0.15);
+}
+
+.orbit-marker.landing-marker {
+    color: #4CAF50;
+    background: rgba(76, 175, 80, 0.15);
+}
+
+/* ============================================================================
+ * Collapsible Sections
+ * ============================================================================ */
+
+.collapsible-section {
+    transition: all 0.3s ease;
+    overflow: hidden;
+}
+
+.collapsible-section.collapsed {
+    max-height: 42px;  /* Just header height */
+}
+
+.collapsible-section .timeline-header {
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s;
+    padding: 6px 0 4px;
+    border-radius: 6px 6px 0 0;
+    margin-bottom: 4px;
+}
+
+.collapsible-section .timeline-header:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.collapsible-section.collapsed .timeline-header {
+    border-radius: 6px;
+}
+
+.collapse-toggle {
+    margin-left: 8px;
+    font-size: 10px;
+    color: #666;
+    transition: transform 0.3s;
+}
+
+.collapsible-section.collapsed .collapse-toggle {
+    transform: rotate(-90deg);
+}
+
+.collapsible-section .timeline-container,
+.collapsible-section .timeline-legend {
+    transition: opacity 0.2s, max-height 0.3s;
+}
+
+.collapsible-section.collapsed .timeline-container,
+.collapsible-section.collapsed .timeline-legend {
+    opacity: 0;
+    max-height: 0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+/* Responsive: stack orbit visualization below details on smaller screens */
+@media (max-width: 1000px) {
+    .loi-content-row {
+        flex-direction: column;
+    }
+
+    .orbit-visualization-section {
+        min-width: 0;
+        min-height: 400px;
+    }
+}
+
+/* ============================================================================
+ * New Orbit Visualization Panel (Game Mode Style)
+ * ============================================================================ */
+
+.orbit-panel-wrapper {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: #0a0a1e;
+    border-radius: 6px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.orbit-panel-wrapper.orbit-fullscreen {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 9999;
+    background: #050510;
+    border-radius: 0;
+    flex-direction: row;
+    padding: 12px;
+    box-sizing: border-box;
+}
+
+.orbit-fullscreen-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(0, 0, 0, 0.5);
+    color: #e8f4ff;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    display: none;
+    z-index: 3;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.orbit-fullscreen-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
+.orbit-panel-wrapper.orbit-fullscreen .orbit-fullscreen-close {
+    display: block;
+}
+
+.orbit-panel-wrapper.orbit-fullscreen .orbit-controls-container {
+    padding: 0 12px 12px;
+}
+
+.orbit-panel-wrapper.orbit-fullscreen .orbit-scene-container {
+    min-height: 60vh;
+}
+
+.orbit-main-column {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 10px;
+}
+
+.orbit-scene-container {
+    flex: 1;
+    min-height: 300px;
+    position: relative;
+}
+
+.orbit-sidebar {
+    display: none;
+}
+
+.orbit-panel-wrapper.orbit-fullscreen .orbit-sidebar {
+    display: flex;
+    flex: 1;
+    min-width: 260px;
+    max-width: 320px;
+    background: rgba(0, 0, 0, 0.25);
+    border-left: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 10px;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+}
+
+.orbit-scene-container canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+}
+
+.orbit-no-webgl {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #666;
+    font-style: italic;
+}
+
+.orbit-controls-container {
+    flex-shrink: 0;
+}
+
+body.orbit-fullscreen-active {
+    overflow: hidden;
+}
+
+/* Timeline Panel (at bottom of visualization) */
+.orbit-timeline-panel {
+    background: rgba(0, 0, 0, 0.82);
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.orbit-timeline-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.orbit-date-display {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.orbit-current-date {
+    font-size: 12px;
+    font-weight: 400;
+    color: #e8e8e8;
+    font-family: inherit;
+}
+
+.orbit-distance-display {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 12px;
+}
+
+.orbit-distance-label {
+    color: #9aa0a6;
+}
+
+.orbit-distance-value {
+    color: #4CAF50;
+    font-family: inherit;
+    font-weight: 400;
+}
+
+/* Row 2: Slider with markers */
+.orbit-timeline-row-slider {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.orbit-slider-container {
+    width: 100%;
+}
+
+.orbit-slider-track-wrapper {
+    position: relative;
+    padding: 20px 0 8px 0;
+    overflow: visible; /* allow marker lines to render outside */
+}
+
+/* Event markers on slider */
+.orbit-event-marker {
+    position: absolute;
+    top: 0;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    pointer-events: none;
+    z-index: 50; /* ensure marker lines sit above slider thumb/track */
+}
+
+.orbit-event-marker .orbit-marker-line {
+    width: 1.5px;
+    height: 42px;
+    border-radius: 2px;
+    opacity: 0.95;
+    box-shadow: 0 0 5px currentColor;
+}
+
+.orbit-event-marker .orbit-marker-label {
+    font-size: 9px;
+    font-weight: 600;
+    margin-top: 2px;
+    white-space: nowrap;
+}
+
+.orbit-marker-tli .orbit-marker-line {
+    background: #00ff88;
+    box-shadow: 0 0 4px rgba(0, 255, 136, 0.5);
+}
+
+.orbit-marker-tli .orbit-marker-label {
+    color: #00ff88;
+}
+
+.orbit-marker-loi .orbit-marker-line {
+    background: #ff8800;
+    box-shadow: 0 0 4px rgba(255, 136, 0, 0.5);
+}
+
+.orbit-marker-loi .orbit-marker-label {
+    color: #ff8800;
+}
+
+.orbit-marker-landing .orbit-marker-line {
+    background: #4CAF50;
+    box-shadow: 0 0 4px rgba(76, 175, 80, 0.5);
+}
+
+.orbit-marker-landing .orbit-marker-label {
+    color: #4CAF50;
+}
+
+.orbit-marker-closest .orbit-marker-line {
+    background: #00bcd4;
+    box-shadow: 0 0 4px rgba(0, 188, 212, 0.6);
+}
+
+.orbit-marker-closest .orbit-marker-label {
+    color: #00e1ff;
+}
+
+/* Timeline slider */
+.orbit-slider-track-wrapper input[type="range"] {
+    width: 100%;
+    height: 6px;
+    background: #333;
+    border-radius: 3px;
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+    cursor: pointer;
+    position: relative;
+    z-index: 10;
+}
+
+.orbit-slider-track-wrapper input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: #4CAF50;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 4px rgba(76, 175, 80, 0.5);
+}
+
+.orbit-slider-track-wrapper input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: #4CAF50;
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 0 4px rgba(76, 175, 80, 0.5);
+}
+
+/* Slider labels */
+.orbit-timeline-row-meta {
+    justify-content: space-between;
+    align-items: baseline;
+    margin-top: -4px;
+}
+
+/* Row 3: Control buttons */
+.orbit-timeline-row-controls {
+    justify-content: space-between;
+    gap: 10px;
+    padding-top: 4px;
+    flex-wrap: wrap;
+}
+
+.orbit-primary-controls,
+.orbit-jump-controls,
+.orbit-speed-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.orbit-timeline-panel .orbit-play-btn,
+.orbit-timeline-panel .orbit-reset-btn {
+    padding: 6px 14px;
+    background: #333;
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: #fff;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.2s;
+}
+
+.orbit-timeline-panel .orbit-play-btn:hover,
+.orbit-timeline-panel .orbit-reset-btn:hover {
+    background: #444;
+}
+
+.orbit-jump-btn {
+    padding: 6px 10px;
+    background: #2b2b2b;
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: #fff;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.orbit-jump-btn:hover {
+    background: #3a3a3a;
+    border-color: #666;
+}
+
+.orbit-speed-controls {
+    gap: 6px;
+}
+
+.orbit-speed-btn {
+    padding: 4px 10px;
+    background: #333;
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: #fff;
+    cursor: pointer;
+    font-size: 11px;
+    transition: background 0.2s;
+}
+
+.orbit-speed-btn:hover:not(:disabled) {
+    background: #444;
+}
+
+.orbit-speed-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.orbit-timeline-panel .orbit-speed-select {
+    padding: 4px 8px;
+    background: #222;
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: #fff;
+    font-size: 11px;
+    cursor: pointer;
+    min-width: 90px;
+}
+
+/* Capture message toast */
+.orbit-capture-message {
+    position: relative;
+    margin-top: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(80, 200, 255, 0.12);
+    color: #c8e9ff;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    border: 1px solid rgba(80, 200, 255, 0.3);
+}
+
+/* Orbit placeholder */
+.orbit-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 300px;
+    color: #666;
+    font-style: italic;
+    text-align: center;
+    padding: 20px;
 }

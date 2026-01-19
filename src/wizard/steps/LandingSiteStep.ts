@@ -97,10 +97,6 @@ export class LandingSiteStep {
     private render(): void {
         this.container.innerHTML = `
             <div class="landing-site-step">
-                <div class="step-header">
-                    <h2>Step 2: Landing Site Selection</h2>
-                </div>
-
                 <div class="landing-site-layout">
                     <div class="globe-section">
                         <div class="moon-globe-container" id="moon-globe-container"></div>

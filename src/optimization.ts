@@ -16,12 +16,50 @@ function isAutomatedTestMode(): boolean {
  * @param apogeeAlt - Apogee altitude in km
  * @returns Orbital period in seconds
  */
-function calculateOrbitalPeriod(perigeeAlt: number, apogeeAlt: number): number {
+export function calculateOrbitalPeriod(perigeeAlt: number, apogeeAlt: number): number {
     const rp = EARTH_RADIUS + perigeeAlt;
     const ra = EARTH_RADIUS + apogeeAlt;
     const a = (rp + ra) / 2;
     const T = 2 * Math.PI * Math.sqrt(Math.pow(a, 3) / EARTH_MU);
     return T;
+}
+
+/**
+ * Calculate true anomaly from time since perigee using Kepler's equation
+ * Uses Newton-Raphson iteration to solve M = E - e*sin(E)
+ * @param timeSincePeriapsis - Time since perigee passage in seconds
+ * @param perigeeAlt - Perigee altitude in km
+ * @param apogeeAlt - Apogee altitude in km
+ * @returns True anomaly in degrees (0-360)
+ */
+export function getTrueAnomalyFromTime(timeSincePeriapsis: number, perigeeAlt: number, apogeeAlt: number): number {
+    const rp = EARTH_RADIUS + perigeeAlt;
+    const ra = EARTH_RADIUS + apogeeAlt;
+    const a = (rp + ra) / 2;  // Semi-major axis
+    const e = (ra - rp) / (ra + rp);  // Eccentricity
+
+    // Mean motion (rad/s)
+    const n = Math.sqrt(EARTH_MU / Math.pow(a, 3));
+
+    // Mean anomaly
+    const M = n * timeSincePeriapsis;
+
+    // Solve Kepler's equation using Newton-Raphson (10 iterations)
+    let E = M;
+    for (let i = 0; i < 10; i++) {
+        E = E - (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+    }
+
+    // Convert eccentric anomaly to true anomaly
+    const trueAnomaly = 2 * Math.atan2(
+        Math.sqrt(1 + e) * Math.sin(E / 2),
+        Math.sqrt(1 - e) * Math.cos(E / 2)
+    );
+
+    let trueAnomalyDeg = trueAnomaly * (180 / Math.PI);
+    if (trueAnomalyDeg < 0) trueAnomalyDeg += 360;
+
+    return trueAnomalyDeg;
 }
 
 function findMoonEquatorCrossings(startDate: Date, endDate: Date): Astronomy.AstroTime[] {
@@ -257,16 +295,14 @@ export function calculateCraftPositionAtTrueAnomaly(nu: number, raan: number, ap
 export function calculateClosestApproachToMoon(raan: number, apogeeAlt: number, perigeeAlt: number, loiDate: Date, omega: number, inclination: number): { distance: number, trueAnomaly: number } {
     const moonPos = calculateMoonPositionAtDate(loiDate);
 
-    // Search around apogee (true anomaly = 180°) - sweep less aggressively when tests run
-    const nuCenter = Math.PI; // 180° = apogee
-    const nuRange = isAutomatedTestMode() ? Math.PI / 8 : Math.PI / 6;
-    const numSamples = isAutomatedTestMode() ? 21 : 61;
+    // Search full orbit for minimum distance, with local refinement
+    const coarseSamples = isAutomatedTestMode() ? 181 : 361; // every 2° or 1°
 
     let minDistance = Infinity;
-    let minNu = nuCenter;
+    let minNu = 0;
 
-    for (let i = 0; i < numSamples; i++) {
-        const nu = nuCenter - nuRange + (2 * nuRange * i / (numSamples - 1));
+    for (let i = 0; i < coarseSamples; i++) {
+        const nu = (i / (coarseSamples - 1)) * Math.PI * 2;
         const craftPos = calculateCraftPositionAtTrueAnomaly(nu, raan, apogeeAlt, perigeeAlt, omega, inclination);
 
         const dx = craftPos.x - moonPos.x;
@@ -274,6 +310,21 @@ export function calculateClosestApproachToMoon(raan: number, apogeeAlt: number, 
         const dz = craftPos.z - moonPos.z;
         const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
+        if (distance < minDistance) {
+            minDistance = distance;
+            minNu = nu;
+        }
+    }
+
+    // Fine sweep ±2° around coarse best at 0.1°
+    const fineSpan = isAutomatedTestMode() ? Math.PI / 90 : Math.PI / 90; // 2°
+    const fineStep = isAutomatedTestMode() ? Math.PI / 450 : Math.PI / 1800; // 0.4° or 0.1°
+    for (let nu = minNu - fineSpan; nu <= minNu + fineSpan; nu += fineStep) {
+        const craftPos = calculateCraftPositionAtTrueAnomaly(nu, raan, apogeeAlt, perigeeAlt, omega, inclination);
+        const dx = craftPos.x - moonPos.x;
+        const dy = craftPos.y - moonPos.y;
+        const dz = craftPos.z - moonPos.z;
+        const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
         if (distance < minDistance) {
             minDistance = distance;
             minNu = nu;
@@ -409,26 +460,28 @@ export function optimizeApogeeToMoonMultiStart(loiDate: Date, omega: number, inc
     const moonDistance = Math.sqrt(moonPos.x * moonPos.x + moonPos.y * moonPos.y + moonPos.z * moonPos.z);
     const moonApogeeAlt = moonDistance - EARTH_RADIUS; // Convert to altitude
 
-    // Multi-start optimization with apogee values centered around Moon's distance
-    const startingRAANs = isAutomatedTestMode()
-        ? [0, 120, 240]
-        : [0, 45, 90, 135, 180, 225, 270, 315];
+    // Narrow RAAN window around Moon RA at LOI (±5°)
+    const moonRaanGuess = ((Math.atan2(-moonPos.z, moonPos.x) * 180 / Math.PI) + 360) % 360;
+    const raanStep = isAutomatedTestMode() ? 5 : 1;
+    const raanWindow = 5;
+    const startingRAANs: number[] = [];
+    for (let d = -raanWindow; d <= raanWindow; d += raanStep) {
+        startingRAANs.push(((moonRaanGuess + d) % 360 + 360) % 360);
+    }
 
-    // Try apogee values around the Moon's distance (±5%, ±10%, ±15%)
+    // Apogee seeds around Moon distance (tighter band)
     const startingApogees = isAutomatedTestMode()
         ? [
-            moonApogeeAlt * 0.95,
+            moonApogeeAlt * 0.97,
             moonApogeeAlt,
-            moonApogeeAlt * 1.05
+            moonApogeeAlt * 1.03
         ]
         : [
-            moonApogeeAlt * 0.85,  // -15%
             moonApogeeAlt * 0.90,  // -10%
             moonApogeeAlt * 0.95,  // -5%
-            moonApogeeAlt,         // Exactly at Moon's distance
+            moonApogeeAlt,         // 0%
             moonApogeeAlt * 1.05,  // +5%
-            moonApogeeAlt * 1.10,  // +10%
-            moonApogeeAlt * 1.15   // +15%
+            moonApogeeAlt * 1.10   // +10%
         ];
 
     const bestResult = { raan: 0, apogeeAlt: moonApogeeAlt, distance: Infinity, trueAnomaly: 180 };

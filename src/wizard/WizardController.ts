@@ -11,12 +11,15 @@ import { MissionWindowStep, MissionWindowState } from './steps/MissionWindowStep
 import { LandingSiteStep, LandingSiteStepState } from './steps/LandingSiteStep.js';
 import { LandingWindowStep, LandingWindowStepState } from './steps/LandingWindowStep.js';
 import { LOIDateStep, LOIDateStepState } from './steps/LOIDateStep.js';
+import * as Astronomy from 'astronomy-engine';
 import {
     LunarDaySegment,
     formatLunarDayLabel,
     findElevationCrossing,
-    calculateSunElevation
+    calculateSunElevation,
+    calculateRequiredRaan
 } from './calculations/sunElevation.js';
+import { EARTH_RADIUS, EARTH_MU } from '../constants.js';
 
 export interface WizardState {
     currentStep: number;
@@ -39,6 +42,14 @@ const STEP_TITLES = [
     'Lunar Day',
     'LOI Date',
     'Review'
+];
+
+const STEP_SUBTITLES = [
+    'Select a time range for mission planning (each lunar day is ~14 Earth days)',
+    '',
+    '',
+    '',
+    ''
 ];
 
 interface MissionTimes {
@@ -90,6 +101,7 @@ export class WizardController {
 
         this.render();
         this.showStep(1);
+        this.updatePageTitle();
     }
 
     private render(): void {
@@ -223,6 +235,7 @@ export class WizardController {
         this.state.currentStep = stepNum;
         this.updateStepsList();
         this.updateNavButtons();
+        this.updatePageTitle();
 
         switch (stepNum) {
             case 1:
@@ -240,6 +253,32 @@ export class WizardController {
             case 5:
                 this.showPlaceholderStep(stepNum);
                 break;
+        }
+    }
+
+    /**
+     * Update document/page title with breadcrumb-style step info
+     */
+    private updatePageTitle(): void {
+        const stepTitle = STEP_TITLES[this.state.currentStep - 1] || '';
+        const breadcrumb = `Chandrayaan Mission Designer > Step ${this.state.currentStep}: ${stepTitle}`;
+        document.title = breadcrumb;
+
+        const headerEl = document.getElementById('page-title');
+        if (headerEl) {
+            headerEl.textContent = breadcrumb;
+        }
+
+        const subtitle = STEP_SUBTITLES[this.state.currentStep - 1] || '';
+        const subtitleEl = document.getElementById('page-subtitle');
+        if (subtitleEl) {
+            if (subtitle) {
+                subtitleEl.textContent = subtitle;
+                subtitleEl.style.display = 'block';
+            } else {
+                subtitleEl.textContent = '';
+                subtitleEl.style.display = 'none';
+            }
         }
     }
 
@@ -366,12 +405,39 @@ export class WizardController {
         }
 
         if (this.state.loiDate?.selectedLOIDate) {
-            sections.push(this.renderLOIDateSection(this.state.loiDate.selectedLOIDate));
+            sections.push(this.renderLOIDateSection(this.state.loiDate));
         }
 
         summaryContent.innerHTML = sections.length > 0
             ? sections.join('')
             : '<div class="summary-empty">Complete steps to see summary</div>';
+
+        // Attach tab event listeners for lunar day section
+        this.attachSiteTabListeners();
+    }
+
+    private attachSiteTabListeners(): void {
+        const lunarDaySection = this.container.querySelector('#lunar-day-section');
+        if (!lunarDaySection) return;
+
+        const tabs = lunarDaySection.querySelectorAll('.summary-site-tab');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const site = tab.getAttribute('data-site');
+                if (!site) return;
+
+                // Update tab active state
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+
+                // Show/hide content
+                const contents = lunarDaySection.querySelectorAll('.summary-site-content');
+                contents.forEach(content => {
+                    const contentSite = content.getAttribute('data-site');
+                    (content as HTMLElement).style.display = contentSite === site ? 'block' : 'none';
+                });
+            });
+        });
     }
 
     private renderMissionWindowSection(mw: MissionWindowState): string {
@@ -437,28 +503,46 @@ export class WizardController {
         const primarySite = this.state.landingSite?.primarySite;
         const backupSite = this.state.landingSite?.backupSite;
 
-        let siteSections = '';
-
-        // Primary site mission times
+        // Build primary site content
+        let primaryContent = '';
         if (primarySite) {
             const missionTimes = this.calculateMissionTimes(
                 { latitude: primarySite.latitude, longitude: primarySite.longitude },
                 lunarDay
             );
-            siteSections += this.renderSiteMissionTimes('Primary', primarySite.name, missionTimes);
+            primaryContent = this.renderSiteMissionTimes('Primary', primarySite.name, primarySite.longitude, missionTimes);
         }
 
-        // Backup site mission times
+        // Build backup site content
+        let backupContent = '';
         if (backupSite) {
             const missionTimes = this.calculateMissionTimes(
                 { latitude: backupSite.latitude, longitude: backupSite.longitude },
                 lunarDay
             );
-            siteSections += this.renderSiteMissionTimes('Backup', backupSite.name, missionTimes);
+            backupContent = this.renderSiteMissionTimes('Backup', backupSite.name, backupSite.longitude, missionTimes);
         }
 
+        // Build tabs if both sites exist
+        const hasBothSites = primarySite && backupSite;
+        const tabsHtml = hasBothSites ? `
+            <div class="summary-site-tabs">
+                <button class="summary-site-tab active" data-site="primary">${primarySite!.name}</button>
+                <button class="summary-site-tab" data-site="backup">${backupSite!.name}</button>
+            </div>
+        ` : '';
+
+        const siteContentHtml = hasBothSites ? `
+            <div class="summary-site-content" data-site="primary">
+                ${primaryContent}
+            </div>
+            <div class="summary-site-content" data-site="backup" style="display: none;">
+                ${backupContent}
+            </div>
+        ` : (primaryContent || backupContent);
+
         return `
-            <div class="summary-section">
+            <div class="summary-section" id="lunar-day-section">
                 <div class="summary-section-header">
                     <span class="summary-step-num">3</span>
                     Lunar Day
@@ -468,7 +552,8 @@ export class WizardController {
                         <span class="summary-label">Period:</span>
                         <span class="summary-value">${label}</span>
                     </div>
-                    ${siteSections}
+                    ${tabsHtml}
+                    ${siteContentHtml}
                 </div>
             </div>
         `;
@@ -477,6 +562,7 @@ export class WizardController {
     private renderSiteMissionTimes(
         siteType: string,
         siteName: string,
+        siteLongitude: number,
         missionTimes: MissionTimes | null
     ): string {
         if (!missionTimes) {
@@ -495,12 +581,17 @@ export class WizardController {
 
         const missionDays = missionTimes.missionDurationHours / 24;
 
+        // Landing window: 6° rising to 9° rising
+        const landingWindowMs = missionTimes.nineDegRising.getTime() - missionTimes.sixDegRising.getTime();
+        const landingWindowHours = landingWindowMs / (1000 * 60 * 60);
+        const landingChances = Math.floor(landingWindowHours / 2);
+
+        // RAAN range for the landing window
+        const raanAt6Deg = calculateRequiredRaan(siteLongitude, missionTimes.sixDegRising);
+        const raanAt9Deg = calculateRequiredRaan(siteLongitude, missionTimes.nineDegRising);
+
         return `
             <div class="summary-subsection">
-                <div class="summary-item">
-                    <span class="summary-label">${siteType}:</span>
-                    <span class="summary-value">${siteName}</span>
-                </div>
                 <div class="summary-item secondary">
                     <span class="summary-label">6° rising:</span>
                     <span class="summary-value">${this.formatDateTime(missionTimes.sixDegRising)}</span>
@@ -508,6 +599,18 @@ export class WizardController {
                 <div class="summary-item secondary">
                     <span class="summary-label">9° rising:</span>
                     <span class="summary-value">${this.formatDateTime(missionTimes.nineDegRising)}</span>
+                </div>
+                <div class="summary-item secondary highlight-info">
+                    <span class="summary-label">Landing window:</span>
+                    <span class="summary-value">${landingWindowHours.toFixed(1)} hrs</span>
+                </div>
+                <div class="summary-item secondary highlight-info">
+                    <span class="summary-label">Landing chances:</span>
+                    <span class="summary-value">${landingChances}</span>
+                </div>
+                <div class="summary-item secondary highlight-info">
+                    <span class="summary-label">RAAN range:</span>
+                    <span class="summary-value">${raanAt6Deg.toFixed(1)}° – ${raanAt9Deg.toFixed(1)}°</span>
                 </div>
                 <div class="summary-item secondary">
                     <span class="summary-label">6° setting:</span>
@@ -521,17 +624,190 @@ export class WizardController {
         `;
     }
 
-    private renderLOIDateSection(loiDate: Date): string {
+    /**
+     * Get Moon ephemeris data at a specific date using astronomy-engine
+     */
+    private getMoonEphemeris(date: Date): { distance: number; ra: number; dec: number } | null {
+        try {
+            const time = Astronomy.MakeTime(date);
+            const state: any = Astronomy.GeoMoonState(time);
+
+            // Handle both API versions (state.position.x vs state.x)
+            const hasPosition = state.position !== undefined;
+            const x = hasPosition ? state.position.x : state.x;
+            const y = hasPosition ? state.position.y : state.y;
+            const z = hasPosition ? state.position.z : state.z;
+            const t = hasPosition ? state.position.t : state.t;
+
+            // Distance in km (astronomy-engine returns AU, convert to km)
+            // 1 AU = 149597870.7 km
+            const AU_TO_KM = 149597870.7;
+            const distance = Math.sqrt(x * x + y * y + z * z) * AU_TO_KM;
+
+            // Get equatorial coordinates (RA and Dec)
+            const geoVector = { x, y, z, t };
+            const equatorial = Astronomy.EquatorFromVector(geoVector);
+
+            return {
+                distance,
+                ra: equatorial.ra,   // hours (0-24)
+                dec: equatorial.dec  // degrees (-90 to +90)
+            };
+        } catch (e) {
+            console.warn('Failed to get Moon ephemeris:', e);
+            return null;
+        }
+    }
+
+    /**
+     * Check if LOI occurs at ascending or descending node
+     */
+    private checkLOINodeType(date: Date): 'Ascending' | 'Descending' {
+        try {
+            const beforeDate = new Date(date.getTime() - 60 * 60 * 1000);
+            const afterDate = new Date(date.getTime() + 60 * 60 * 1000);
+
+            const decBefore = this.getMoonDeclination(beforeDate);
+            const decAfter = this.getMoonDeclination(afterDate);
+
+            return decAfter > decBefore ? 'Ascending' : 'Descending';
+        } catch {
+            return 'Ascending';
+        }
+    }
+
+    private getMoonDeclination(date: Date): number {
+        try {
+            const time = Astronomy.MakeTime(date);
+            const state: any = Astronomy.GeoMoonState(time);
+            const hasPosition = state.position !== undefined;
+            const geoVector = {
+                x: hasPosition ? state.position.x : state.x,
+                y: hasPosition ? state.position.y : state.y,
+                z: hasPosition ? state.position.z : state.z,
+                t: hasPosition ? state.position.t : state.t
+            };
+            const equatorial = Astronomy.EquatorFromVector(geoVector);
+            return equatorial.dec;
+        } catch {
+            return 0;
+        }
+    }
+
+    /**
+     * Calculate Delta-V from circular parking orbit to transfer orbit
+     * v_transfer - v_circular at perigee
+     */
+    private calculateDeltaV(perigeeAlt: number, apogeeAlt: number): number {
+        const rp = EARTH_RADIUS + perigeeAlt;  // Perigee radius (km)
+        const ra = EARTH_RADIUS + apogeeAlt;   // Apogee radius (km)
+
+        // Circular orbit velocity at perigee altitude
+        const vCircular = Math.sqrt(EARTH_MU / rp);  // km/s
+
+        // Transfer orbit semi-major axis
+        const a = (rp + ra) / 2;
+
+        // Transfer orbit velocity at perigee (vis-viva equation)
+        const vTransfer = Math.sqrt(EARTH_MU * (2 / rp - 1 / a));  // km/s
+
+        return vTransfer - vCircular;  // km/s
+    }
+
+    private renderLOIDateSection(loiState: LOIDateStepState): string {
+        if (!loiState.selectedLOIDate) {
+            return '';
+        }
+
+        const loiDate = loiState.selectedLOIDate;
+        const tliDate = loiState.computedTLIDate;
+        const transferOrbit = loiState.transferOrbit;
+        const orbital = transferOrbit?.orbital;
+        const closestKm = transferOrbit?.closestApproachKm;
+        const closestTime = transferOrbit?.closestApproachTime ?? loiDate;
+
+        // Get Moon ephemeris at LOI
+        const moonData = this.getMoonEphemeris(loiDate);
+        const nodeType = this.checkLOINodeType(loiDate);
+
+        // Calculate Delta-V from 180x180 km circular orbit
+        const perigeeAlt = orbital?.perigeeAlt ?? 180;  // km
+        const apogeeAlt = orbital?.apogeeAlt ?? 378029;  // km (lunar distance)
+        const deltaV = this.calculateDeltaV(perigeeAlt, apogeeAlt);
+
+        // Format Moon RA as hours:minutes
+        const raHours = moonData ? Math.floor(moonData.ra) : 0;
+        const raMinutes = moonData ? Math.round((moonData.ra - raHours) * 60) : 0;
+        const raStr = moonData ? `${raHours}h ${raMinutes}m` : '--';
+
+        // Format Moon Dec
+        const decStr = moonData ? `${moonData.dec.toFixed(2)}°` : '--';
+
+        // Format Moon distance
+        const distanceStr = moonData ? `${Math.round(moonData.distance).toLocaleString()} km` : '--';
+
         return `
             <div class="summary-section">
                 <div class="summary-section-header">
                     <span class="summary-step-num">4</span>
-                    LOI Date
+                    LOI &amp; TLI
                 </div>
                 <div class="summary-section-content">
-                    <div class="summary-item">
-                        <span class="summary-label">Date:</span>
-                        <span class="summary-value">${this.formatDateTime(loiDate)}</span>
+                    <div class="summary-subsection">
+                        <div class="summary-item highlight-info">
+                            <span class="summary-label">LOI:</span>
+                            <span class="summary-value">${this.formatDateTime(loiDate)}</span>
+                        </div>
+                        <div class="summary-item secondary">
+                            <span class="summary-label">Moon Distance:</span>
+                            <span class="summary-value">${distanceStr}</span>
+                        </div>
+                        <div class="summary-item secondary">
+                            <span class="summary-label">Moon RA:</span>
+                            <span class="summary-value">${raStr}</span>
+                        </div>
+                        <div class="summary-item secondary">
+                            <span class="summary-label">Moon Dec:</span>
+                            <span class="summary-value">${decStr}</span>
+                        </div>
+                        <div class="summary-item secondary">
+                            <span class="summary-label">Node:</span>
+                            <span class="summary-value">${nodeType}</span>
+                        </div>
+                    </div>
+                    <div class="summary-subsection">
+                        <div class="summary-item highlight-info">
+                            <span class="summary-label">TLI:</span>
+                            <span class="summary-value">${tliDate ? this.formatDateTime(tliDate) : '--'}</span>
+                        </div>
+                        <div class="summary-item secondary">
+                            <span class="summary-label">Inclination:</span>
+                            <span class="summary-value">${orbital ? orbital.inclination.toFixed(2) + '°' : '--'}</span>
+                        </div>
+                        <div class="summary-item secondary">
+                            <span class="summary-label">RAAN:</span>
+                            <span class="summary-value">${orbital ? orbital.raan.toFixed(2) + '°' : '--'}</span>
+                        </div>
+                        <div class="summary-item secondary">
+                            <span class="summary-label">AoP (ω):</span>
+                            <span class="summary-value">${orbital ? orbital.omega.toFixed(2) + '°' : '--'}</span>
+                        </div>
+                        <div class="summary-item secondary">
+                            <span class="summary-label">Perigee:</span>
+                            <span class="summary-value">${perigeeAlt} km</span>
+                        </div>
+                        <div class="summary-item secondary">
+                            <span class="summary-label">Apogee:</span>
+                            <span class="summary-value">${apogeeAlt} km</span>
+                        </div>
+                        <div class="summary-item secondary highlight-info">
+                            <span class="summary-label">Closest approach:</span>
+                            <span class="summary-value">${closestKm !== undefined ? `${closestKm.toFixed(2)} km` : '--'} at ${this.formatDateTime(closestTime)}</span>
+                        </div>
+                        <div class="summary-item secondary">
+                            <span class="summary-label">ΔV (from 180×180):</span>
+                            <span class="summary-value">${deltaV.toFixed(3)} km/s</span>
+                        </div>
                     </div>
                 </div>
             </div>

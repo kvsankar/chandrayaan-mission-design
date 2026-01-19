@@ -58,14 +58,6 @@ export class MissionWindowStep {
     private render(): void {
         this.container.innerHTML = `
             <div class="mission-window-step">
-                <div class="step-header">
-                    <h2>Step 1: Exploration Window</h2>
-                    <p class="step-description">
-                        Select a time range for mission planning. Each lunar day (~14 Earth days)
-                        represents a potential exploration period when the landing site is sunlit.
-                    </p>
-                </div>
-
                 <div class="preset-options">
                     <label class="preset-option ${this.state.preset === 'cy3' ? 'selected' : ''}">
                         <input type="radio" name="mission-preset" value="cy3"

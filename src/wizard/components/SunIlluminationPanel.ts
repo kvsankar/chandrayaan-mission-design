@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import { LandingWindowWithRaan, calculateSunElevation, getSubSolarPoint, findElevationCrossing } from '../calculations/sunElevation.js';
 
 const DEG_TO_RAD = Math.PI / 180;
-const MOON_RADIUS = 40;  // Smaller than main globe view
+const MOON_RADIUS = 60;  // Larger globe for detailed viewing
 
 // Mission crossing times
 interface MissionTimes {

@@ -12,6 +12,12 @@
             box-sizing: border-box;
         }
 
+        .page-shell {
+            width: 90%;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #1a1a2e;
@@ -20,9 +26,13 @@
         }
 
         header {
-            padding: 16px 24px;
+            padding-top: 16px;
+            padding-right: 24px;
+            padding-bottom: 16px;
+            padding-left: calc(var(--steps-panel-width, 160px) + var(--content-horizontal-padding, 16px));
             background: rgba(0, 0, 0, 0.3);
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            width: 100%;
         }
 
         header h1 {
@@ -30,11 +40,15 @@
             font-weight: 500;
         }
 
+        header .page-subtitle {
+            font-size: 12px;
+            color: #aaa;
+            margin-top: 4px;
+        }
+
         main {
             padding: 24px;
-            width: 90%;
-            max-width: 1800px;
-            margin: 0 auto;
+            width: 100%;
         }
 
         #wizard-container {
@@ -45,13 +59,16 @@
     </style>
 </head>
 <body>
-    <header>
-        <h1>Chandrayaan Mission Designer</h1>
-    </header>
+    <div class="page-shell">
+        <header>
+            <h1 id="page-title">Chandrayaan Mission Designer</h1>
+            <div id="page-subtitle" class="page-subtitle" style="display: none;"></div>
+        </header>
 
-    <main>
-        <div id="wizard-container"></div>
-    </main>
+        <main>
+            <div id="wizard-container"></div>
+        </main>
+    </div>
 
     <script type="module">
         try {

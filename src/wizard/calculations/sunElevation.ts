@@ -487,7 +487,11 @@ export function findLunarDayNightCycles(
     startDate: Date,
     endDate: Date
 ): LunarSegment[] {
-    const samples = sampleElevations(site, startDate, endDate);
+    // Extend search window forward by 15 days to find complete sunset of last partial lunar day
+    // (mirrors the backward extension for the first lunar day)
+    // 15 days is enough to complete a partial day but not enough to find a new lunar day (~14 day cycle)
+    const extendedEndDate = new Date(endDate.getTime() + FIFTEEN_DAYS_MS);
+    const samples = sampleElevations(site, startDate, extendedEndDate);
     const crossings = findZeroCrossings(site, samples);
 
     const initialElevation = calculateSunElevation(site, startDate);
@@ -503,12 +507,12 @@ export function findLunarDayNightCycles(
 
     buildSegmentsFromCrossings(crossings, state, site);
 
-    // Handle partial segment at end
-    if (state.currentStart < endDate) {
+    // Handle partial segment at end (only if we still have an incomplete segment)
+    if (state.currentStart < extendedEndDate) {
         if (state.isCurrentlyDay) {
-            state.segments.push(createDaySegment(state.currentStart, endDate, site));
+            state.segments.push(createDaySegment(state.currentStart, extendedEndDate, site));
         } else {
-            state.segments.push(createNightSegment(state.currentStart, endDate));
+            state.segments.push(createNightSegment(state.currentStart, extendedEndDate));
         }
     }
 

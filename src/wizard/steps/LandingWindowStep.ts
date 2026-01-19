@@ -117,18 +117,19 @@ export class LandingWindowStep {
     }
 
     private render(): void {
-        const coordsStr = this.formatCoords(this.siteLatitude, this.siteLongitude);
-
         this.container.innerHTML = `
             <div class="lunar-day-step">
-                <div class="step-header">
-                    <h2>Step 3: Select Lunar Day</h2>
-                    <p class="step-site-info">Site: ${this.siteName} (${coordsStr})</p>
-                </div>
-
                 <div class="timeline-section">
                     <div class="timeline-header">
-                        <span class="timeline-title">Exploration Timeline</span>
+                        <div class="timeline-heading-left">
+                            <span class="timeline-title">Lunar Days as Mission Windows</span>
+                            <div class="timeline-legend-inline">
+                                <span class="legend-inline-label">Legend:</span>
+                                <span class="legend-inline-item">🟨 Lunar Day</span>
+                                <span class="legend-inline-item">🟦 Lunar Night</span>
+                                <span class="legend-inline-item">🟩 Selected</span>
+                            </div>
+                        </div>
                         <span class="timeline-subtitle">
                             ${this.formatDateRange(this.extendedStartDate, this.extendedEndDate)}
                         </span>
@@ -136,18 +137,6 @@ export class LandingWindowStep {
 
                     <div class="timeline-container" id="timeline-container">
                         ${this.renderTimeline()}
-                    </div>
-
-                    <div class="timeline-legend">
-                        <span class="legend-item">
-                            <span class="legend-box day"></span> Lunar Day (sunlit)
-                        </span>
-                        <span class="legend-item">
-                            <span class="legend-box night"></span> Lunar Night
-                        </span>
-                        <span class="legend-item">
-                            <span class="legend-box selected"></span> Selected
-                        </span>
                     </div>
                 </div>
 
@@ -167,9 +156,6 @@ export class LandingWindowStep {
         const totalDuration = this.extendedEndDate.getTime() - this.extendedStartDate.getTime();
         let html = '<div class="timeline-wrapper">';
         html += '<div class="timeline-track">';
-
-        // Add month markers
-        html += this.renderMonthMarkers();
 
         // Render segments (without labels inside)
         for (let i = 0; i < this.segments.length; i++) {
@@ -231,36 +217,7 @@ export class LandingWindowStep {
         return html;
     }
 
-    private renderMonthMarkers(): string {
-        let html = '<div class="month-markers">';
-        // Use extended window for month markers
-        const totalDuration = this.extendedEndDate.getTime() - this.extendedStartDate.getTime();
-
-        const startYear = this.extendedStartDate.getFullYear();
-        const startMonth = this.extendedStartDate.getMonth();
-        const endYear = this.extendedEndDate.getFullYear();
-        const endMonth = this.extendedEndDate.getMonth();
-
-        for (let year = startYear; year <= endYear; year++) {
-            const monthStart = (year === startYear) ? startMonth : 0;
-            const monthEnd = (year === endYear) ? endMonth : 11;
-
-            for (let month = monthStart; month <= monthEnd; month++) {
-                const monthDate = new Date(Date.UTC(year, month, 1));
-                if (monthDate >= this.extendedStartDate && monthDate <= this.extendedEndDate) {
-                    const offset = (monthDate.getTime() - this.extendedStartDate.getTime()) / totalDuration * 100;
-                    html += `
-                        <div class="month-marker" style="left: ${offset}%;">
-                            <span class="month-label">${MONTH_NAMES[month]}${year !== startYear ? ' ' + year : ''}</span>
-                        </div>
-                    `;
-                }
-            }
-        }
-
-        html += '</div>';
-        return html;
-    }
+    // Month markers removed (not used)
 
     private renderDayDetails(day: LunarDaySegment): string {
         // Calculate mission times (6° and 9° crossings)
@@ -523,12 +480,6 @@ export class LandingWindowStep {
     private isDaySelected(day: LunarDaySegment): boolean {
         if (!this.state.selectedLunarDay) return false;
         return this.getDayId(day) === this.getDayId(this.state.selectedLunarDay);
-    }
-
-    private formatCoords(lat: number, lon: number): string {
-        const latDir = lat >= 0 ? 'N' : 'S';
-        const lonDir = lon >= 0 ? 'E' : 'W';
-        return `${Math.abs(lat).toFixed(2)}°${latDir}, ${Math.abs(lon).toFixed(2)}°${lonDir}`;
     }
 
     private formatDateTime(date: Date): string {

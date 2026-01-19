@@ -11,12 +11,25 @@ import {
     LunarNightSegment,
     LunarSegment,
     findLunarDayNightCycles,
-    formatLunarDayLabel
+    formatLunarDayLabel,
+    calculateRequiredRaan
 } from '../calculations/sunElevation.js';
-import { findOptimalLOIDates } from '../../optimization.js';
+import {
+    calculateTimeToTrueAnomaly,
+    findOptimalLOIDates,
+    optimizeApogeeToMoonMultiStart
+} from '../../optimization.js';
+import { OrbitVisualizationPanel, OrbitalParams, TimelineConfig } from '../components/orbitVisualization/index.js';
+
+// Default orbital parameters for CY3-like mission
+const DEFAULT_PERIGEE_ALT = 180;  // km
+const DEFAULT_APOGEE_ALT = 378029;  // km (lunar distance)
 
 export interface LOIDateStepState {
     selectedLOIDate: Date | null;
+    computedTLIDate: Date | null;
+    transferOrbit: TransferOrbitSolution | null;
+    explorationCollapsed?: boolean;
 }
 
 export interface LOIDateStepOptions {
@@ -39,12 +52,20 @@ interface LOIOption {
     isAscending: boolean;
 }
 
+interface TransferOrbitSolution {
+    tliDate: Date;
+    orbital: OrbitalParams;
+    trueAnomalyAtLOI: number;
+    closestApproachKm: number;
+    closestApproachTime: Date;
+}
+
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export class LOIDateStep {
     private container: HTMLElement;
     private selectedLunarDay: LunarDaySegment;
-    private siteName: string;
+    // private siteName: string;
     private siteLatitude: number;
     private siteLongitude: number;
     private explorationStartDate: Date;
@@ -59,11 +80,15 @@ export class LOIDateStep {
     private loiOptions: LOIOption[] = [];
     private state: LOIDateStepState;
     private onStateChange?: (state: LOIDateStepState) => void;
+    private sectionCollapsed: { exploration: boolean; loi: boolean } = { exploration: false, loi: false };
+
+    // Orbit visualization
+    private orbitPanel: OrbitVisualizationPanel | null = null;
 
     constructor(options: LOIDateStepOptions) {
         this.container = options.container;
         this.selectedLunarDay = options.selectedLunarDay;
-        this.siteName = options.siteName;
+        // this.siteName = options.siteName;
         this.siteLatitude = options.siteLatitude;
         this.siteLongitude = options.siteLongitude;
         this.explorationStartDate = options.explorationStartDate;
@@ -75,8 +100,14 @@ export class LOIDateStep {
 
         this.state = {
             selectedLOIDate: null,
+            computedTLIDate: null,
+            transferOrbit: null,
+            explorationCollapsed: options.initialState?.explorationCollapsed,
             ...options.initialState
         };
+
+        // initialize collapsed states
+        this.sectionCollapsed.exploration = this.state.explorationCollapsed ?? false;
 
         this.computeSegments();
         this.computeLOIOptions();
@@ -194,18 +225,19 @@ export class LOIDateStep {
     }
 
     private render(): void {
-        const lunarDayLabel = formatLunarDayLabel(this.selectedLunarDay);
-
         this.container.innerHTML = `
             <div class="loi-date-step">
-                <div class="step-header">
-                    <h2>Step 4: Select LOI Date</h2>
-                    <p class="step-site-info">${this.siteName} | ${lunarDayLabel}</p>
-                </div>
-
-                <div class="timeline-section">
-                    <div class="timeline-header">
-                        <span class="timeline-title">Exploration Timeline</span>
+                    <div class="timeline-section collapsible-section ${this.sectionCollapsed.exploration ? 'collapsed' : ''}" id="exploration-section">
+                    <div class="timeline-header" data-toggle="exploration-section">
+                        <div class="timeline-heading-left">
+                            <span class="timeline-title">Lunar Days as Mission Windows <span class="collapse-toggle">▼</span></span>
+                            <div class="timeline-legend-inline">
+                                <span class="legend-inline-label">Legend:</span>
+                                <span class="legend-inline-item">🟨 Lunar Day</span>
+                                <span class="legend-inline-item">🟦 Lunar Night</span>
+                                <span class="legend-inline-item">🟩 Selected</span>
+                            </div>
+                        </div>
                         <span class="timeline-subtitle">
                             ${this.formatDateRange(this.extendedStartDate, this.extendedEndDate)}
                         </span>
@@ -214,23 +246,11 @@ export class LOIDateStep {
                     <div class="timeline-container" id="exploration-timeline">
                         ${this.renderExplorationTimeline()}
                     </div>
-
-                    <div class="timeline-legend">
-                        <span class="legend-item">
-                            <span class="legend-box day"></span> Lunar Day (sunlit)
-                        </span>
-                        <span class="legend-item">
-                            <span class="legend-box night"></span> Lunar Night
-                        </span>
-                        <span class="legend-item">
-                            <span class="legend-box selected"></span> Selected
-                        </span>
-                    </div>
                 </div>
 
-                <div class="timeline-section loi-timeline-section">
-                    <div class="timeline-header">
-                        <span class="timeline-title">LOI Date Selection</span>
+                <div class="timeline-section loi-timeline-section collapsible-section ${this.sectionCollapsed.loi ? 'collapsed' : ''}" id="loi-selection-section">
+                    <div class="timeline-header" data-toggle="loi-selection-section">
+                        <span class="timeline-title">LOI Date Selection <span class="collapse-toggle">▼</span></span>
                         <span class="timeline-subtitle">Moon equator crossings before landing</span>
                     </div>
 
@@ -238,31 +258,36 @@ export class LOIDateStep {
                         ${this.renderLOITimeline()}
                     </div>
 
-                    <div class="timeline-legend">
-                        <span class="legend-item">
-                            <span class="legend-box loi"></span> LOI Option
-                        </span>
-                        <span class="legend-item">
-                            <span class="legend-box loi-selected"></span> Selected LOI
-                        </span>
-                        <span class="legend-item">
-                            <span class="node-symbol">☊</span> Ascending Node
-                        </span>
-                        <span class="legend-item">
-                            <span class="node-symbol">☋</span> Descending Node
-                        </span>
-                    </div>
                 </div>
 
-                <div class="loi-details" id="loi-details">
-                    ${this.state.selectedLOIDate
-                        ? this.renderSelectedDetails()
-                        : '<div class="no-selection">Select an LOI date above</div>'}
+                <div class="loi-content-row">
+                    <div class="orbit-visualization-section">
+                        <div class="orbit-header">
+                            <span class="orbit-title">Transfer Orbit Animation</span>
+                            <button class="orbit-expand-btn hidden" id="orbit-expand-btn" type="button" title="Expand to full screen">⛶</button>
+                        </div>
+                        <div class="orbit-container" id="orbit-container"></div>
+                        <div class="orbit-legend">
+                            <span class="legend-item">
+                                <span class="legend-line lunar"></span> Moon Orbit
+                            </span>
+                            <span class="legend-item">
+                                <span class="legend-line chandrayaan"></span> Transfer Orbit
+                            </span>
+                            <span class="legend-item">
+                                <span class="legend-marker tli"></span> TLI
+                            </span>
+                            <span class="legend-item">
+                                <span class="legend-marker loi"></span> LOI
+                            </span>
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
 
         this.attachEventListeners();
+        this.initOrbitVisualization();
     }
 
     /**
@@ -418,9 +443,12 @@ export class LOIDateStep {
     }
 
     private formatDateTimeShort(date: Date): string {
-        const month = MONTH_NAMES[date.getUTCMonth()];
-        const day = date.getUTCDate();
-        return `${month} ${day}`;
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: this.timezone,
+            month: 'short',
+            day: 'numeric'
+        });
+        return formatter.format(date);
     }
 
     private renderMonthMarkers(): string {
@@ -457,52 +485,6 @@ export class LOIDateStep {
         return day.sunrise.getTime() === this.selectedLunarDay.sunrise.getTime();
     }
 
-    private renderSelectedDetails(): string {
-        if (!this.state.selectedLOIDate) {
-            return '<div class="no-selection">Select an LOI date above</div>';
-        }
-
-        const option = this.loiOptions.find(o => o.date.getTime() === this.state.selectedLOIDate!.getTime());
-        if (!option) {
-            return '<div class="no-selection">Invalid selection</div>';
-        }
-
-        const crossingType = option.isAscending ? 'Ascending (S→N)' : 'Descending (N→S)';
-        const landingDate = this.selectedLunarDay.sunrise;
-        const transitDays = option.daysBeforeLanding;
-
-        return `
-            <div class="details-content">
-                <div class="detail-row highlight">
-                    <span class="detail-label">Selected LOI:</span>
-                    <span class="detail-value">${this.formatDateTime(option.date)}</span>
-                </div>
-
-                <div class="details-divider"></div>
-
-                <div class="detail-row">
-                    <span class="detail-label">Crossing Type:</span>
-                    <span class="detail-value">${crossingType}</span>
-                </div>
-                <div class="detail-row">
-                    <span class="detail-label">Days to Landing:</span>
-                    <span class="detail-value">${transitDays.toFixed(1)} days</span>
-                </div>
-                <div class="detail-row">
-                    <span class="detail-label">Landing Date:</span>
-                    <span class="detail-value">${this.formatDateTime(landingDate)}</span>
-                </div>
-
-                <div class="details-divider"></div>
-
-                <div class="detail-note">
-                    <strong>Note:</strong> LOI occurs when the Moon crosses Earth's equatorial plane.
-                    This provides optimal geometry for lunar orbit insertion.
-                </div>
-            </div>
-        `;
-    }
-
     private attachEventListeners(): void {
         // LOI markers on LOI timeline
         const loiTimeline = this.container.querySelector('#loi-timeline');
@@ -512,13 +494,304 @@ export class LOIDateStep {
                 this.selectLOI(index);
             });
         });
+
+        // Collapsible section toggles
+        this.container.querySelectorAll('.timeline-header[data-toggle]').forEach(header => {
+            header.addEventListener('click', (e) => {
+                const targetId = header.getAttribute('data-toggle');
+                if (targetId) {
+                    const section = this.container.querySelector(`#${targetId}`);
+                    if (section) {
+                        section.classList.toggle('collapsed');
+                        // track manual collapse state
+                        if (targetId === 'exploration-section') {
+                            this.sectionCollapsed.exploration = section.classList.contains('collapsed');
+                        } else if (targetId === 'loi-selection-section') {
+                            this.sectionCollapsed.loi = section.classList.contains('collapsed');
+                        }
+                        // Resize orbit panel when sections collapse/expand
+                        this.handleSectionToggle();
+                    }
+                }
+                e.stopPropagation();
+            });
+        });
+    }
+
+    /**
+     * Handle section collapse/expand to resize orbit visualization
+     */
+    private handleSectionToggle(): void {
+        const orbitSection = this.container.querySelector('.orbit-visualization-section');
+        const explorationSection = this.container.querySelector('#exploration-section');
+        const loiSection = this.container.querySelector('#loi-selection-section');
+
+        // If both sections are collapsed, expand the orbit panel
+        if (explorationSection?.classList.contains('collapsed') &&
+            loiSection?.classList.contains('collapsed')) {
+            orbitSection?.classList.add('expanded');
+        } else {
+            orbitSection?.classList.remove('expanded');
+        }
+
+        // Resize orbit panel renderer if needed
+        if (this.orbitPanel) {
+            const orbitContainer = this.container.querySelector('#orbit-container') as HTMLElement;
+            if (orbitContainer) {
+                setTimeout(() => {
+                    const width = orbitContainer.clientWidth;
+                    const height = orbitContainer.clientHeight;
+                    if (width > 0 && height > 0) {
+                        this.orbitPanel?.resize(width, height);
+                    }
+                }, 350);  // Wait for CSS transition to complete
+            }
+        }
+    }
+
+    /**
+     * Calculate orbital period for transfer orbit
+     */
+    private computeTransferOrbit(loiDate: Date): TransferOrbitSolution {
+        const inclination = 21.5;
+        const omega = 178;
+        const perigeeAlt = DEFAULT_PERIGEE_ALT;
+        const initialApogeeAlt = DEFAULT_APOGEE_ALT;
+
+        try {
+            const optimized = optimizeApogeeToMoonMultiStart(
+                loiDate,
+                omega,
+                inclination,
+                initialApogeeAlt
+            );
+
+            const timeToNu = calculateTimeToTrueAnomaly(
+                optimized.trueAnomaly,
+                perigeeAlt,
+                optimized.apogeeAlt
+            );
+
+            const tliDate = new Date(loiDate.getTime() - timeToNu * 1000);
+
+            return {
+                tliDate,
+                orbital: {
+                    inclination,
+                    raan: optimized.raan,
+                    omega,
+                    perigeeAlt,
+                    apogeeAlt: optimized.apogeeAlt
+                },
+                trueAnomalyAtLOI: optimized.trueAnomaly,
+                closestApproachKm: optimized.distance,
+                closestApproachTime: loiDate
+            };
+        } catch (error) {
+            console.warn('Transfer orbit optimization failed, using fallback timing.', error);
+
+            // Fallback: assume apogee at 180° true anomaly with analytic RAAN
+            const fallbackNu = 180;
+            const timeToApogee = calculateTimeToTrueAnomaly(
+                fallbackNu,
+                perigeeAlt,
+                initialApogeeAlt
+            );
+            const tliDate = new Date(loiDate.getTime() - timeToApogee * 1000);
+
+            return {
+                tliDate,
+                orbital: {
+                    inclination,
+                    raan: calculateRequiredRaan(this.siteLongitude, loiDate),
+                    omega,
+                    perigeeAlt,
+                    apogeeAlt: initialApogeeAlt
+                },
+                trueAnomalyAtLOI: fallbackNu,
+                closestApproachKm: Infinity,
+                closestApproachTime: loiDate
+            };
+        }
+    }
+
+    /**
+     * Ensure we have a cached transfer orbit solution for the selected LOI
+     */
+    private ensureTransferOrbitSolution(): TransferOrbitSolution | null {
+        if (!this.state.selectedLOIDate) return null;
+
+        if (!this.state.transferOrbit || !this.state.computedTLIDate) {
+            const solution = this.computeTransferOrbit(this.state.selectedLOIDate);
+            this.state.transferOrbit = solution;
+            this.state.computedTLIDate = solution.tliDate;
+        }
+
+        return this.state.transferOrbit;
+    }
+
+    private initOrbitVisualization(): void {
+        const orbitContainer = this.container.querySelector('#orbit-container') as HTMLElement;
+        if (!orbitContainer) return;
+
+        // Wire up inline expand button
+        const expandBtn = this.container.querySelector('#orbit-expand-btn') as HTMLButtonElement | null;
+
+        // Show placeholder until LOI is selected
+        if (!this.state.selectedLOIDate) {
+            if (expandBtn) expandBtn.classList.add('hidden');
+            orbitContainer.innerHTML = `
+                <div class="orbit-placeholder">
+                    <p>Select an LOI date above to view the transfer orbit trajectory</p>
+                </div>
+            `;
+            return;
+        }
+
+        const transferOrbit = this.ensureTransferOrbitSolution();
+        if (!transferOrbit) return;
+
+        // Check if WebGL is available (not available in unit test environment)
+        try {
+            const testCanvas = document.createElement('canvas');
+            const gl = testCanvas.getContext('webgl') || testCanvas.getContext('experimental-webgl');
+            if (!gl) {
+                console.warn('WebGL not available, skipping orbit visualization');
+                orbitContainer.innerHTML = '<div class="orbit-placeholder"><p>WebGL not available</p></div>';
+                return;
+            }
+        } catch {
+            console.warn('WebGL check failed, skipping orbit visualization');
+            return;
+        }
+
+        // Calculate required RAAN for the LOI date
+        const requiredRaan = calculateRequiredRaan(this.siteLongitude, this.state.selectedLOIDate);
+        const landingDate = this.selectedLunarDay.sunrise;
+
+        // Orbital parameters based on CY3 mission profile
+        const orbitalParams: OrbitalParams = {
+            ...transferOrbit.orbital,
+            raan: transferOrbit.orbital.raan ?? requiredRaan
+        };
+
+        // Timeline configuration
+        const timeline: TimelineConfig = {
+            tliDate: transferOrbit.tliDate,
+            loiDate: this.state.selectedLOIDate,
+            landingDate: landingDate,
+            closestApproachDate: transferOrbit.closestApproachTime,
+            paddingDays: 5
+        };
+
+        try {
+            // Clear placeholder
+            orbitContainer.innerHTML = '';
+
+            this.orbitPanel = new OrbitVisualizationPanel({
+                container: orbitContainer,
+                timeline: timeline,
+                orbital: orbitalParams,
+                timezone: this.timezone,
+                captureThreshold: 5000,  // km
+                onTimeChange: (_date) => {
+                    // Could update external UI here if needed
+                },
+                onCapture: (_date) => {
+                    // Capture detected - could show notification here
+                }
+            });
+            // Connect inline expand control to the panel's fullscreen toggle
+            if (expandBtn) {
+                const toggleFn = (this.orbitPanel as any)?.toggleFullscreen;
+                if (typeof toggleFn === 'function') {
+                    expandBtn.classList.remove('hidden');
+                    expandBtn.addEventListener('click', () => toggleFn.call(this.orbitPanel));
+                } else {
+                    expandBtn.classList.add('hidden');
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to initialize orbit visualization:', error);
+            orbitContainer.innerHTML = '<div class="orbit-placeholder"><p>Failed to initialize visualization</p></div>';
+        }
     }
 
     private selectLOI(index: number): void {
         if (index >= 0 && index < this.loiOptions.length) {
             this.state.selectedLOIDate = this.loiOptions[index].date;
+
+            // Compute TLI from LOI
+            const solution = this.computeTransferOrbit(this.state.selectedLOIDate);
+            this.state.transferOrbit = solution;
+            this.state.computedTLIDate = solution.tliDate;
+            this.state.explorationCollapsed = true;
+
+            // Auto-collapse exploration panel on selection (stay collapsed until user reopens or navigation reset)
+            this.sectionCollapsed.exploration = true;
+            const explorationSection = this.container.querySelector('#exploration-section');
+            explorationSection?.classList.add('collapsed');
+
             this.updateUI();
             this.notifyStateChange();
+
+            // Update orbit visualization to show the trajectory
+            this.updateOrbitVisualization();
+        }
+    }
+
+    private updateOrbitVisualization(): void {
+        if (!this.state.selectedLOIDate) return;
+
+        const transferOrbit = this.ensureTransferOrbitSolution();
+        if (!transferOrbit) return;
+
+        // If panel doesn't exist yet, initialize it
+        if (!this.orbitPanel) {
+            this.initOrbitVisualization();
+            // Update subtitle
+            const subtitle = this.container.querySelector('#orbit-subtitle');
+            if (subtitle) {
+                subtitle.textContent = `TLI: ${this.formatDateTimeShort(this.state.computedTLIDate)} → LOI: ${this.formatDateTimeShort(this.state.selectedLOIDate)}`;
+            }
+            return;
+        }
+
+        // Calculate required RAAN for the LOI date
+        const requiredRaan = calculateRequiredRaan(this.siteLongitude, this.state.selectedLOIDate);
+        const landingDate = this.selectedLunarDay.sunrise;
+
+        // Update orbital parameters
+        this.orbitPanel.setOrbitalParams({
+            raan: transferOrbit.orbital.raan ?? requiredRaan,
+            perigeeAlt: transferOrbit.orbital.perigeeAlt,
+            apogeeAlt: transferOrbit.orbital.apogeeAlt
+        });
+
+        // Update timeline configuration
+        this.orbitPanel.setTimeline({
+            tliDate: transferOrbit.tliDate,
+            loiDate: this.state.selectedLOIDate,
+            landingDate: landingDate,
+            closestApproachDate: transferOrbit.closestApproachTime,
+            paddingDays: 5
+        });
+
+        // Ensure expand button is visible when visualization is active
+        const expandBtn = this.container.querySelector('#orbit-expand-btn') as HTMLButtonElement | null;
+        if (expandBtn) {
+            const toggleFn = (this.orbitPanel as any)?.toggleFullscreen;
+            if (typeof toggleFn === 'function') {
+                expandBtn.classList.remove('hidden');
+            } else {
+                expandBtn.classList.add('hidden');
+            }
+        }
+
+        // Update subtitle
+        const subtitle = this.container.querySelector('#orbit-subtitle');
+        if (subtitle) {
+            subtitle.textContent = `TLI: ${this.formatDateTimeShort(this.state.computedTLIDate)} → LOI: ${this.formatDateTimeShort(this.state.selectedLOIDate)}`;
         }
     }
 
@@ -532,27 +805,6 @@ export class LOIDateStep {
                 option.date.getTime() === this.state.selectedLOIDate.getTime();
             marker.classList.toggle('selected', isSelected);
         });
-
-        const detailsPanel = this.container.querySelector('#loi-details');
-        if (detailsPanel) {
-            detailsPanel.innerHTML = this.state.selectedLOIDate
-                ? this.renderSelectedDetails()
-                : '<div class="no-selection">Click an LOI marker (blue line) on the timeline below</div>';
-        }
-    }
-
-    private formatDateTime(date: Date): string {
-        const formatter = new Intl.DateTimeFormat('en-US', {
-            timeZone: this.timezone,
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
-            timeZoneName: 'short'
-        });
-        return formatter.format(date);
     }
 
     private formatDateRange(start: Date, end: Date): string {
@@ -587,10 +839,17 @@ export class LOIDateStep {
 
     setTimezone(timezone: string): void {
         this.timezone = timezone;
+        if (this.orbitPanel) {
+            this.orbitPanel.setTimezone(timezone);
+        }
         this.render();
     }
 
     dispose(): void {
+        if (this.orbitPanel) {
+            this.orbitPanel.dispose();
+            this.orbitPanel = null;
+        }
         this.container.innerHTML = '';
     }
 }
