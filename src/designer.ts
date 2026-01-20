@@ -219,10 +219,6 @@ const launchEvent: LaunchEvent = {
     optimalLOIDates: []
 };
 
-function isE2ETestEnv(): boolean {
-    return typeof window !== 'undefined' && (window as any).__E2E_TESTING__ === true;
-}
-
 // Expose for E2E testing
 if (typeof window !== 'undefined') {
     (window as any).launchEvent = launchEvent;
@@ -4032,16 +4028,6 @@ function runAutoOptimization(): { raan: number; apogeeAlt: number; trueAnomaly: 
     if (!loiDate) {
         showAlert('Please set LOI date first', 'Missing LOI Date');
         return null;
-    }
-    if (isE2ETestEnv()) {
-        const fastTLIDate = new Date(loiDate.getTime() - 24 * 60 * 60 * 1000);
-        return {
-            raan: launchEvent.raan,
-            apogeeAlt: launchEvent.apogeeAlt,
-            trueAnomaly: 180,
-            distance: 1000,
-            newTLIDate: fastTLIDate
-        };
     }
 
     const result = optimizeApogeeToMoonMultiStart(loiDate, launchEvent.omega, launchEvent.inclination, launchEvent.apogeeAlt);
