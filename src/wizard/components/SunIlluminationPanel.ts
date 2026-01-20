@@ -463,8 +463,10 @@ export class SunIlluminationPanel {
         });
 
         const textureLoader = new THREE.TextureLoader();
+        // Use import.meta.url for correct path resolution in subdirectory deployments
+        const textureUrl = new URL('./textures/moon_lroc_color.jpg', import.meta.url).href;
         textureLoader.load(
-            './textures/moon_lroc_color.jpg',
+            textureUrl,
             (texture) => {
                 texture.colorSpace = THREE.SRGBColorSpace;
                 texture.wrapS = THREE.RepeatWrapping;
