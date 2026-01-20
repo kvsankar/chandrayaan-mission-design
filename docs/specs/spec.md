@@ -734,7 +734,7 @@ Where:
 
 ## 12. Mission Design Wizard (Separate Application)
 
-The Mission Design Wizard is a standalone application (`src/wizard/demo.html`) that implements a **backwards mission design methodology**.
+The Mission Design Wizard is a standalone application (`wizard.html`) that implements a **backwards mission design methodology**.
 
 ### 12.1 Design Philosophy
 
@@ -985,7 +985,7 @@ if (savedState.stateVersion !== CURRENT_VERSION) {
 
 | Aspect | Main App | Wizard |
 |--------|----------|--------|
-| **Entry Point** | `index.html` | `src/wizard/demo.html` |
+| **Entry Point** | `index.html` | `wizard.html` |
 | **Approach** | Forward simulation | Backwards design |
 | **Workflow** | Free-form exploration | Linear 4-step process |
 | **State** | Ephemeral (no persistence) | Persistent (localStorage) |

@@ -26,7 +26,7 @@ test.describe('Mission Design Wizard', () => {
     });
 
     test('should load without console errors', async ({ page }) => {
-        await page.goto('/src/wizard/demo.html');
+        await page.goto('/wizard.html');
 
         // Wait for the component to initialize
         await page.waitForTimeout(2000);
@@ -50,7 +50,7 @@ test.describe('Mission Design Wizard', () => {
     });
 
     test('should display Step 1 (Mission Window) on load', async ({ page }) => {
-        await page.goto('/src/wizard/demo.html');
+        await page.goto('/wizard.html');
 
         await page.waitForTimeout(1000);
 
@@ -64,7 +64,7 @@ test.describe('Mission Design Wizard', () => {
     });
 
     test('should have CY3 selected by default', async ({ page }) => {
-        await page.goto('/src/wizard/demo.html');
+        await page.goto('/wizard.html');
 
         await page.waitForTimeout(1000);
 
@@ -74,7 +74,7 @@ test.describe('Mission Design Wizard', () => {
     });
 
     test('should navigate from Step 1 to Step 2', async ({ page }) => {
-        await page.goto('/src/wizard/demo.html');
+        await page.goto('/wizard.html');
 
         await page.waitForTimeout(1000);
 
@@ -91,7 +91,7 @@ test.describe('Mission Design Wizard', () => {
     });
 
     test('should show breadcrumb navigation', async ({ page }) => {
-        await page.goto('/src/wizard/demo.html');
+        await page.goto('/wizard.html');
 
         await page.waitForTimeout(1000);
 
@@ -103,7 +103,7 @@ test.describe('Mission Design Wizard', () => {
     });
 
     test('should navigate back from Step 2 to Step 1', async ({ page }) => {
-        await page.goto('/src/wizard/demo.html');
+        await page.goto('/wizard.html');
 
         await page.waitForTimeout(1000);
 
@@ -120,7 +120,7 @@ test.describe('Mission Design Wizard', () => {
     });
 
     test('should display Moon globe with canvas on Step 2', async ({ page }) => {
-        await page.goto('/src/wizard/demo.html');
+        await page.goto('/wizard.html');
 
         await page.waitForTimeout(1000);
 
@@ -137,7 +137,7 @@ test.describe('Mission Design Wizard', () => {
     });
 
     test('should have preset sites dropdown on Step 2', async ({ page }) => {
-        await page.goto('/src/wizard/demo.html');
+        await page.goto('/wizard.html');
 
         await page.waitForTimeout(1000);
 
@@ -154,7 +154,7 @@ test.describe('Mission Design Wizard', () => {
     });
 
     test('should select preset site on Step 2', async ({ page }) => {
-        await page.goto('/src/wizard/demo.html');
+        await page.goto('/wizard.html');
 
         await page.waitForTimeout(1000);
 
@@ -172,7 +172,7 @@ test.describe('Mission Design Wizard', () => {
     });
 
     test('should show placeholder for Step 3', async ({ page }) => {
-        await page.goto('/src/wizard/demo.html');
+        await page.goto('/wizard.html');
 
         await page.waitForTimeout(1000);
 

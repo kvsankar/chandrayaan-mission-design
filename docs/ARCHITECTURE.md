@@ -779,7 +779,7 @@ Wizard workflow tests:
 
 ```typescript
 test('wizard completes full workflow', async ({ page }) => {
-    await page.goto('/src/wizard/demo.html');
+    await page.goto('/wizard.html');
 
     // Step 1: Select landing site
     await page.click('[data-site="shackleton"]');
