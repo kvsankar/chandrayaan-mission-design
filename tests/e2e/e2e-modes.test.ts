@@ -2,27 +2,12 @@ import { test, expect } from '@playwright/test';
 import { gotoApp, waitForAppMode, waitForAutoLOI, waitForLaunchEvent } from './test-helpers';
 
 test.describe('Mode Transition Tests', () => {
-    test('should maintain separate parameter sets for Explore vs Plan/Game modes', async ({ page }) => {
-        console.log('\n=== PARAMETER ISOLATION TEST ===');
+    test('should share parameters between Plan and Game modes', async ({ page }) => {
+        console.log('\n=== PLAN/GAME PARAMETER SHARING TEST ===');
 
-        await gotoApp(page);
+        await gotoApp(page, 'Plan');
 
-        console.log('\n--- Step 1: Capture default Explore mode parameters ---');
-
-        // Capture default Explore mode parameters
-        const exploreParams1 = await page.evaluate(() => ({
-            inclination: (window as any).params.chandrayaanInclination,
-            raan: (window as any).params.chandrayaanRAAN,
-            omega: (window as any).params.chandrayaanOmega,
-            perigeeAlt: (window as any).params.chandrayaanPerigeeAlt
-        }));
-
-        console.log('Initial Explore params:', exploreParams1);
-
-        console.log('\n--- Step 2: Switch to Plan mode and create launch event ---');
-
-        await page.click('button:has-text("Plan")');
-        await waitForAppMode(page, 'Plan');
+        console.log('\n--- Step 1: Create launch event in Plan mode ---');
 
         await page.click('#add-launch-action-btn');
         await waitForLaunchEvent(page);
@@ -40,42 +25,7 @@ test.describe('Mode Transition Tests', () => {
 
         console.log('Plan params:', planParams1);
 
-        console.log('\n--- Step 3: Switch back to Explore and verify isolation ---');
-
-        await page.click('button:has-text("Explore")');
-        await waitForAppMode(page, 'Explore');
-
-        const exploreParams2 = await page.evaluate(() => ({
-            inclination: (window as any).params.chandrayaanInclination,
-            raan: (window as any).params.chandrayaanRAAN,
-            omega: (window as any).params.chandrayaanOmega,
-            perigeeAlt: (window as any).params.chandrayaanPerigeeAlt
-        }));
-
-        console.log('Explore params after switch:', exploreParams2);
-        expect(exploreParams2).toEqual(exploreParams1);
-        console.log('✓ Explore parameters preserved (not affected by Plan mode)');
-
-        console.log('\n--- Step 4: Return to Plan and verify parameters unchanged ---');
-
-        await page.click('button:has-text("Plan")');
-        await waitForAppMode(page, 'Plan');
-
-        const planParams2 = await page.evaluate(() => {
-            const le = (window as any).launchEvent;
-            return {
-                inclination: le.inclination,
-                raan: le.raan,
-                omega: le.omega,
-                apogeeAlt: le.apogeeAlt
-            };
-        });
-
-        console.log('Plan params after switch:', planParams2);
-        expect(planParams2).toEqual(planParams1);
-        console.log('✓ Plan parameters preserved');
-
-        console.log('\n--- Step 5: Switch to Game and verify same as Plan ---');
+        console.log('\n--- Step 2: Switch to Game and verify same parameters ---');
 
         await page.click('button:has-text("Game")');
         await waitForAppMode(page, 'Game');
@@ -94,7 +44,26 @@ test.describe('Mode Transition Tests', () => {
         expect(gameParams).toEqual(planParams1);
         console.log('✓ Game mode shares Plan parameters');
 
-        console.log('\n=== PARAMETER ISOLATION TEST PASSED ✓ ===');
+        console.log('\n--- Step 3: Return to Plan and verify parameters unchanged ---');
+
+        await page.click('button:has-text("Plan")');
+        await waitForAppMode(page, 'Plan');
+
+        const planParams2 = await page.evaluate(() => {
+            const le = (window as any).launchEvent;
+            return {
+                inclination: le.inclination,
+                raan: le.raan,
+                omega: le.omega,
+                apogeeAlt: le.apogeeAlt
+            };
+        });
+
+        console.log('Plan params after switch:', planParams2);
+        expect(planParams2).toEqual(planParams1);
+        console.log('✓ Plan parameters preserved after round-trip');
+
+        console.log('\n=== PLAN/GAME PARAMETER SHARING TEST PASSED ✓ ===');
     });
 
     test.skip('should handle rapid mode switching without corruption', async ({ page }) => {
@@ -169,22 +138,12 @@ test.describe('Mode Transition Tests', () => {
         console.log('\n=== RAPID MODE SWITCHING TEST PASSED ✓ ===');
     });
 
-    test('should handle Plan → Game → Plan → Explore → Plan transitions', async ({ page }) => {
-        console.log('\n=== COMPLEX MODE TRANSITION TEST ===');
+    test('should handle multiple Plan ↔ Game transitions correctly', async ({ page }) => {
+        console.log('\n=== MULTIPLE MODE TRANSITION TEST ===');
 
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
-
-        console.log('\n--- Capture initial Explore params ---');
-        const exploreSnapshot = await page.evaluate(() => ({
-            inclination: (window as any).params.chandrayaanInclination,
-            raan: (window as any).params.chandrayaanRAAN
-        }));
-        console.log('Explore snapshot:', exploreSnapshot);
+        await gotoApp(page, 'Plan');
 
         console.log('\n--- Plan mode: create event ---');
-        await page.click('button:has-text("Plan")');
-        await page.waitForTimeout(1000);
         await page.click('#add-launch-action-btn');
         await page.waitForTimeout(2000);
 
@@ -229,20 +188,11 @@ test.describe('Mode Transition Tests', () => {
             };
         });
         expect(planCheck1).toEqual(planSnapshot);
-        console.log('✓ Plan params unchanged');
+        console.log('✓ Plan params unchanged after Game');
 
-        console.log('\n--- Transition: Plan → Explore ---');
-        await page.click('button:has-text("Explore")');
-        await waitForAppMode(page, 'Explore');
-
-        const exploreCheck = await page.evaluate(() => ({
-            inclination: (window as any).params.chandrayaanInclination,
-            raan: (window as any).params.chandrayaanRAAN
-        }));
-        expect(exploreCheck).toEqual(exploreSnapshot);
-        console.log('✓ Explore params unchanged');
-
-        console.log('\n--- Transition: Explore → Plan ---');
+        console.log('\n--- Transition: Plan → Game → Plan (second round) ---');
+        await page.click('button:has-text("Game")');
+        await waitForAppMode(page, 'Game');
         await page.click('button:has-text("Plan")');
         await waitForAppMode(page, 'Plan');
 
@@ -256,20 +206,18 @@ test.describe('Mode Transition Tests', () => {
             };
         });
         expect(planCheck2).toEqual(planSnapshot);
-        console.log('✓ Plan params still intact');
+        console.log('✓ Plan params still intact after multiple transitions');
 
-        console.log('\n=== COMPLEX MODE TRANSITION TEST PASSED ✓ ===');
+        console.log('\n=== MULTIPLE MODE TRANSITION TEST PASSED ✓ ===');
     });
 
     test('should preserve optimized values through mode switches', async ({ page }) => {
         console.log('\n=== OPTIMIZED VALUES PERSISTENCE TEST ===');
         page.on('dialog', dialog => dialog.accept());
 
-        await gotoApp(page);
+        await gotoApp(page, 'Plan');
 
-        // Switch to Plan mode and create launch event
-        await page.click('button:has-text("Plan")');
-        await waitForAppMode(page, 'Plan');
+        // Create launch event in Plan mode
         await page.click('#add-launch-action-btn');
         await waitForLaunchEvent(page);
 
@@ -317,12 +265,11 @@ test.describe('Mode Transition Tests', () => {
             }
         });
 
-        // Test multiple mode switches
+        // Test multiple Plan ↔ Game mode switches
         const transitions = [
             'Game',
             'Plan',
             'Game',
-            'Explore',
             'Plan',
             'Game',
             'Plan'
@@ -333,22 +280,19 @@ test.describe('Mode Transition Tests', () => {
             await page.evaluate((targetMode) => {
                 (window as any).switchAppModeForTest(targetMode);
             }, mode);
-            await waitForAppMode(page, mode as 'Explore' | 'Plan' | 'Game');
+            await waitForAppMode(page, mode as 'Plan' | 'Game');
 
-            // Only check launch event params in Plan/Game modes
-            if (mode !== 'Explore') {
-                const currentParams = await page.evaluate(() => {
-                    const le = (window as any).launchEvent;
-                    return {
-                        raan: le.raan,
-                        apogeeAlt: le.apogeeAlt
-                    };
-                });
+            const currentParams = await page.evaluate(() => {
+                const le = (window as any).launchEvent;
+                return {
+                    raan: le.raan,
+                    apogeeAlt: le.apogeeAlt
+                };
+            });
 
-                expect(Math.abs(currentParams.raan - optimizedRaan)).toBeLessThan(0.1);
-                expect(Math.abs(currentParams.apogeeAlt - optimizedApogee)).toBeLessThan(1);
-                console.log(`✓ Optimized values preserved in ${mode} mode`);
-            }
+            expect(Math.abs(currentParams.raan - optimizedRaan)).toBeLessThan(0.1);
+            expect(Math.abs(currentParams.apogeeAlt - optimizedApogee)).toBeLessThan(1);
+            console.log(`✓ Optimized values preserved in ${mode} mode`);
         }
 
         console.log('\n=== OPTIMIZED VALUES PERSISTENCE TEST PASSED ✓ ===');

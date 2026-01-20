@@ -29,6 +29,10 @@ reactive.js.map
 # Test coverage
 coverage/
 
+# Playwright test results
+test-results/
+playwright-report/
+
 # Temporary/backup files
 *.backup
 *.full
@@ -40,3 +44,8 @@ coverage/
 # Claude conversations and retrospectives
 claude-conversations/
 docs/retrospectives/
+
+# Reference materials (PDFs and extracted data from papers)
+docs/reference/
+*.pdf
+*.pdf:Zone.Identifier

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chandrayaan-3 Orbit Visualization</title>
+    <link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+    <div id="container"></div>
+
+    <!-- Mode Tabs -->
+    <div id="mode-tabs">
+        <button class="mode-tab active" data-mode="Explore">Explore</button>
+        <button class="mode-tab" data-mode="Plan">Plan</button>
+        <button class="mode-tab" data-mode="Game">Game</button>
+    </div>
+
+    <!-- Collapse buttons for panels -->
+    <button id="gui-collapse-btn" title="Toggle Controls Panel">»</button>
+    <button id="actions-collapse-btn" title="Toggle Events Panel">»</button>
+
+    <!-- View preset buttons -->
+    <div id="view-buttons">
+        <button class="view-btn" data-view="oblique" title="Oblique View (default)">3D</button>
+        <button class="view-btn" data-view="top" title="Top View (North Pole)">Top</button>
+        <button class="view-btn" data-view="side" title="Side View (Equatorial)">Side</button>
+        <button class="view-btn" data-view="front" title="Front View">Front</button>
+    </div>
+
+    <!-- Actions Panel -->
+    <div id="actions-panel">
+        <button id="add-launch-action-btn" class="action-add-btn" title="Trans Lunar Injection">+ Add TLI</button>
+        <div id="launch-event-container" style="display: none;">
+            <!-- Launch event GUI will be mounted here -->
+        </div>
+    </div>
+
+    <div id="legend-panel">
+        <h3 onclick="toggleLegend()" style="cursor: pointer;">Legend <span id="legend-toggle">▼</span></h3>
+        <div id="legend-content">
+            <div class="legend-section">
+                <strong>Axes:</strong>
+                <span class="legend-item"><span class="legend-color" style="background-color: #ff0000;"></span> X-Axis (♈︎ RA=0°)</span>
+                <span class="legend-item"><span class="legend-color" style="background-color: #00ff00;"></span> Y-Axis (RA=90°)</span>
+                <span class="legend-item"><span class="legend-color" style="background-color: #0000ff;"></span> Z-Axis (North Pole)</span>
+            </div>
+            <div class="legend-section">
+                <strong>Reference:</strong>
+                <span class="legend-item"><span class="legend-color" style="background-color: #ffffff;"></span> Equator</span>
+            </div>
+            <div class="legend-section">
+                <strong>Lunar Orbit:</strong>
+                <span class="legend-item"><span class="legend-color" style="background-color: #ff00ff;"></span> Orbital Plane</span>
+                <span class="legend-item"><span class="legend-color" style="background-color: #00ffff;"></span> Ascending Node</span>
+                <span class="legend-item"><span class="legend-color" style="background-color: #ff8800;"></span> Descending Node</span>
+                <span class="legend-item"><span class="legend-color" style="background-color: #aaaaaa;"></span> Moon</span>
+            </div>
+            <div class="legend-section">
+                <strong>Chandrayaan Orbit:</strong>
+                <span class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span> Orbital Plane</span>
+                <span class="legend-item"><span class="legend-color" style="background-color: #ffff00;"></span> Orbit Path (dashed)</span>
+                <span class="legend-item"><span class="legend-color" style="background-color: #88ff88;"></span> Ascending Node</span>
+                <span class="legend-item"><span class="legend-color" style="background-color: #ff88ff;"></span> Descending Node</span>
+                <span class="legend-item"><span class="legend-color" style="background-color: #ffffff;"></span> Spacecraft</span>
+            </div>
+        </div>
+    </div>
+
+    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.152.2/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.152.2/examples/jsm/",
+            "astronomy-engine": "https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/+esm",
+            "./reactive.js": "./reactive.ts"
+        }
+    }
+    </script>
+
+    <div id="timeline-panel" class="disabled">
+        <div id="timeline-mode-message">Switch to Real mode to use timeline</div>
+        <div id="timeline-controls">
+            <!-- Row 1: Start date | Active timeline name | Current time (NO SLIDER) -->
+            <div class="timeline-row timeline-row-main">
+                <input type="datetime-local" id="start-date" title="Start Date/Time" />
+                <div id="active-timeline-indicator">View</div>
+                <div id="date-display-column">
+                    <div id="current-date"></div>
+                    <div id="countdown-timer" style="display: none;"></div>
+                </div>
+            </div>
+            <!-- Row 2: View timeline with main slider -->
+            <div class="timeline-row timeline-row-selector">
+                <span class="timeline-name">View</span>
+                <input type="checkbox" id="timeline-slider-active" name="active-slider" checked />
+                <div class="timeline-slider-wrapper">
+                    <div id="timeline-wrapper">
+                        <input type="range" id="timeline-slider" min="0" max="90" value="0" step="0.1" />
+                        <div id="launch-marker" style="display: none;"></div>
+                    </div>
+                    <span id="timeline-slider-display">Day 0.0</span>
+                </div>
+            </div>
+            <!-- Row 3: TLI timeline -->
+            <div class="timeline-row timeline-row-selector" id="tli-timeline-row">
+                <span class="timeline-name" title="Trans Lunar Injection">TLI</span>
+                <input type="checkbox" id="launch-slider-active" name="active-slider" />
+                <div class="timeline-slider-wrapper">
+                    <input type="range" id="launch-slider" min="0" max="90" value="0" step="0.1" />
+                    <span id="launch-slider-display">Day 0.0</span>
+                </div>
+            </div>
+            <!-- Row 4: LOI timeline -->
+            <div class="timeline-row timeline-row-selector" id="loi-timeline-row">
+                <span class="timeline-name" title="Lunar Orbit Insertion">LOI</span>
+                <input type="checkbox" id="intercept-slider-active" name="active-slider" />
+                <div class="timeline-slider-wrapper">
+                    <input type="range" id="intercept-slider" min="0" max="90" value="5" step="0.1" />
+                    <span id="intercept-slider-display">Day 5.0</span>
+                </div>
+            </div>
+            <!-- Bottom row: Buttons (center aligned) + Speed -->
+            <div class="timeline-row timeline-row-buttons">
+                <div id="timeline-buttons-group">
+                    <button id="play-pause-btn">▶ Play</button>
+                    <button id="reset-btn">↺ Reset</button>
+                    <div id="speed-controls">
+                        <button id="speed-down-btn" title="Decrease speed">◄</button>
+                        <select id="playback-speed">
+                            <option value="5">5 days/sec</option>
+                            <option value="2">2 days/sec</option>
+                            <option value="1">1 day/sec</option>
+                            <option value="0.5">12 hr/sec</option>
+                            <option value="0.25" selected>6 hr/sec</option>
+                            <option value="0.125">3 hr/sec</option>
+                            <option value="0.041667">1 hr/sec</option>
+                            <option value="0.020833">30 min/sec</option>
+                            <option value="0.006944">10 min/sec</option>
+                            <option value="0.000694">1 min/sec</option>
+                            <option value="0.000011574">Realtime</option>
+                        </select>
+                        <button id="speed-up-btn" title="Increase speed">►</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating Timeline Overlay -->
+    <div id="floating-timeline-overlay" style="display: none;">
+        <div class="floating-timeline-header">
+            <span id="floating-timeline-label">TLI Date</span>
+            <button id="floating-timeline-close" title="Close (ESC)">✕</button>
+        </div>
+        <div class="floating-timeline-slider-wrapper">
+            <input type="range" id="floating-timeline-slider" min="0" max="90" value="0" step="0.1" />
+            <span id="floating-timeline-display">Day 0.0</span>
+        </div>
+    </div>
+
+    <!-- Capture Message -->
+    <div id="capture-message" style="display: none;">
+        🎯 Spacecraft captured by the Moon! Mission successful!
+    </div>
+
+    <!-- Custom Confirm Dialog -->
+    <div id="custom-confirm-modal" class="confirm-modal" style="display: none;">
+        <div class="confirm-modal-content">
+            <h3 id="confirm-modal-title">Confirm</h3>
+            <p id="confirm-modal-message"></p>
+            <div class="confirm-modal-buttons">
+                <button id="confirm-modal-ok" class="confirm-btn confirm-btn-ok">Continue</button>
+                <button id="confirm-modal-cancel" class="confirm-btn confirm-btn-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="src/main.ts"></script>
+    <script>
+        function toggleLegend() {
+            const content = document.getElementById('legend-content');
+            const toggle = document.getElementById('legend-toggle');
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                toggle.textContent = '▼';
+            } else {
+                content.style.display = 'none';
+                toggle.textContent = '▶';
+            }
+        }
+    </script>
+</body>
+</html>

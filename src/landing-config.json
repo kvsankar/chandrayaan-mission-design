@@ -1,0 +1,67 @@
+{
+  "hero": {
+    "title": "Chandrayaan Mission Tools",
+    "subtitle": "Interactive visualization and mission design tools for lunar orbital mechanics"
+  },
+  "disclaimer": {
+    "show": true,
+    "title": "Educational Tool",
+    "message": "These are educational visualization tools designed to teach foundational orbital mechanics concepts. They use simplified Keplerian models and are not suitable for professional mission planning. Real missions require high-fidelity tools that account for multi-body gravitational effects, perturbations, atmospheric drag, and realistic propulsion modeling.",
+    "learnMoreText": "Read full disclaimer",
+    "learnMoreUrl": "https://github.com/kvsankar/chandrayaan-mission-design#%EF%B8%8F-educational-tool-disclaimer"
+  },
+  "apps": [
+    {
+      "id": "wizard",
+      "url": "wizard.html",
+      "icon": "🧭",
+      "title": "Chandrayaan Mission Designer",
+      "description": "Step-by-step mission design wizard using backwards planning methodology. Start from your landing site, find optimal lighting windows, and calculate required orbital parameters for mission success.",
+      "features": [
+        "4-Step Workflow",
+        "Landing Site Selection",
+        "Sun Illumination Analysis",
+        "LOI Optimization"
+      ],
+      "cta": "Launch Wizard →",
+      "featured": true
+    },
+    {
+      "id": "explorer",
+      "url": "explorer.html",
+      "icon": "🔭",
+      "title": "Explorer",
+      "description": "Interactive 3D visualization of lunar and spacecraft orbits. Explore orbital mechanics with real-time adjustments to RAAN, inclination, and more.",
+      "features": [
+        "3D Visualization",
+        "Manual Controls",
+        "Real-time Adjustments",
+        "Orbital Elements"
+      ],
+      "cta": "Start Exploring →",
+      "featured": false
+    },
+    {
+      "id": "designer",
+      "url": "designer.html",
+      "icon": "🚀",
+      "title": "Legacy Designer",
+      "description": "A simple lunar direct transfer orbit design tool. Plan LOI and TLI event based real ephemeris data. Plan first and playback later.",
+      "features": [
+        "Timeline Simulation",
+        "TLI/LOI Planning",
+        "Game Mode",
+        "Real Ephemeris"
+      ],
+      "cta": "Design Mission →",
+      "featured": false
+    }
+  ],
+  "footer": {
+    "text": "Educational tools for understanding Chandrayaan orbital mechanics",
+    "github": {
+      "text": "View on GitHub",
+      "url": "https://github.com/yourusername/cy3-orbit"
+    }
+  }
+}

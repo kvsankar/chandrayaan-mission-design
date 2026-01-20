@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test';
+import { gotoApp } from './test-helpers';
 
 test.describe('Exact Parameter Match Test', () => {
     test('should match unit test results with exact same parameters', async ({ page }) => {
         // Navigate to app
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         // Listen to console logs
         const logs: string[] = [];

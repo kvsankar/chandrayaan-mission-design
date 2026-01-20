@@ -3,7 +3,8 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches:
-      - master  # or main, depending on your default branch
+      - main
+      - master
   workflow_dispatch:  # Allow manual triggering
 
 permissions:
@@ -48,9 +49,13 @@ jobs:
 
       - name: Copy necessary files to dist-pages
         run: |
-          cp src/style.css dist-pages/ || true
+          # Vite automatically handles public/ directory and bundled assets
+          # Copy any remaining root-level assets if needed
           cp *.glb dist-pages/ 2>/dev/null || true
-          cp public/chandrayaan-mission-design.png dist-pages/ 2>/dev/null || true
+          # Ensure textures directory exists in dist-pages (should be auto-copied from public/)
+          mkdir -p dist-pages/textures
+          cp -r public/textures/* dist-pages/textures/ 2>/dev/null || true
+          cp public/*.png dist-pages/ 2>/dev/null || true
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

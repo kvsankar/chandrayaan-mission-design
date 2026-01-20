@@ -1,11 +1,11 @@
 import { test, expect } from '@playwright/test';
+import { gotoApp } from './test-helpers';
 
 test.describe('Error Handling and Edge Cases', () => {
     test('should handle optimization without launch event gracefully', async ({ page }) => {
         console.log('\n=== OPTIMIZATION WITHOUT LAUNCH EVENT TEST ===');
 
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         // Switch to Plan mode but don't create launch event
         await page.click('button:has-text("Plan")');
@@ -34,8 +34,7 @@ test.describe('Error Handling and Edge Cases', () => {
     test('should handle optimization without Auto LOI enabled', async ({ page }) => {
         console.log('\n=== OPTIMIZATION WITHOUT AUTO LOI TEST ===');
 
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         // Switch to Plan mode and create launch event
         await page.click('button:has-text("Plan")');
@@ -66,8 +65,7 @@ test.describe('Error Handling and Edge Cases', () => {
     test('should handle missing LOI date gracefully', async ({ page }) => {
         console.log('\n=== MISSING LOI DATE TEST ===');
 
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         // Switch to Plan mode and create launch event
         await page.click('button:has-text("Plan")');
@@ -124,8 +122,7 @@ test.describe('Error Handling and Edge Cases', () => {
         // Now tests validation at the validation function level
         console.log('\n=== PARAMETER VALIDATION TEST ===');
 
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         // Switch to Plan mode and create launch event
         await page.click('button:has-text("Plan")');
@@ -224,8 +221,7 @@ test.describe('Error Handling and Edge Cases', () => {
     test('should handle rapid optimization requests', async ({ page }) => {
         console.log('\n=== RAPID OPTIMIZATION REQUESTS TEST ===');
 
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         // Setup launch event with Auto LOI
         await page.click('button:has-text("Plan")');
@@ -279,8 +275,7 @@ test.describe('Error Handling and Edge Cases', () => {
     test('should handle mode switching during optimization', async ({ page }) => {
         console.log('\n=== MODE SWITCHING DURING OPTIMIZATION TEST ===');
 
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         // Setup launch event with Auto LOI
         await page.click('button:has-text("Plan")');
@@ -348,8 +343,7 @@ test.describe('Error Handling and Edge Cases', () => {
     test('should handle time set to far future/past dates', async ({ page }) => {
         console.log('\n=== EXTREME TIME VALUES TEST ===');
 
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         // Switch to Game mode
         await page.click('button:has-text("Game")');
@@ -395,8 +389,7 @@ test.describe('Error Handling and Edge Cases', () => {
     test('should handle creating multiple launch events sequentially', async ({ page }) => {
         console.log('\n=== MULTIPLE LAUNCH EVENTS TEST ===');
 
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         await page.click('button:has-text("Plan")');
         await page.waitForTimeout(1000);
@@ -442,8 +435,7 @@ test.describe('Error Handling and Edge Cases', () => {
     test('should handle browser page reload in different modes', async ({ page }) => {
         console.log('\n=== PAGE RELOAD TEST ===');
 
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         console.log('\n--- Test reload in Explore mode ---');
         await page.reload();

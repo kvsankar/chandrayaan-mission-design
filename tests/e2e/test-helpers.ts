@@ -1,8 +1,20 @@
 import type { Page } from '@playwright/test';
 
-export async function gotoApp(page: Page): Promise<void> {
+export async function gotoApp(page: Page, mode?: 'Explore' | 'Plan' | 'Game'): Promise<void> {
     await page.addInitScript(() => { (window as any).__E2E_TESTING__ = true; });
-    await page.goto('http://localhost:3002');
+
+    // Route to the appropriate app based on mode
+    let url = 'http://localhost:3002';
+    if (mode === 'Explore') {
+        url += '/explorer.html';
+    } else if (mode === 'Plan' || mode === 'Game') {
+        url += '/designer.html';
+    } else {
+        // Default to designer.html (Plan mode) for backward compatibility
+        url += '/designer.html';
+    }
+
+    await page.goto(url);
     await page.waitForLoadState('load');
 }
 

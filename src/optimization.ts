@@ -6,8 +6,38 @@ import * as THREE from 'three';
 import * as Astronomy from 'astronomy-engine';
 import { EARTH_RADIUS, EARTH_MU } from './constants.js';
 
+interface WindowWithE2E extends Window {
+    __E2E_TESTING__?: boolean;
+}
+
 function isAutomatedTestMode(): boolean {
-    return typeof window !== 'undefined' && (window as any).__E2E_TESTING__ === true;
+    return typeof window !== 'undefined' && (window as WindowWithE2E).__E2E_TESTING__ === true;
+}
+
+/**
+ * Extract position from GeoMoonState result (handles both old and new API formats)
+ */
+export function extractPositionFromState(state: ReturnType<typeof Astronomy.GeoMoonState>): Astronomy.Vector {
+    if ('position' in state) {
+        return state.position;
+    }
+    // Old API format: state itself is a Vector with vx, vy, vz properties
+    return state;
+}
+
+/**
+ * Extract velocity from GeoMoonState result (handles both old and new API formats)
+ */
+export function extractVelocityFromState(state: ReturnType<typeof Astronomy.GeoMoonState>): { x: number; y: number; z: number } {
+    if ('velocity' in state) {
+        return state.velocity;
+    }
+    // Old API format: vx, vy, vz properties
+    return {
+        x: (state as Astronomy.Vector & { vx: number }).vx,
+        y: (state as Astronomy.Vector & { vy: number }).vy,
+        z: (state as Astronomy.Vector & { vz: number }).vz
+    };
 }
 
 /**
@@ -16,12 +46,50 @@ function isAutomatedTestMode(): boolean {
  * @param apogeeAlt - Apogee altitude in km
  * @returns Orbital period in seconds
  */
-function calculateOrbitalPeriod(perigeeAlt: number, apogeeAlt: number): number {
+export function calculateOrbitalPeriod(perigeeAlt: number, apogeeAlt: number): number {
     const rp = EARTH_RADIUS + perigeeAlt;
     const ra = EARTH_RADIUS + apogeeAlt;
     const a = (rp + ra) / 2;
     const T = 2 * Math.PI * Math.sqrt(Math.pow(a, 3) / EARTH_MU);
     return T;
+}
+
+/**
+ * Calculate true anomaly from time since perigee using Kepler's equation
+ * Uses Newton-Raphson iteration to solve M = E - e*sin(E)
+ * @param timeSincePeriapsis - Time since perigee passage in seconds
+ * @param perigeeAlt - Perigee altitude in km
+ * @param apogeeAlt - Apogee altitude in km
+ * @returns True anomaly in degrees (0-360)
+ */
+export function getTrueAnomalyFromTime(timeSincePeriapsis: number, perigeeAlt: number, apogeeAlt: number): number {
+    const rp = EARTH_RADIUS + perigeeAlt;
+    const ra = EARTH_RADIUS + apogeeAlt;
+    const a = (rp + ra) / 2;  // Semi-major axis
+    const e = (ra - rp) / (ra + rp);  // Eccentricity
+
+    // Mean motion (rad/s)
+    const n = Math.sqrt(EARTH_MU / Math.pow(a, 3));
+
+    // Mean anomaly
+    const M = n * timeSincePeriapsis;
+
+    // Solve Kepler's equation using Newton-Raphson (10 iterations)
+    let E = M;
+    for (let i = 0; i < 10; i++) {
+        E = E - (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+    }
+
+    // Convert eccentric anomaly to true anomaly
+    const trueAnomaly = 2 * Math.atan2(
+        Math.sqrt(1 + e) * Math.sin(E / 2),
+        Math.sqrt(1 - e) * Math.cos(E / 2)
+    );
+
+    let trueAnomalyDeg = trueAnomaly * (180 / Math.PI);
+    if (trueAnomalyDeg < 0) trueAnomalyDeg += 360;
+
+    return trueAnomalyDeg;
 }
 
 function findMoonEquatorCrossings(startDate: Date, endDate: Date): Astronomy.AstroTime[] {
@@ -31,13 +99,13 @@ function findMoonEquatorCrossings(startDate: Date, endDate: Date): Astronomy.Ast
 
     // Function that returns Moon's declination
     const declinationFunc = (t: Astronomy.AstroTime): number => {
-        const state: any = Astronomy.GeoMoonState(t);
-        const hasPosition = state.position !== undefined;
+        const state = Astronomy.GeoMoonState(t);
+        const position = extractPositionFromState(state);
         const geoVector = {
-            x: hasPosition ? state.position.x : state.x,
-            y: hasPosition ? state.position.y : state.y,
-            z: hasPosition ? state.position.z : state.z,
-            t: hasPosition ? state.position.t : state.t
+            x: position.x,
+            y: position.y,
+            z: position.z,
+            t: position.t
         };
         const equatorial = Astronomy.EquatorFromVector(geoVector);
         return equatorial.dec;  // Returns declination in degrees
@@ -48,7 +116,7 @@ function findMoonEquatorCrossings(startDate: Date, endDate: Date): Astronomy.Ast
     const stepDays = 1.0;  // Search in 1-day increments
 
     while (searchStart.ut < t2.ut) {
-        const searchEnd = (searchStart as any).AddDays(stepDays);
+        const searchEnd = searchStart.AddDays(stepDays);
         if (searchEnd.ut > t2.ut) break;
 
         // Check if there's a sign change in this interval
@@ -58,7 +126,7 @@ function findMoonEquatorCrossings(startDate: Date, endDate: Date): Astronomy.Ast
         // Detect BOTH ascending and descending crossings
         // This gives opportunities every ~13.7 days instead of ~27 days
         if (dec1 * dec2 < 0) {  // Sign change = equator crossing (either direction)
-            const crossing = (Astronomy as any).Search(declinationFunc, searchStart, searchEnd);
+            const crossing = Astronomy.Search(declinationFunc, searchStart, searchEnd);
             if (crossing) {
                 crossings.push(crossing);
             }
@@ -85,15 +153,15 @@ function _findMoonNodeCrossings(startDate: Date, endDate: Date): Astronomy.Astro
 
     // Function that returns Moon's ecliptic latitude
     const latitudeFunc = (t: Astronomy.AstroTime): number => {
-        const state: any = Astronomy.GeoMoonState(t);
-        const hasPosition = state.position !== undefined;
+        const state = Astronomy.GeoMoonState(t);
+        const position = extractPositionFromState(state);
         const geoVector = {
-            x: hasPosition ? state.position.x : state.x,
-            y: hasPosition ? state.position.y : state.y,
-            z: hasPosition ? state.position.z : state.z,
-            t: hasPosition ? state.position.t : state.t
+            x: position.x,
+            y: position.y,
+            z: position.z,
+            t: position.t
         };
-        const ecliptic = (Astronomy as any).Ecliptic(geoVector);
+        const ecliptic = Astronomy.Ecliptic(geoVector);
         return ecliptic.elat;  // Returns ecliptic latitude in degrees
     };
 
@@ -102,7 +170,7 @@ function _findMoonNodeCrossings(startDate: Date, endDate: Date): Astronomy.Astro
     const stepDays = 1.0;  // Search in 1-day increments
 
     while (searchStart.ut < t2.ut) {
-        const searchEnd = (searchStart as any).AddDays(stepDays);
+        const searchEnd = searchStart.AddDays(stepDays);
         if (searchEnd.ut > t2.ut) break;
 
         // Check if there's a sign change in this interval
@@ -111,7 +179,7 @@ function _findMoonNodeCrossings(startDate: Date, endDate: Date): Astronomy.Astro
 
         // Only detect ascending node crossings: lat1 < 0 and lat2 > 0 (south to north)
         if (lat1 < 0 && lat2 > 0) {  // Ascending node crossing
-            const crossing = (Astronomy as any).Search(latitudeFunc, searchStart, searchEnd);
+            const crossing = Astronomy.Search(latitudeFunc, searchStart, searchEnd);
             if (crossing) {
                 crossings.push(crossing);
             }
@@ -154,15 +222,15 @@ export function findOptimalLOIDates(startDate: Date, endDate: Date): Date[] {
  */
 export function calculateMoonPositionAtDate(date: Date): { x: number, y: number, z: number } {
     const astroTime = Astronomy.MakeTime(date);
-    const state: any = Astronomy.GeoMoonState(astroTime);
+    const state = Astronomy.GeoMoonState(astroTime);
 
-    // Get position from state
-    const hasPosition = state.position !== undefined;
+    // Get position from state (handles both old and new API formats)
+    const position = extractPositionFromState(state);
     const geoVector = {
-        x: hasPosition ? state.position.x : state.x,
-        y: hasPosition ? state.position.y : state.y,
-        z: hasPosition ? state.position.z : state.z,
-        t: hasPosition ? state.position.t : state.t
+        x: position.x,
+        y: position.y,
+        z: position.z,
+        t: position.t
     };
 
     // Convert AU to km (1 AU = 149597870.7 km)
@@ -257,16 +325,14 @@ export function calculateCraftPositionAtTrueAnomaly(nu: number, raan: number, ap
 export function calculateClosestApproachToMoon(raan: number, apogeeAlt: number, perigeeAlt: number, loiDate: Date, omega: number, inclination: number): { distance: number, trueAnomaly: number } {
     const moonPos = calculateMoonPositionAtDate(loiDate);
 
-    // Search around apogee (true anomaly = 180°) - sweep less aggressively when tests run
-    const nuCenter = Math.PI; // 180° = apogee
-    const nuRange = isAutomatedTestMode() ? Math.PI / 8 : Math.PI / 6;
-    const numSamples = isAutomatedTestMode() ? 21 : 61;
+    // Search full orbit for minimum distance, with local refinement
+    const coarseSamples = isAutomatedTestMode() ? 181 : 361; // every 2° or 1°
 
     let minDistance = Infinity;
-    let minNu = nuCenter;
+    let minNu = 0;
 
-    for (let i = 0; i < numSamples; i++) {
-        const nu = nuCenter - nuRange + (2 * nuRange * i / (numSamples - 1));
+    for (let i = 0; i < coarseSamples; i++) {
+        const nu = (i / (coarseSamples - 1)) * Math.PI * 2;
         const craftPos = calculateCraftPositionAtTrueAnomaly(nu, raan, apogeeAlt, perigeeAlt, omega, inclination);
 
         const dx = craftPos.x - moonPos.x;
@@ -280,7 +346,62 @@ export function calculateClosestApproachToMoon(raan: number, apogeeAlt: number, 
         }
     }
 
+    // Fine sweep ±2° around coarse best at 0.1°
+    const fineSpan = isAutomatedTestMode() ? Math.PI / 90 : Math.PI / 90; // 2°
+    const fineStep = isAutomatedTestMode() ? Math.PI / 450 : Math.PI / 1800; // 0.4° or 0.1°
+    for (let nu = minNu - fineSpan; nu <= minNu + fineSpan; nu += fineStep) {
+        const craftPos = calculateCraftPositionAtTrueAnomaly(nu, raan, apogeeAlt, perigeeAlt, omega, inclination);
+        const dx = craftPos.x - moonPos.x;
+        const dy = craftPos.y - moonPos.y;
+        const dz = craftPos.z - moonPos.z;
+        const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (distance < minDistance) {
+            minDistance = distance;
+            minNu = nu;
+        }
+    }
+
     return { distance: minDistance, trueAnomaly: minNu * 180 / Math.PI };
+}
+
+interface SimplexPoint {
+    raan: number;
+    apogeeAlt: number;
+    value: number;
+}
+
+// Nelder-Mead constants
+const NM_ALPHA = 1.0;   // Reflection
+const NM_GAMMA = 2.0;   // Expansion
+const NM_RHO = 0.5;     // Contraction
+const NM_SIGMA = 0.5;   // Shrinkage
+
+function tryExpansion(
+    centroid: { raan: number; apogeeAlt: number },
+    reflected: SimplexPoint,
+    objectiveFunc: (r: number, a: number) => number
+): SimplexPoint {
+    const expanded = {
+        raan: centroid.raan + NM_GAMMA * (reflected.raan - centroid.raan),
+        apogeeAlt: centroid.apogeeAlt + NM_GAMMA * (reflected.apogeeAlt - centroid.apogeeAlt),
+        value: 0
+    };
+    expanded.value = objectiveFunc(expanded.raan, expanded.apogeeAlt);
+    return expanded.value < reflected.value ? expanded : reflected;
+}
+
+function tryContraction(
+    centroid: { raan: number; apogeeAlt: number },
+    worst: SimplexPoint,
+    objectiveFunc: (r: number, a: number) => number
+): SimplexPoint {
+    const contracted = {
+        raan: centroid.raan + NM_RHO * (worst.raan - centroid.raan),
+        apogeeAlt: centroid.apogeeAlt + NM_RHO * (worst.apogeeAlt - centroid.apogeeAlt),
+        value: 0
+    };
+    contracted.value = objectiveFunc(contracted.raan, contracted.apogeeAlt);
+    return contracted;
 }
 
 /**
@@ -289,53 +410,38 @@ export function calculateClosestApproachToMoon(raan: number, apogeeAlt: number, 
  */
 export function optimizeApogeeToMoon(loiDate: Date, omega: number, inclination: number, initialRaan: number, initialApogeeAlt: number): { raan: number, apogeeAlt: number, distance: number } {
     const perigeeAlt = 180; // Fixed perigee at 180 km
-
-    // Nelder-Mead parameters
-    const alpha = 1.0;   // Reflection
-    const gamma = 2.0;   // Expansion
-    const rho = 0.5;     // Contraction
-    const sigma = 0.5;   // Shrinkage
-
     const maxIterations = isAutomatedTestMode() ? 40 : 150;
-    const tolerance = isAutomatedTestMode() ? 5.0 : 1.0; // Relax tolerance during automated tests
+    const tolerance = isAutomatedTestMode() ? 5.0 : 1.0;
 
-    // Objective function: minimize closest approach distance
     const objectiveFunc = (raan: number, apogeeAlt: number): number => {
-        // Clamp to valid ranges
         raan = Math.max(0, Math.min(360, raan));
         apogeeAlt = Math.max(180, Math.min(600000, apogeeAlt));
         return calculateClosestApproachToMoon(raan, apogeeAlt, perigeeAlt, loiDate, omega, inclination).distance;
     };
 
-    // Initialize simplex (3 points for 2D optimization)
-    const simplex = [
+    const simplex: SimplexPoint[] = [
         { raan: initialRaan, apogeeAlt: initialApogeeAlt, value: objectiveFunc(initialRaan, initialApogeeAlt) },
         { raan: initialRaan + 10, apogeeAlt: initialApogeeAlt, value: objectiveFunc(initialRaan + 10, initialApogeeAlt) },
         { raan: initialRaan, apogeeAlt: initialApogeeAlt + 5000, value: objectiveFunc(initialRaan, initialApogeeAlt + 5000) }
     ];
 
     for (let iter = 0; iter < maxIterations; iter++) {
-        // Sort simplex by objective value
         simplex.sort((a, b) => a.value - b.value);
-
         const best = simplex[0];
         const worst = simplex[2];
 
-        // Check convergence
         if (worst.value - best.value < tolerance) {
             return { raan: best.raan, apogeeAlt: best.apogeeAlt, distance: best.value };
         }
 
-        // Calculate centroid of best two points
         const centroid = {
             raan: (simplex[0].raan + simplex[1].raan) / 2,
             apogeeAlt: (simplex[0].apogeeAlt + simplex[1].apogeeAlt) / 2
         };
 
-        // Reflection
-        const reflected = {
-            raan: centroid.raan + alpha * (centroid.raan - worst.raan),
-            apogeeAlt: centroid.apogeeAlt + alpha * (centroid.apogeeAlt - worst.apogeeAlt),
+        const reflected: SimplexPoint = {
+            raan: centroid.raan + NM_ALPHA * (centroid.raan - worst.raan),
+            apogeeAlt: centroid.apogeeAlt + NM_ALPHA * (centroid.apogeeAlt - worst.apogeeAlt),
             value: 0
         };
         reflected.value = objectiveFunc(reflected.raan, reflected.apogeeAlt);
@@ -346,30 +452,11 @@ export function optimizeApogeeToMoon(loiDate: Date, omega: number, inclination: 
         }
 
         if (reflected.value < best.value) {
-            // Try expansion
-            const expanded = {
-                raan: centroid.raan + gamma * (reflected.raan - centroid.raan),
-                apogeeAlt: centroid.apogeeAlt + gamma * (reflected.apogeeAlt - centroid.apogeeAlt),
-                value: 0
-            };
-            expanded.value = objectiveFunc(expanded.raan, expanded.apogeeAlt);
-
-            if (expanded.value < reflected.value) {
-                simplex[2] = expanded;
-            } else {
-                simplex[2] = reflected;
-            }
+            simplex[2] = tryExpansion(centroid, reflected, objectiveFunc);
             continue;
         }
 
-        // Contraction
-        const contracted = {
-            raan: centroid.raan + rho * (worst.raan - centroid.raan),
-            apogeeAlt: centroid.apogeeAlt + rho * (worst.apogeeAlt - centroid.apogeeAlt),
-            value: 0
-        };
-        contracted.value = objectiveFunc(contracted.raan, contracted.apogeeAlt);
-
+        const contracted = tryContraction(centroid, worst, objectiveFunc);
         if (contracted.value < worst.value) {
             simplex[2] = contracted;
             continue;
@@ -378,15 +465,14 @@ export function optimizeApogeeToMoon(loiDate: Date, omega: number, inclination: 
         // Shrinkage
         for (let i = 1; i < simplex.length; i++) {
             simplex[i] = {
-                raan: best.raan + sigma * (simplex[i].raan - best.raan),
-                apogeeAlt: best.apogeeAlt + sigma * (simplex[i].apogeeAlt - best.apogeeAlt),
+                raan: best.raan + NM_SIGMA * (simplex[i].raan - best.raan),
+                apogeeAlt: best.apogeeAlt + NM_SIGMA * (simplex[i].apogeeAlt - best.apogeeAlt),
                 value: 0
             };
             simplex[i].value = objectiveFunc(simplex[i].raan, simplex[i].apogeeAlt);
         }
     }
 
-    // Return best result after max iterations
     simplex.sort((a, b) => a.value - b.value);
     const best = simplex[0];
     return { raan: best.raan, apogeeAlt: best.apogeeAlt, distance: best.value };
@@ -404,26 +490,28 @@ export function optimizeApogeeToMoonMultiStart(loiDate: Date, omega: number, inc
     const moonDistance = Math.sqrt(moonPos.x * moonPos.x + moonPos.y * moonPos.y + moonPos.z * moonPos.z);
     const moonApogeeAlt = moonDistance - EARTH_RADIUS; // Convert to altitude
 
-    // Multi-start optimization with apogee values centered around Moon's distance
-    const startingRAANs = isAutomatedTestMode()
-        ? [0, 120, 240]
-        : [0, 45, 90, 135, 180, 225, 270, 315];
+    // Narrow RAAN window around Moon RA at LOI (±5°)
+    const moonRaanGuess = ((Math.atan2(-moonPos.z, moonPos.x) * 180 / Math.PI) + 360) % 360;
+    const raanStep = isAutomatedTestMode() ? 5 : 1;
+    const raanWindow = 5;
+    const startingRAANs: number[] = [];
+    for (let d = -raanWindow; d <= raanWindow; d += raanStep) {
+        startingRAANs.push(((moonRaanGuess + d) % 360 + 360) % 360);
+    }
 
-    // Try apogee values around the Moon's distance (±5%, ±10%, ±15%)
+    // Apogee seeds around Moon distance (tighter band)
     const startingApogees = isAutomatedTestMode()
         ? [
-            moonApogeeAlt * 0.95,
+            moonApogeeAlt * 0.97,
             moonApogeeAlt,
-            moonApogeeAlt * 1.05
+            moonApogeeAlt * 1.03
         ]
         : [
-            moonApogeeAlt * 0.85,  // -15%
             moonApogeeAlt * 0.90,  // -10%
             moonApogeeAlt * 0.95,  // -5%
-            moonApogeeAlt,         // Exactly at Moon's distance
+            moonApogeeAlt,         // 0%
             moonApogeeAlt * 1.05,  // +5%
-            moonApogeeAlt * 1.10,  // +10%
-            moonApogeeAlt * 1.15   // +15%
+            moonApogeeAlt * 1.10   // +10%
         ];
 
     const bestResult = { raan: 0, apogeeAlt: moonApogeeAlt, distance: Infinity, trueAnomaly: 180 };

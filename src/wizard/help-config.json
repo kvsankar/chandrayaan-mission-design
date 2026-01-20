@@ -1,0 +1,164 @@
+{
+  "walkthrough": {
+    "enabled": true,
+    "showOnFirstVisit": true,
+    "steps": [
+      {
+        "element": ".mission-window-step",
+        "popover": {
+          "title": "Welcome to Mission Designer!",
+          "description": "This wizard guides you through designing a lunar mission using backwards planning. You'll work through 4 steps: choosing your mission timeframe, selecting a landing site, finding optimal Sun illumination windows, and calculating the required orbital parameters. Let's begin!",
+          "side": "bottom",
+          "align": "start"
+        }
+      },
+      {
+        "element": ".preset-options",
+        "popover": {
+          "title": "Step 1: Exploration Window",
+          "description": "Select a time range for mission planning. Choose a Chandrayaan preset (CY2/CY3) to analyze historical missions, or define a custom 1-12 month window for future planning. This timeframe determines when you'll search for landing opportunities.",
+          "side": "right",
+          "align": "start"
+        }
+      },
+      {
+        "element": ".wizard-footer",
+        "popover": {
+          "title": "Navigation & Help",
+          "description": "Use Next/Previous buttons to move through steps. Click on completed steps in the left sidebar to jump back and review. The help button (?) provides detailed guidance for each step. Ready to start? Click Next to continue!",
+          "side": "top",
+          "align": "center"
+        }
+      }
+    ]
+  },
+  "helpContent": {
+    "0": {
+      "title": "Exploration Window",
+      "sections": [
+        {
+          "heading": "Overview",
+          "content": "Select a time range for mission planning. This exploration window determines the period during which you'll search for viable landing opportunities."
+        },
+        {
+          "heading": "Choosing Your Window",
+          "content": "You have three options:\n• Chandrayaan-3 (2023): March - October 2023\n• Chandrayaan-2 (2019): January - September 2019\n• Custom Range: Define your own 1-12 month window\n\nSelect a preset for historical mission analysis, or use custom range for future mission planning."
+        },
+        {
+          "heading": "Why Start Here?",
+          "content": "By defining your mission timeframe first, you can:\n• Focus on realistic launch windows\n• Account for seasonal constraints\n• Plan around orbital mechanics constraints\n• Set boundaries for your mission search"
+        },
+        {
+          "heading": "Next Steps",
+          "content": "After selecting your exploration window, you'll choose a specific landing site on the Moon's surface."
+        }
+      ],
+      "tips": [
+        "Longer exploration windows provide more landing opportunities",
+        "Minimum window: 1 month, Maximum: 12 months",
+        "Consider launch vehicle availability in your timeframe"
+      ]
+    },
+    "1": {
+      "title": "Landing Site",
+      "sections": [
+        {
+          "heading": "Overview",
+          "content": "Select the target landing site for your mission. This is backwards mission design - starting from where you want to land. You must select a primary site; an optional backup site can also be chosen."
+        },
+        {
+          "heading": "Two Ways to Select Sites",
+          "content": "Method 1 - Use Dropdown:\n• Choose from pre-defined sites in the dropdown menu\n• Sites are filtered based on your mission preset (CY2/CY3/All)\n\nMethod 2 - Use Globe Crosshair:\n• Position the crosshair on the 3D Moon globe\n• The 'Snap to nearby sites' checkbox (at top) controls automatic alignment to nearby sites within the selected radius\n• Click 'Set' to confirm selection\n\nThe globe shows view preset buttons (South Pole, North Pole, Front, East, Back, West) for quick navigation."
+        },
+        {
+          "heading": "Primary and Backup Sites",
+          "content": "Step 2a - Primary Site (Required):\n• Your main landing target\n• Must be on the near side (direct Earth communication)\n\nStep 2b - Backup Site (Optional):\n• Alternative landing location\n• Also must be on the near side\n• Sun illumination will be compared with primary site in later steps"
+        },
+        {
+          "heading": "Snap Feature",
+          "content": "When enabled, the crosshair automatically aligns to nearby preset sites within the selected radius (1°, 2°, or 5°). The crosshair panel shows 'Snap: [Site Name]' when close enough, or 'Near: [Site Name] (distance)' when approaching."
+        },
+        {
+          "heading": "Pre-defined Sites",
+          "content": "The wizard includes Chandrayaan mission sites:\n• Shiv Shakti Point (CY3 actual landing site, Aug 23, 2023)\n• CY3 Primary (Planned)\n• CY3 Backup\n• CY2 Primary (Planned)\n• CY2 Backup\n\nGreen markers indicate actual landing sites; orange markers indicate planned/candidate sites."
+        },
+        {
+          "heading": "Next Steps",
+          "content": "After selecting your site(s), you'll view a timeline of lunar days and nights to find when your site has optimal Sun illumination for landing."
+        }
+      ],
+      "tips": [
+        "Far side sites are blocked (no direct Earth communication)",
+        "Drag the globe to rotate, scroll to zoom",
+        "Click legend items to toggle marker visibility on globe (Green = actual landing, Orange = candidate site)",
+        "Site coordinates update as you move the crosshair"
+      ]
+    },
+    "2": {
+      "title": "Lunar Day",
+      "sections": [
+        {
+          "heading": "Overview",
+          "content": "View the timeline of lunar days and nights at your selected site. Each lunar day is approximately 14 Earth days long. Select a lunar day during which you want to land - this determines when your landing site has sunlight."
+        },
+        {
+          "heading": "Understanding the Timeline",
+          "content": "The timeline shows:\n• Yellow segments: Lunar Days (sunlit periods, ~14 Earth days)\n• Blue segments: Lunar Nights (dark periods, ~14 Earth days)\n• Green highlight: Selected lunar day\n• Labels: Each lunar day is numbered (e.g., 'Day 1', 'Day 2')\n\nThe timeline extends beyond your exploration window to show complete lunar day/night cycles. A legend with colored emoji (🟨 🟦 🟩) appears above the timeline."
+        },
+        {
+          "heading": "Selecting a Lunar Day",
+          "content": "Click on any yellow lunar day segment to select it. When selected:\n• The segment turns green\n• A Sun Illumination Panel appears showing detailed elevation data\n• Mission timing details are calculated (6° rising, 9° rising, 6° setting)\n• Required RAAN for landing is computed"
+        },
+        {
+          "heading": "Sun Elevation Panel",
+          "content": "After selecting a lunar day, the panel shows:\n• Sun elevation graph over time for your primary site\n• Optional comparison with backup site (if selected in Step 2)\n• Key times: 6° rising (earliest landing), 9° rising, 6° setting (latest landing)\n• Mission duration: Time between 6° rising and 6° setting\n• Required RAAN: Orbital parameter needed to reach the site at the right time\n\nFor a safe landing, the Sun should be 6°-9° above the horizon - this provides adequate illumination without excessive heat."
+        },
+        {
+          "heading": "Why This Matters",
+          "content": "Selecting a lunar day determines:\n• The specific 2-week period when landing is possible\n• Landing window timing (hours within the lunar day when Sun is 6°-9°)\n• Required orbital plane orientation (RAAN)\n• Mission timeline constraints for LOI and TLI"
+        }
+      ],
+      "tips": [
+        "Lunar days near the poles can have very different Sun angles than equatorial sites",
+        "The 6° to 9° rising window gives you several hours for landing attempts",
+        "Peak Sun elevation varies by site latitude - polar sites have low peak angles",
+        "If you selected a backup site, both sites' Sun elevations are compared side-by-side"
+      ]
+    },
+    "3": {
+      "title": "LOI Date",
+      "sections": [
+        {
+          "heading": "Overview",
+          "content": "Select a Lunar Orbit Insertion (LOI) date from pre-calculated Moon equator crossing opportunities. The LOI must occur before your selected landing window to allow time for orbital adjustments."
+        },
+        {
+          "heading": "Two Timelines",
+          "content": "Exploration Timeline (Top, Collapsible):\n• Read-only view of lunar days from Step 3\n• Shows your selected lunar day highlighted in green\n• Extended to include earlier dates for LOI options\n• Click header to collapse/expand\n\nLOI Selection Timeline (Bottom, Collapsible):\n• Shows Moon equator crossing dates before landing\n• Displays up to 2 crossing options: 'Previous Crossing' and 'Earlier Crossing'\n• Ascending node (☊) or Descending node (☋) indicators\n• Landing marker shows your target landing date\n• Click a crossing marker to select that LOI date"
+        },
+        {
+          "heading": "Moon Equator Crossings",
+          "content": "The wizard pre-calculates dates when the Moon crosses Earth's equatorial plane within 60 days before landing. These crossings are optimal for LOI because:\n• Spacecraft orbital plane aligns naturally with Moon's position\n• RAAN calculation is simplified\n• Transfer orbit geometry is favorable\n\nYou select from these pre-calculated options - no manual optimization needed."
+        },
+        {
+          "heading": "Transfer Orbit Visualization",
+          "content": "After selecting an LOI date, the orbit visualization appears showing:\n• Animated transfer orbit from Earth to Moon\n• Timeline scrubber with play/pause controls\n• Key events marked: TLI (Trans-Lunar Injection), LOI, Landing\n• Moon orbit (magenta line) and transfer orbit (orange line)\n• Current date display and speed controls\n• Fullscreen expand button (⛶)\n\nThe TLI date is automatically calculated by working backwards from your selected LOI using Kepler's orbital mechanics."
+        },
+        {
+          "heading": "What Gets Calculated",
+          "content": "When you select an LOI date, the system computes:\n• TLI (Trans-Lunar Injection) date and time\n• Transfer orbit parameters: inclination (21.5°), RAAN, argument of periapsis (ω)\n• Perigee altitude (180 km) and optimized apogee altitude\n• Closest approach distance to Moon and timing\n• Complete orbital timeline from TLI → LOI → Landing"
+        },
+        {
+          "heading": "RAAN Explained",
+          "content": "RAAN (Right Ascension of Ascending Node) defines where your orbit crosses Earth's equatorial plane. It's calculated to ensure your spacecraft arrives at the Moon when your landing site has proper Sun illumination (the required RAAN from Step 3)."
+        }
+      ],
+      "tips": [
+        "Earlier crossings give more time between LOI and landing for orbital adjustments",
+        "Collapsing both timelines expands the orbit visualization for better viewing",
+        "Use timeline scrubber to see how Earth-Moon geometry evolves during transfer",
+        "Ascending/descending node choice affects mission design but both are viable"
+      ]
+    }
+  }
+}

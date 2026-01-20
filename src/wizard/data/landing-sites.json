@@ -1,0 +1,64 @@
+{
+  "sites": [
+    {
+      "id": "cy3-actual",
+      "name": "Shiv Shakti Point",
+      "shortLabel": "Shiv Shakti",
+      "mission": "cy3",
+      "missionYear": 2023,
+      "latitude": -69.3733,
+      "longitude": 32.3191,
+      "description": "Actual CY3 landing site (Aug 23, 2023)",
+      "isActualLanding": true
+    },
+    {
+      "id": "cy3-primary",
+      "name": "CY3 Primary (Planned)",
+      "shortLabel": "CY3-P",
+      "mission": "cy3",
+      "missionYear": 2023,
+      "latitude": -69.3676,
+      "longitude": 32.3481,
+      "description": "Originally planned primary site for Chandrayaan-3",
+      "isActualLanding": false
+    },
+    {
+      "id": "cy3-backup",
+      "name": "CY3 Backup",
+      "shortLabel": "CY3-B",
+      "mission": "cy3",
+      "missionYear": 2023,
+      "latitude": -69.4977,
+      "longitude": -17.3304,
+      "description": "CY3 backup landing site (western region)",
+      "isActualLanding": false
+    },
+    {
+      "id": "cy2-primary",
+      "name": "CY2 Primary (Planned)",
+      "shortLabel": "CY2-P",
+      "mission": "cy2",
+      "missionYear": 2019,
+      "latitude": -70.90,
+      "longitude": 22.78,
+      "description": "Chandrayaan-2 planned landing site",
+      "isActualLanding": false
+    },
+    {
+      "id": "cy2-backup",
+      "name": "CY2 Backup",
+      "shortLabel": "CY2-B",
+      "mission": "cy2",
+      "missionYear": 2019,
+      "latitude": -67.75,
+      "longitude": -18.47,
+      "description": "CY2 backup landing site",
+      "isActualLanding": false
+    }
+  ],
+  "defaults": {
+    "snapEnabled": true,
+    "snapRadiusDeg": 2,
+    "snapRadiusOptions": [1, 2, 5]
+  }
+}

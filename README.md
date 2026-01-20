@@ -8,28 +8,64 @@ An interactive 3D visualization of Chandrayaan-3's orbital mechanics, demonstrat
 
 ## Human Note
 
-This interactive animation was developed to educate astronomy and space enthusiasts about the Chandrayaan 3 mission design. This animation was first used in the [Bangalore Astronomical Society](https://bas.org.in/) Astronomy Workshop for Enthusiasts (AWE) 2025 at the [Jain School of Sciences](https://jainuniversity.ac.in/sos/) on 15th November2025.
+This interactive animation was developed to educate astronomy and space enthusiasts about the Chandrayaan 3 mission design. This animation was first used in the [Bangalore Astronomical Society](https://bas.org.in/) Astronomy Workshop for Enthusiasts (AWE) 2025 at the [Jain School of Sciences](https://jainuniversity.ac.in/sos/) on 15th November 2025.
 
-The animation has three modes: Explore, Plan, and Game. The Explore mode teaches about the geometry of lunar and spacecraft orbits. The Plan lets you plan a direc transfer lunar trajectory. I am yet to add support for the ascent orbit, earth bound orbit raising maneuvers, lunar capture, lunar orbit lowering maneuers, and the descent orbit. However, the Plan mode considers constraints to the Argument of Perigee (AoP) and inclination. The Game mode lets you play the mission.
+The project features a unified landing page that routes to three specialized applications:
+- **Chandrayaan Mission Designer**: Guides you through backwards mission design starting from landing site selection
+- **Explorer**: Free-form exploration teaching the geometry of lunar and spacecraft orbits
+- **Legacy Designer**: Timeline-based mission planning with constraints on Argument of Perigee (AoP) and inclination, plus playback mode
+
+Future enhancements will add support for ascent orbit, earth-bound orbit raising maneuvers, lunar capture, lunar orbit lowering maneuvers, and descent orbit.
+
+## ⚠️ Educational Tool Disclaimer
+
+**This is an educational visualization tool, not a professional mission design system.**
+
+The Mission Designer and orbital visualization tools are designed to teach foundational physics principles and orbital mechanics concepts. They are **not suitable for real mission planning** and have significant simplifications:
+
+- **Simplified Orbital Model**: Uses a two-body Keplerian model (spacecraft + Earth or spacecraft + Moon)
+- **No Realistic Orbit Insertions**: Does not model actual orbital insertion maneuvers, thrust profiles, or fuel consumption
+- **Limited Gravitational Influences**: Does not account for:
+  - Multi-body gravitational effects (Sun, Earth, Moon interactions)
+  - Earth's oblateness (J2 perturbations)
+  - Solar radiation pressure
+  - Atmospheric drag
+  - Lunar mascons
+- **Idealized Transfers**: Assumes instantaneous velocity changes at TLI and LOI
+- **No Station-Keeping**: Does not model orbit maintenance or correction maneuvers
+
+**Purpose**: This tool helps students and enthusiasts understand **why** certain orbital parameters are chosen and visualize the geometric relationships between orbits. It demonstrates concepts like RAAN, argument of periapsis, true anomaly, and the constraints imposed by landing site illumination requirements.
+
+For actual mission planning, professional tools like GMAT (General Mission Analysis Tool), STK (Systems Tool Kit), or Copernicus would be required.
 
 ## Features
 
-### Three Operating Modes
+### Application Architecture
 
-#### Explore Mode
+This project uses a **unified landing page** that routes to **three specialized applications**:
+
+1. **Landing Page** (`index.html`) - Main entry point for all users
+2. **Chandrayaan Mission Designer** (`wizard.html`) - Guided backwards mission design workflow (Featured app)
+3. **Explorer** (`explorer.html`) - Free-form orbital exploration (Explore mode)
+4. **Legacy Designer** (`designer.html`) - Timeline-based mission planning and playback (Plan + Game modes)
+
+### Three Operating Modes (Explorer & Legacy Designer)
+
+#### Explore Mode (Explorer App - `explorer.html`)
 - **Manual control** of all orbital parameters
 - Moon position controlled manually (Gamed mode)
 - All parameters adjustable via GUI controls
 - No timeline constraints
+- No mode tabs (dedicated Explore-only experience)
 - Ideal for learning orbital mechanics and experimentation
 
-#### Plan Mode
+#### Plan Mode (Legacy Designer App - `designer.html`)
 - **Mission planning** with launch event creation
 - Real lunar ephemeris from astronomy-engine library
 - Define launch parameters with realistic constraints:
   - Inclination: 21.5° or 41.8° (dropdown)
   - Argument of Periapsis: 178°, 198°, or 203° (depends on inclination)
-  - Perigee altitude: 180-600,000 km
+  - Perigee altitude: 180-10,000 km
   - Launch date and Moon intercept date
 - Three independent timeline sliders:
   - **View**: General timeline navigation
@@ -39,13 +75,77 @@ The animation has three modes: Explore, Plan, and Game. The Explore mode teaches
 - Spacecraft parameters update in real-time based on selected timeline
 - Save/delete launch events with draft state tracking
 
-#### Game Mode
+#### Game Mode (Legacy Designer App - `designer.html`)
 - **Playback mode** for viewing planned missions
 - Real lunar ephemeris displays actual Moon position
 - All controls visible but disabled (read-only), including lunar and chandrayaan parameters
 - Timeline animation with playback controls
 - Spacecraft visualized based on saved launch event
 - Capture detection with toast notification when spacecraft reaches Moon
+
+### Chandrayaan Mission Designer (`wizard.html`)
+
+The Mission Designer implements a **backwards mission design methodology** - starting from the landing site and working backwards to determine orbital parameters. This is the **featured application** shown first on the landing page.
+
+#### Educational Philosophy
+
+**Backwards Design Approach:**
+1. Start with the destination (landing site on Moon)
+2. Determine when Sun provides proper illumination
+3. Calculate required orbital geometry (RAAN)
+4. Find optimal LOI (Lunar Orbit Insertion) date
+
+This goal-oriented approach helps students understand **why** specific orbital parameters are chosen, rather than just adjusting them freely.
+
+#### Four-Step Workflow
+
+**Step 1: Landing Site Selection**
+- Interactive 3D Moon globe with pre-defined landing sites
+- Sites include Shackleton Crater, Malapert Massif, Apollo 17, etc.
+- Visual markers on Moon surface showing site locations
+
+**Step 2: Landing Window Selection**
+- Calculates Sun elevation angles at selected site over time
+- Identifies viable landing windows (6°-9° Sun elevation)
+- Shows time periods with optimal lighting conditions
+- Prevents landing during extreme temperatures
+
+**Step 3: Mission Window Selection**
+- Presents available mission timeframes
+- Allows selection of specific mission dates
+- Connects landing constraints to launch planning
+
+**Step 4: LOI Date Optimization**
+- Calculates required RAAN from landing window timing
+- Finds optimal dates for Lunar Orbit Insertion
+- Displays complete orbital timeline with 3D visualization
+- Shows spacecraft trajectory and Moon encounter
+
+#### Key Features
+
+**Sun Elevation Calculations:**
+- Accurate Sun position relative to landing site
+- Libration effects included
+- Landing window detection algorithm
+- Visualization of Sun angles over time
+
+**Orbital Optimization:**
+- Automatic RAAN calculation from landing constraints
+- Moon equator crossing detection
+- Closest approach distance optimization
+- Multi-start optimization for robust solutions
+
+**State Persistence:**
+- Saves progress in browser localStorage
+- Resume capability after closing browser
+- Auto-clear after 30 days
+- Version-aware state migration
+
+**Relationship to Other Applications:**
+- **Standalone application** with its own entry point
+- Demonstrates backwards mission design feasibility
+- Different educational approach from Explorer/Designer apps
+- Future integration planned with Legacy Designer's Plan mode
 
 ### Timeline System
 
@@ -185,12 +285,19 @@ Celestial Z = Three.js +Y
 This handles Three.js's Y-up convention while maintaining celestial semantics.
 
 ### Code Organization
-- `main.ts`: Core visualization logic, orbital calculations, GUI setup, event-driven state management
-- `src/events.ts`: Event bus for coordinating state updates between components
+- `landing.ts`: Landing page routing (minimal functionality)
+- `explorer.ts`: Explorer app - Explore mode only (~4,849 lines)
+- `designer.ts`: Legacy Designer app - Plan + Game modes (~4,867 lines)
+- `main.ts`: Original three-mode app (kept for reference)
+- `src/events.ts`: Event bus for coordinating state updates
 - `src/launchEventSetters.ts`: Explicit setter functions for launch event parameters
 - `src/types.ts`: TypeScript type definitions for type safety
-- `index.html`: Layout, timeline controls, legend panel
-- `style.css`: UI styling, responsive design
+- `src/wizard/`: Complete wizard implementation (separate architecture)
+- `index.html`: Landing page with three app cards
+- `explorer.html`: Explorer app layout
+- `designer.html`: Legacy Designer layout with timeline controls
+- `wizard.html`: Mission Designer layout
+- `style.css`: UI styling for visualization apps
 - `ARCHITECTURE.md`: Event bus architecture documentation
 - `CLAUDE.md`: Developer documentation with implementation details
 - `TESTING.md`: Testing strategy and CI/CD setup guide
@@ -199,21 +306,58 @@ This handles Three.js's Y-up convention while maintaining celestial semantics.
 
 ```
 cy3-orbit/
-├── index.html                    # Main HTML with UI components
-├── main.ts                       # Three.js visualization and orbital mechanics
+├── index.html                    # Landing page (unified entry point)
+├── explorer.html                 # Explorer app (Explore mode)
+├── designer.html                 # Legacy Designer app (Plan + Game modes)
+├── wizard.html                   # Chandrayaan Mission Designer
+├── index-old.html                # Original three-mode app (backup)
 ├── src/
+│   ├── landing.ts                # Landing page entry point
+│   ├── landing.css               # Landing page styling
+│   ├── explorer.ts               # Explorer app entry
+│   ├── designer.ts               # Designer app entry
+│   ├── main.ts                   # Original three-mode app (reference)
+│   ├── style.css                 # Visualization app styling
+│   ├── constants.ts              # Application-wide constants
 │   ├── events.ts                 # Event bus for state management
 │   ├── launchEventSetters.ts    # Launch event update functions
-│   └── types.ts                  # TypeScript type definitions
-├── style.css                     # Styling for all UI elements
-├── *.test.ts                     # Unit tests (Vitest)
-├── e2e-*.test.ts                 # E2E tests (Playwright)
-├── playwright.config.ts          # E2E test configuration (all tests)
-├── playwright.config.fast.ts    # Fast E2E tests for CI
-├── playwright.config.slow.ts    # Comprehensive E2E tests for releases
-├── TESTING.md                    # Testing strategy documentation
-├── ARCHITECTURE.md               # Event bus architecture documentation
-├── CLAUDE.md                     # Technical developer documentation
+│   ├── launchEventComputed.ts   # Computed launch event values
+│   ├── optimization.ts           # Orbital optimization algorithms
+│   ├── types.ts                  # TypeScript type definitions
+│   ├── ui/
+│   │   └── dialog.ts             # UI dialog components
+│   └── wizard/                   # Chandrayaan Mission Designer (separate app)
+│       ├── wizard-entry.ts       # Wizard app entry point
+│       ├── wizard.css            # Wizard styling
+│       ├── WizardController.ts   # Main wizard controller/state machine
+│       ├── steps/                # Four wizard steps
+│       │   ├── LandingSiteStep.ts
+│       │   ├── LandingWindowStep.ts
+│       │   ├── MissionWindowStep.ts
+│       │   └── LOIDateStep.ts
+│       ├── components/           # Wizard UI components
+│       │   ├── MoonGlobeView.ts
+│       │   ├── SiteMarkers.ts
+│       │   ├── SunIlluminationPanel.ts
+│       │   ├── OrbitVisualizationPanel.ts
+│       │   └── orbitVisualization/
+│       ├── calculations/
+│       │   └── sunElevation.ts   # Sun elevation algorithms
+│       └── data/
+│           └── landing-sites.json
+├── tests/
+│   ├── unit/                     # Unit tests (Vitest)
+│   └── e2e/                      # E2E tests (Playwright)
+│       ├── e2e-wizard-demo.test.ts
+│       └── ...
+├── docs/
+│   ├── ARCHITECTURE.md           # Event bus architecture
+│   ├── TESTING.md                # Testing strategy
+│   ├── CLAUDE.md                 # Technical documentation
+│   └── specs/
+│       ├── spec.md
+│       └── mission-design-wizard-spec.md
+├── playwright.config.ts          # E2E test configuration
 └── README.md                     # This file
 ```
 

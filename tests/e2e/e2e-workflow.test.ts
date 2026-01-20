@@ -1,35 +1,14 @@
 import { test, expect } from '@playwright/test';
+import { gotoApp } from './test-helpers';
 
 test.describe('Complete User Workflow Tests', () => {
-    test('should complete full workflow: Explore → Plan → Optimize → Game → Validate', async ({ page }) => {
+    test('should complete full workflow: Plan → Optimize → Game → Validate', async ({ page }) => {
         console.log('\n=== COMPLETE USER WORKFLOW TEST ===');
 
-        // Navigate to app
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        // Navigate to app in Plan mode
+        await gotoApp(page, 'Plan');
 
-        console.log('\n--- Step 1: Start in Explore mode ---');
-
-        // Verify we're in Explore mode by default
-        const exploreBtn = page.locator('button:has-text("Explore")');
-        await expect(exploreBtn).toHaveClass(/active/);
-
-        // Set some Explore mode parameters
-        await page.evaluate(() => {
-            (window as any).params.chandrayaanInclination = 25.5;
-            (window as any).params.chandrayaanRAAN = 90;
-        });
-
-        console.log('\n--- Step 2: Switch to Plan mode ---');
-
-        await page.click('button:has-text("Plan")');
-        await page.waitForTimeout(1000);
-
-        // Verify Plan mode is active
-        const planBtn = page.locator('button:has-text("Plan")');
-        await expect(planBtn).toHaveClass(/active/);
-
-        console.log('\n--- Step 3: Create Launch Event ---');
+        console.log('\n--- Step 1: Create Launch Event ---');
 
         await page.click('#add-launch-action-btn');
         await page.waitForTimeout(2000);
@@ -40,12 +19,12 @@ test.describe('Complete User Workflow Tests', () => {
         });
         expect(launchEventExists).toBe(true);
 
-        console.log('\n--- Step 4: Enable Auto LOI ---');
+        console.log('\n--- Step 2: Enable Auto LOI ---');
 
         await page.evaluate(() => { (window as any).setAutoLOI(true); });
         await page.waitForTimeout(1000);
 
-        console.log('\n--- Step 5: Set optimization parameters ---');
+        console.log('\n--- Step 3: Set optimization parameters ---');
 
         const equatorCrossing = '2023-08-05T11:25:58.258Z';
         const optimizationInput = await page.evaluate((loiDateStr) => {
@@ -65,7 +44,7 @@ test.describe('Complete User Workflow Tests', () => {
 
         console.log('Optimization input:', JSON.stringify(optimizationInput, null, 2));
 
-        console.log('\n--- Step 6: Run Auto Optimize ---');
+        console.log('\n--- Step 4: Run Auto Optimize ---');
 
         // Set up dialog handler
         let dialogText = '';
@@ -109,7 +88,7 @@ test.describe('Complete User Workflow Tests', () => {
         console.log('Optimized Apogee:', optimizedApogee);
         console.log('Optimized Distance:', optimizedDistance);
 
-        console.log('\n--- Step 7: Verify parameters were updated ---');
+        console.log('\n--- Step 5: Verify parameters were updated ---');
 
         const updatedParams = await page.evaluate(() => {
             const le = (window as any).launchEvent;
@@ -123,7 +102,7 @@ test.describe('Complete User Workflow Tests', () => {
         expect(Math.abs(updatedParams.apogeeAlt - optimizedApogee)).toBeLessThan(1);
         console.log('✓ Parameters updated correctly');
 
-        console.log('\n--- Step 8: Switch to Game mode ---');
+        console.log('\n--- Step 6: Switch to Game mode ---');
 
         await page.click('button:has-text("Game")');
         await page.waitForTimeout(2000);
@@ -132,7 +111,7 @@ test.describe('Complete User Workflow Tests', () => {
         const gameBtn = page.locator('button:has-text("Game")');
         await expect(gameBtn).toHaveClass(/active/);
 
-        console.log('\n--- Step 9: Verify parameters persisted in Game mode ---');
+        console.log('\n--- Step 7: Verify parameters persisted in Game mode ---');
 
         const gameParams = await page.evaluate(() => {
             const le = (window as any).launchEvent;
@@ -146,7 +125,7 @@ test.describe('Complete User Workflow Tests', () => {
         expect(Math.abs(gameParams.apogeeAlt - optimizedApogee)).toBeLessThan(1);
         console.log('✓ Parameters persisted correctly in Game mode');
 
-        console.log('\n--- Step 10: Set time to LOI and validate distance ---');
+        console.log('\n--- Step 8: Set time to LOI and validate distance ---');
 
         await page.evaluate((loiDateStr) => {
             const loiDate = new Date(loiDateStr);
@@ -188,7 +167,7 @@ test.describe('Complete User Workflow Tests', () => {
         expect(Math.abs(visualDistance - optimizedDistance)).toBeLessThan(tolerance);
         console.log('✓ Visual distance matches optimization result');
 
-        console.log('\n--- Step 11: Switch back to Plan mode and verify persistence ---');
+        console.log('\n--- Step 9: Switch back to Plan mode and verify persistence ---');
 
         await page.click('button:has-text("Plan")');
         await page.waitForTimeout(1000);
@@ -205,31 +184,13 @@ test.describe('Complete User Workflow Tests', () => {
         expect(Math.abs(planParamsAfter.apogeeAlt - optimizedApogee)).toBeLessThan(1);
         console.log('✓ Parameters still correct after returning to Plan mode');
 
-        console.log('\n--- Step 12: Switch to Explore mode and verify isolation ---');
-
-        await page.click('button:has-text("Explore")');
-        await page.waitForTimeout(1000);
-
-        const exploreParams = await page.evaluate(() => {
-            return {
-                inclination: (window as any).params.chandrayaanInclination,
-                raan: (window as any).params.chandrayaanRAAN
-            };
-        });
-
-        // Verify Explore mode has its own parameters (should be the ones we set in step 1)
-        expect(exploreParams.inclination).toBe(25.5);
-        expect(exploreParams.raan).toBe(90);
-        console.log('✓ Explore mode parameters isolated correctly');
-
         console.log('\n=== WORKFLOW TEST PASSED ✓ ===');
     });
 
     test('should handle launch event creation and deletion', async ({ page }) => {
         console.log('\n=== LAUNCH EVENT LIFECYCLE TEST ===');
 
-        await page.goto('http://localhost:3002');
-        await page.waitForLoadState('load');
+        await gotoApp(page);
 
         // Switch to Plan mode
         await page.click('button:has-text("Plan")');
