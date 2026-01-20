@@ -130,7 +130,16 @@ export class WizardController {
                     <div class="wizard-content" id="wizard-content"></div>
 
                     <div class="wizard-summary" id="wizard-summary">
-                        <div class="summary-header">Mission Summary</div>
+                        <div class="summary-header">
+                            <span class="summary-title">Mission Summary</span>
+                            <button class="summary-help-btn" id="help-btn" title="Show help for this step" aria-label="Show help for this step">
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/>
+                                    <path d="M8 11.5V11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                                    <path d="M8 8.5C8 7.5 9 7 9 6C9 5.17 8.5 4.5 7.5 4.5C6.5 4.5 6 5.17 6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                                </svg>
+                            </button>
+                        </div>
                         <div class="summary-content" id="summary-content">
                             <div class="summary-empty">Complete steps to see summary</div>
                         </div>
@@ -171,10 +180,16 @@ export class WizardController {
         const nextBtn = this.container.querySelector('#wizard-next-btn');
         const cancelBtn = this.container.querySelector('#wizard-cancel-btn');
         const timezoneSelect = this.container.querySelector('#timezone-select') as HTMLSelectElement;
+        const helpBtn = this.container.querySelector('#help-btn');
 
         backBtn?.addEventListener('click', () => this.goBack());
         nextBtn?.addEventListener('click', () => this.goNext());
         cancelBtn?.addEventListener('click', () => this.cancel());
+
+        // Help button toggles help panel
+        helpBtn?.addEventListener('click', () => {
+            this.helpPanel?.toggle();
+        });
 
         timezoneSelect?.addEventListener('change', () => {
             this.timezone = timezoneSelect.value;

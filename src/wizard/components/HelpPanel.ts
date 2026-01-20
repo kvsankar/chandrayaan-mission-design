@@ -32,7 +32,6 @@ interface HelpConfig {
 export class HelpPanel {
     private container: HTMLElement;
     private panel: HTMLElement | null = null;
-    private button: HTMLElement | null = null;
     private isOpen = false;
     private currentStep = 0;
     private config: HelpConfig;
@@ -40,19 +39,8 @@ export class HelpPanel {
     constructor(container: HTMLElement) {
         this.container = container;
         this.config = helpConfig as HelpConfig;
-        this.createHelpButton();
         this.createHelpPanel();
         this.attachEventListeners();
-    }
-
-    private createHelpButton(): void {
-        this.button = document.createElement('button');
-        this.button.className = 'help-button';
-        this.button.innerHTML = '?';
-        this.button.title = 'Show help for this step';
-        this.button.setAttribute('aria-label', 'Toggle help panel');
-
-        this.container.appendChild(this.button);
     }
 
     private createHelpPanel(): void {
@@ -72,11 +60,6 @@ export class HelpPanel {
     }
 
     private attachEventListeners(): void {
-        // Toggle panel on button click
-        this.button?.addEventListener('click', () => {
-            this.toggle();
-        });
-
         // Close panel on close button click
         const closeButton = this.panel?.querySelector('.help-panel-close');
         closeButton?.addEventListener('click', () => {
@@ -150,7 +133,6 @@ export class HelpPanel {
 
         this.updateContent();
         this.panel?.classList.add('open');
-        this.button?.classList.add('active');
         this.isOpen = true;
     }
 
@@ -158,7 +140,6 @@ export class HelpPanel {
         if (!this.isOpen) return;
 
         this.panel?.classList.remove('open');
-        this.button?.classList.remove('active');
         this.isOpen = false;
     }
 
@@ -171,7 +152,6 @@ export class HelpPanel {
     }
 
     public destroy(): void {
-        this.button?.remove();
         this.panel?.remove();
     }
 }
