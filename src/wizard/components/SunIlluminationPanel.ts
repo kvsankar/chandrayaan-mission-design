@@ -10,6 +10,7 @@
 
 import * as THREE from 'three';
 import { LandingWindowWithRaan, calculateSunElevation, getSubSolarPoint, findElevationCrossing } from '../calculations/sunElevation.js';
+import moonTexture from '/textures/moon_lroc_color.jpg?url';
 
 const DEG_TO_RAD = Math.PI / 180;
 const MOON_RADIUS = 60;  // Larger globe for detailed viewing
@@ -464,7 +465,7 @@ export class SunIlluminationPanel {
 
         const textureLoader = new THREE.TextureLoader();
         textureLoader.load(
-            './textures/moon_lroc_color.jpg',
+            moonTexture,
             (texture) => {
                 texture.colorSpace = THREE.SRGBColorSpace;
                 texture.wrapS = THREE.RepeatWrapping;
