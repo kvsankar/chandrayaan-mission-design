@@ -139,7 +139,7 @@ export class MoonGlobeView {
         // Load NASA LROC Moon texture (local copy from NASA SVS CGI Moon Kit)
         // Source: https://svs.gsfc.nasa.gov/4720/
         textureLoader.load(
-            '/textures/moon_lroc_color.jpg',
+            './textures/moon_lroc_color.jpg',
             (texture) => {
                 texture.colorSpace = THREE.SRGBColorSpace;
 
