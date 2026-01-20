@@ -491,10 +491,8 @@ test.describe('Game Mode - Timeline and Simulation', () => {
     });
 
     test('should show capture message when craft enters Moon SOI', async ({ page }) => {
-        await gotoApp(page);
+        await gotoApp(page, 'Plan');
 
-        await page.click('button:has-text("Plan")');
-        await page.waitForTimeout(1000);
         await page.click('#add-launch-action-btn');
         await page.waitForTimeout(2000);
 
@@ -546,41 +544,9 @@ test.describe('Game Mode - Timeline and Simulation', () => {
 });
 
 test.describe('Mode Transitions', () => {
-    test('should preserve Explore parameters when switching to Plan and back', async ({ page }) => {
-        await gotoApp(page);
-
-        // Capture Explore params
-        const exploreParams = await page.evaluate(() => ({
-            chandrayaanInclination: (window as any).params.chandrayaanInclination,
-            chandrayaanNodes: (window as any).params.chandrayaanNodes,
-            chandrayaanOmega: (window as any).params.chandrayaanOmega,
-            chandrayaanPerigeeAlt: (window as any).params.chandrayaanPerigeeAlt
-        }));
-
-        // Switch to Plan
-        await page.click('button:has-text("Plan")');
-        await page.waitForTimeout(1000);
-
-        // Switch back to Explore
-        await page.click('button:has-text("Explore")');
-        await page.waitForTimeout(1000);
-
-        // Verify params unchanged
-        const finalParams = await page.evaluate(() => ({
-            chandrayaanInclination: (window as any).params.chandrayaanInclination,
-            chandrayaanNodes: (window as any).params.chandrayaanNodes,
-            chandrayaanOmega: (window as any).params.chandrayaanOmega,
-            chandrayaanPerigeeAlt: (window as any).params.chandrayaanPerigeeAlt
-        }));
-
-        expect(finalParams).toEqual(exploreParams);
-    });
-
     test('should preserve Plan parameters when switching to Game and back', async ({ page }) => {
-        await gotoApp(page);
+        await gotoApp(page, 'Plan');
 
-        await page.click('button:has-text("Plan")');
-        await page.waitForTimeout(1000);
         await page.click('#add-launch-action-btn');
         await page.waitForTimeout(2000);
 

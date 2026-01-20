@@ -10,8 +10,8 @@ export async function gotoApp(page: Page, mode?: 'Explore' | 'Plan' | 'Game'): P
     } else if (mode === 'Plan' || mode === 'Game') {
         url += '/designer.html';
     } else {
-        // Default to old three-mode app (index-old.html) for backward compatibility
-        url += '/index-old.html';
+        // Default to designer.html (Plan mode) for backward compatibility
+        url += '/designer.html';
     }
 
     await page.goto(url);
