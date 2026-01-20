@@ -10,7 +10,7 @@
 
 import * as THREE from 'three';
 import { LandingWindowWithRaan, calculateSunElevation, getSubSolarPoint, findElevationCrossing } from '../calculations/sunElevation.js';
-import moonTexture from '../../../public/textures/moon_lroc_color.jpg?url';
+import moonTexture from '../../assets/textures/moon_lroc_color.jpg?url';
 
 const DEG_TO_RAD = Math.PI / 180;
 const MOON_RADIUS = 60;  // Larger globe for detailed viewing
