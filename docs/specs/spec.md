@@ -1,7 +1,7 @@
 # Chandrayaan-3 Orbit Visualization - Comprehensive Technical Specification
 
-**Version:** 2.0
-**Last Updated:** January 20, 2026
+**Version:** 2.1
+**Last Updated:** January 20, 2026 (Revised)
 **Project Type:** Interactive 3D Orbit Visualization with Mission Design Tools
 
 ---
@@ -68,6 +68,8 @@ The Chandrayaan-3 Orbit Visualization is an interactive web-based application th
 3. **Explorer** (`explorer.html`): Free-form orbital exploration with manual controls (Explore mode only)
 4. **Legacy Designer** (`designer.html`): Timeline-based mission planning and playback (Plan + Game modes)
 
+**Note:** The original three-mode application (`main.ts` + `index-old.html`) is preserved for reference and backward compatibility but is not linked from the landing page. It contains all three modes (Explore, Plan, Game) in one application and is useful for comparing the split architecture with the original monolithic version.
+
 ### 1.1 Purpose
 
 **Chandrayaan Mission Designer** (wizard.html):
@@ -95,9 +97,11 @@ The Chandrayaan-3 Orbit Visualization is an interactive web-based application th
 - **3D Rendering:** Three.js
 - **GUI Framework:** lil-gui
 - **Lunar Ephemeris:** astronomy-engine
-- **Build Tool:** Vite
+- **Guided Tours:** driver.js (wizard walkthroughs)
+- **Build Tool:** Vite (multi-page configuration)
 - **Testing:** Vitest (unit tests), Playwright (E2E tests)
 - **State Persistence (Wizard):** localStorage with versioning
+- **Configuration:** JSON files for landing page and help system content
 
 ---
 
@@ -791,24 +795,79 @@ Where:
 
 ```
 cy3-orbit/
-├── index.html              # Main HTML structure
+├── index.html               # Landing page entry point
+├── explorer.html            # Explorer app entry point
+├── designer.html            # Legacy Designer app entry point
+├── wizard.html              # Mission Design Wizard entry point
+├── index-old.html           # Backup of original three-mode app
 ├── src/
-│   ├── main.ts             # Core visualization logic
-│   ├── style.css           # Application styles
-│   ├── events.ts           # Event bus implementation
-│   ├── optimization.ts     # Optimization algorithms
-│   ├── launchEventSetters.ts  # Launch event update functions
-│   └── types/
-│       ├── astronomy-engine.d.ts  # Astronomy engine type declarations
-│       └── lil-gui.d.ts           # lil-gui type declarations
+│   ├── landing.ts           # Landing page entry point
+│   ├── landing.css          # Landing page styling
+│   ├── landing-config.json  # Landing page configuration
+│   ├── explorer.ts          # Explorer app entry (Explore mode only)
+│   ├── designer.ts          # Designer app entry (Plan + Game modes)
+│   ├── main.ts              # Original three-mode app (kept for reference)
+│   ├── style.css            # Application styles
+│   ├── constants.ts         # Application-wide constants
+│   ├── events.ts            # Event bus implementation
+│   ├── optimization.ts      # Optimization algorithms
+│   ├── launchEventSetters.ts    # Launch event update functions
+│   ├── launchEventComputed.ts   # Computed launch event values
+│   ├── types.ts             # TypeScript type definitions
+│   ├── types/
+│   │   ├── astronomy-engine.d.ts  # Astronomy engine type declarations
+│   │   └── lil-gui.d.ts           # lil-gui type declarations
+│   ├── ui/
+│   │   └── dialog.ts        # UI dialog components
+│   └── wizard/              # Mission Design Wizard (separate application)
+│       ├── wizard-entry.ts  # Wizard app entry point
+│       ├── wizard.css       # Wizard-specific styling
+│       ├── WizardController.ts  # Main wizard controller/state machine
+│       ├── help-config.json # Help system configuration
+│       ├── steps/           # Wizard step implementations
+│       │   ├── LandingSiteStep.ts     # Step 1: Select landing site (reordered)
+│       │   ├── LandingWindowStep.ts   # Step 2: Choose landing window (reordered)
+│       │   ├── MissionWindowStep.ts   # Step 3: Select mission window (reordered)
+│       │   └── LOIDateStep.ts         # Step 4: Optimize LOI date
+│       ├── components/      # Wizard UI components
+│       │   ├── MoonGlobeView.ts       # 3D Moon globe with landing sites
+│       │   ├── SiteMarkers.ts         # Landing site markers on globe
+│       │   ├── SunIlluminationPanel.ts # Sun elevation visualization
+│       │   ├── HelpPanel.ts           # Context-sensitive help system
+│       │   ├── WalkthroughManager.ts  # Guided UI walkthroughs (driver.js)
+│       │   ├── OrbitVisualizationPanel.ts  # Complete orbit visualization
+│       │   └── orbitVisualization/    # Orbit visualization sub-components
+│       │       ├── index.ts           # Module exports
+│       │       ├── types.ts           # Component type definitions
+│       │       ├── OrbitScene.ts      # Three.js scene setup
+│       │       ├── orbitCore.ts       # Core orbital rendering logic
+│       │       ├── OrbitVisualizationPanel.ts  # Main panel component
+│       │       └── TimelineControls.ts # Timeline UI controls
+│       ├── calculations/    # Wizard-specific calculations
+│       │   └── sunElevation.ts        # Sun elevation algorithms
+│       ├── data/            # Static data for wizard
+│       │   └── landing-sites.json     # Pre-defined landing sites
+│       └── poc/             # Proof-of-concept code
+│           └── sun-elevation-poc.ts   # Initial sun elevation validation
 ├── tests/
-│   ├── unit/               # Unit tests (Vitest)
-│   └── e2e/                # E2E tests (Playwright)
+│   ├── unit/                # Unit tests (Vitest)
+│   │   ├── ra-calculations.test.ts
+│   │   ├── optimization.test.ts
+│   │   └── wizard/          # Wizard unit tests
+│   └── e2e/                 # E2E tests (Playwright)
+│       ├── e2e-wizard-demo.test.ts    # Wizard workflow tests
+│       ├── e2e-mode-transitions.test.ts
+│       └── ...
 ├── docs/
-│   └── specs/              # Technical specifications
+│   ├── ARCHITECTURE.md
+│   ├── TESTING.md
+│   └── specs/
+│       └── spec.md          # This file (comprehensive specification)
 ├── .pre-commit-config.yaml # Pre-commit hooks configuration
 ├── eslint.config.js        # ESLint configuration
 ├── playwright.config.ts    # Playwright configuration
+├── vitest.config.ts        # Unit test configuration
+├── vite.config.js          # Vite multi-page build configuration
 └── tsconfig.json           # TypeScript configuration
 ```
 
@@ -936,24 +995,28 @@ const confirmed = await showConfirmDialog(
 
 ### 13.1 Unit Tests (Vitest)
 
-**Coverage:** 28+ tests
+**Coverage:** 152 tests across 9 test files
 
 **Test Categories:**
 - Orbital calculation functions
-- Coordinate transformations
+- Coordinate transformations (RA ↔ True Anomaly conversions)
 - Kepler solver accuracy
 - Event bus functionality
 - Setter function behavior
+- Optimization algorithms (LOI date finding, apogee optimization)
+- Wizard calculations (sun elevation, landing windows)
 
 **Example Tests:**
 - `computeOrbitalParams()` returns correct values
 - `keplerSolver()` converges to correct eccentric anomaly
 - Event emission triggers handlers
 - Cache invalidation works correctly
+- RA↔True Anomaly conversions handle inclined orbits correctly
+- Sun elevation calculations match mission data
 
 ### 13.2 End-to-End Tests (Playwright)
 
-**Coverage:** 108+ tests
+**Coverage:** 59 tests across 9 test files
 
 **Test Categories:**
 
@@ -969,11 +1032,22 @@ const confirmed = await showConfirmDialog(
    - Capture detection
    - Parameter updates
 
-3. **Error Handling** (`e2e-error-handling.test.ts`)
+3. **Wizard Workflow** (`e2e-wizard-demo.test.ts`)
+   - Complete 4-step wizard flow
+   - Landing site selection
+   - Sun elevation window selection
+   - LOI date optimization
+
+4. **Error Handling** (`e2e-error-handling.test.ts`)
    - Invalid parameter validation
    - Draft state warnings
    - Missing launch event handling
    - Boundary condition testing
+
+5. **Visual Verification** (`e2e-visual-verification.test.ts`)
+   - UI element rendering
+   - Visualization accuracy
+   - Animation playback
 
 ### 13.3 Test Configuration
 
@@ -1066,31 +1140,46 @@ pre-commit run eslint       # Run specific hook
 
 ### 15.1 Physical Constants
 
+Defined in `src/constants.ts`:
+
 ```typescript
 const EARTH_RADIUS = 6371; // km
 const MOON_RADIUS = 1737; // km
 const EARTH_MU = 398600.4418; // km³/s² (gravitational parameter)
 const SPHERE_RADIUS = 100; // Celestial sphere radius (arbitrary units)
+const LUNAR_ORBIT_DISTANCE = 384400; // km (average Earth-Moon distance)
+const SCALE_FACTOR = SPHERE_RADIUS / LUNAR_ORBIT_DISTANCE; // Visual scale conversion
 ```
 
 ### 15.2 Rendering Constants
 
+Defined in `src/constants.ts`:
+
 ```typescript
-const ORBIT_SEGMENTS = 512; // Ellipse path smoothness
+const ORBIT_SEGMENTS_DETAILED = 512; // Ellipse path smoothness (high detail)
+const ORBIT_SEGMENTS_STANDARD = 128; // Standard detail level
 const SPRITE_CANVAS_SIZE = 128; // Sprite texture resolution
 const SPRITE_FONT_SIZE = 80; // Font size for angle labels
 
 // Camera configuration
 const CAMERA_FOV = 45; // degrees
-const CAMERA_POSITION = { x: 240, y: 160, z: 240 };
-const CAMERA_NEAR = 0.1;
-const CAMERA_FAR = 10000;
+const CAMERA_INITIAL_X = 240;
+const CAMERA_INITIAL_Y = 160;
+const CAMERA_INITIAL_Z = 240;
+const CAMERA_NEAR_PLANE = 0.1;
+const CAMERA_FAR_PLANE = 10000;
 
-// Zoom scaling
-const BASE_CAMERA_DISTANCE = 240;
-const ARIES_MARKER_SCALE_RANGE = { min: 0.2, max: 0.8 };
-const NODE_MARKER_SCALE_RANGE = { min: 0.3, max: 1.5 };
-const SPACECRAFT_SCALE_RANGE = { min: 0.5, max: 2.0 };
+// Zoom-aware scaling
+const ZOOM_BASE_DISTANCE = 240;
+const ZOOM_ARIES_MIN_SCALE = 0.2;
+const ZOOM_ARIES_MAX_SCALE = 0.8;
+const ZOOM_NODE_MIN_SCALE = 0.3;
+const ZOOM_NODE_MAX_SCALE = 1.5;
+const ZOOM_SPACECRAFT_MIN_SCALE = 0.5;
+const ZOOM_SPACECRAFT_MAX_SCALE = 2.0;
+
+// Sprite base sizes
+const ARIES_MARKER_BASE_SIZE = 8;
 ```
 
 ### 15.3 Default Mission Parameters
@@ -1173,7 +1262,7 @@ const TIMELINE_PLAYBACK_SPEEDS = [
 
 **Development:**
 ```bash
-npm run dev    # Start Vite dev server (port 5173)
+npm run dev    # Start Vite dev server (port 3002, no auto-open)
 ```
 
 **Production Build:**
@@ -1182,9 +1271,10 @@ npm run build  # TypeScript compilation + Vite build
 ```
 
 **Output:**
-- `dist/` folder with optimized static files
+- `dist-pages/` folder with optimized static files (configured for GitHub Pages)
 - Minified JavaScript
 - Optimized assets
+- Source maps for debugging
 
 ### 17.2 GitHub Actions Workflow
 
@@ -1206,8 +1296,10 @@ npm run build  # TypeScript compilation + Vite build
 
 **Configuration:**
 - Branch: `gh-pages`
-- Base path: `/cy3-orbit/`
-- Asset paths configured in `vite.config.ts`
+- Base path: `./' (relative paths)
+- Output directory: `dist-pages/`
+- Multi-page build with four HTML entry points
+- Asset paths configured in `vite.config.js`
 
 **URL:** `https://<username>.github.io/cy3-orbit/`
 
@@ -1261,9 +1353,11 @@ The following features were discussed but not implemented in the current version
 - Three.js - MIT License
 - lil-gui - MIT License
 - astronomy-engine - MIT License
+- driver.js - MIT License
 - Vite - MIT License
 - Vitest - MIT License
 - Playwright - Apache 2.0 License
+- TypeScript - Apache 2.0 License
 
 ---
 
@@ -1845,6 +1939,40 @@ Where:
 ---
 
 ## 27. Wizard Technical Architecture
+
+### 27.0 Help System and Guided Walkthroughs
+
+**Help Panel** (`src/wizard/components/HelpPanel.ts`):
+- Context-sensitive help displayed for each wizard step
+- Toggleable panel with step-specific content
+- Configuration loaded from `help-config.json`
+- Content includes:
+  - Step overview and objectives
+  - Detailed explanations of controls and features
+  - Tips for optimal mission design
+  - References to mission documentation
+
+**Walkthrough Manager** (`src/wizard/components/WalkthroughManager.ts`):
+- Interactive guided tours using driver.js library
+- Step-by-step UI element highlighting and explanations
+- Configurable tour sequences for each wizard step
+- Features:
+  - Spotlight effect on active elements
+  - Progress indicators
+  - Skip/complete options
+  - Persistent tour completion state
+
+**Help Configuration** (`help-config.json`):
+- Structured JSON containing all help content
+- Organized by wizard step
+- Includes driver.js tour definitions
+- Version-controlled for consistency
+
+**Integration:**
+- Help button in wizard header toggles help panel
+- Context automatically updates when step changes
+- Walkthrough triggered on first visit to each step (optional)
+- Styling customizations for driver.js (font size, padding)
 
 ### 27.1 File Structure
 
