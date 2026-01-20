@@ -464,7 +464,7 @@ export class SunIlluminationPanel {
 
         const textureLoader = new THREE.TextureLoader();
         textureLoader.load(
-            '/textures/moon_lroc_color.jpg',
+            './textures/moon_lroc_color.jpg',
             (texture) => {
                 texture.colorSpace = THREE.SRGBColorSpace;
                 texture.wrapS = THREE.RepeatWrapping;
