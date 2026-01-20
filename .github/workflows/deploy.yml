@@ -3,7 +3,8 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches:
-      - master  # or main, depending on your default branch
+      - main
+      - master
   workflow_dispatch:  # Allow manual triggering
 
 permissions:
