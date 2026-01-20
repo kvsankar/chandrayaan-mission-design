@@ -2,11 +2,20 @@
 
 This document explains the testing strategy for the Chandrayaan-3 Orbit Visualization project.
 
+## Application Architecture
+
+The project consists of a **unified landing page** routing to **three specialized applications**:
+
+1. **Landing Page** (`index.html`) - Entry point for all users
+2. **Chandrayaan Mission Designer** (`wizard.html`) - Guided mission planning wizard
+3. **Explorer** (`explorer.html`) - Free-form orbital exploration (Explore mode)
+4. **Legacy Designer** (`designer.html`) - Timeline-based mission design (Plan/Game modes)
+
 ## Overview
 
 The project uses a **two-tier testing approach**:
-- **Unit tests** (Vitest): Fast, pure function tests
-- **E2E tests** (Playwright): Browser-based integration tests with fast/slow profiles
+- **Unit tests** (Vitest): Fast, pure function tests for shared logic
+- **E2E tests** (Playwright): Browser-based integration tests with fast/slow profiles for each app
 
 ## Test Structure
 
@@ -101,14 +110,38 @@ Comprehensive tests for releases:
 
 **Execution time**: ~5 minutes
 
+## Application Test Coverage
+
+### Landing Page (`index.html`)
+- **Manual testing only**: Verify card routing to correct apps
+- No automated tests (minimal functionality - just links)
+
+### Explorer App (`explorer.html`)
+- All E2E workflow tests (Explore mode only)
+- Parameter validation tests
+- No timeline/launch event tests
+
+### Legacy Designer App (`designer.html`)
+- All E2E workflow tests (Plan/Game modes)
+- Timeline control tests
+- Launch event lifecycle tests
+- Optimization tests
+
+### Mission Design Wizard (`wizard.html`)
+- Dedicated wizard workflow tests (`e2e-wizard-demo.test.ts`)
+- Sun elevation calculation tests
+- State persistence tests
+
 ## E2E Test Files
 
 ### e2e-workflow.test.ts
+**Apps tested**: Explorer, Designer
 Complete user journeys:
 - Full workflow: Explore → Plan → Optimize → Game → Validate
 - Launch event lifecycle: create, edit, delete
 
 ### e2e-modes.test.ts
+**Apps tested**: Designer (formerly tested original three-mode app)
 Mode transitions and parameter isolation:
 - Separate parameter sets for Explore vs Plan/Game
 - Rapid mode switching stability
@@ -116,6 +149,7 @@ Mode transitions and parameter isolation:
 - Optimized values persistence
 
 ### e2e-behaviors.test.ts
+**Apps tested**: Explorer, Designer
 Core behavior verification:
 - Parameter controls in Explore mode
 - Launch event parameters in Plan mode
@@ -123,6 +157,7 @@ Core behavior verification:
 - Mode transition parameter preservation
 
 ### e2e-features.test.ts
+**Apps tested**: Designer
 Feature-specific tests:
 - Auto LOI toggle
 - Timeline controls
@@ -131,6 +166,7 @@ Feature-specific tests:
 - Time progression
 
 ### e2e-error-handling.test.ts
+**Apps tested**: Designer
 Edge cases and robustness:
 - Missing launch event/LOI date
 - Invalid parameter values
@@ -139,12 +175,14 @@ Edge cases and robustness:
 - Browser reload behavior
 
 ### e2e-visual-verification.test.ts
+**Apps tested**: Designer
 **Critical test** that validates optimization results match visualization:
 - Uses known equator crossing date
 - Compares optimization-reported distance with actual visual distance
 - Prevents regression of coordinate system bugs
 
 ### e2e-simple.test.ts / e2e-exact.test.ts
+**Apps tested**: Designer
 Parameter validation tests:
 - Default parameter optimization
 - Exact unit test parameter matching
@@ -201,6 +239,7 @@ test('calculates Sun elevation at Shackleton Crater', () => {
 ### E2E Tests for Wizard
 
 **File**: `tests/e2e/e2e-wizard-demo.test.ts`
+**Entry Point**: `/wizard.html`
 
 Comprehensive wizard workflow tests:
 
@@ -242,7 +281,7 @@ Comprehensive wizard workflow tests:
 **Example Test**:
 ```typescript
 test('wizard completes full workflow and persists state', async ({ page, context }) => {
-    await page.goto('/src/wizard/demo.html');
+    await page.goto('/wizard.html');
 
     // Step 1: Select landing site
     await expect(page.locator('h2')).toContainText('Step 1');
@@ -320,10 +359,10 @@ npm run test:wizard  # (if script added to package.json)
 
 ### Integration with Main Test Suite
 
-Wizard tests are **separate** from main app tests:
-- Different entry point (`demo.html` vs `index.html`)
+Wizard tests are **separate** from visualization app tests:
+- Different entry point (`wizard.html` vs `explorer.html`/`designer.html`)
 - Different state structure (`WizardState` vs `LaunchEvent`)
-- Different user workflows (linear vs free-form)
+- Different user workflows (linear wizard vs free-form exploration)
 
 **CI Strategy**:
 - Fast profile: Excludes wizard tests (main app only)

@@ -8,29 +8,37 @@ An interactive 3D visualization of Chandrayaan-3's orbital mechanics, demonstrat
 
 ## Human Note
 
-This interactive animation was developed to educate astronomy and space enthusiasts about the Chandrayaan 3 mission design. This animation was first used in the [Bangalore Astronomical Society](https://bas.org.in/) Astronomy Workshop for Enthusiasts (AWE) 2025 at the [Jain School of Sciences](https://jainuniversity.ac.in/sos/) on 15th November2025.
+This interactive animation was developed to educate astronomy and space enthusiasts about the Chandrayaan 3 mission design. This animation was first used in the [Bangalore Astronomical Society](https://bas.org.in/) Astronomy Workshop for Enthusiasts (AWE) 2025 at the [Jain School of Sciences](https://jainuniversity.ac.in/sos/) on 15th November 2025.
 
-The animation has three modes: Explore, Plan, and Game. The Explore mode teaches about the geometry of lunar and spacecraft orbits. The Plan lets you plan a direc transfer lunar trajectory. I am yet to add support for the ascent orbit, earth bound orbit raising maneuvers, lunar capture, lunar orbit lowering maneuers, and the descent orbit. However, the Plan mode considers constraints to the Argument of Perigee (AoP) and inclination. The Game mode lets you play the mission.
+The project features a unified landing page that routes to three specialized applications:
+- **Chandrayaan Mission Designer**: Guides you through backwards mission design starting from landing site selection
+- **Explorer**: Free-form exploration teaching the geometry of lunar and spacecraft orbits
+- **Legacy Designer**: Timeline-based mission planning with constraints on Argument of Perigee (AoP) and inclination, plus playback mode
+
+Future enhancements will add support for ascent orbit, earth-bound orbit raising maneuvers, lunar capture, lunar orbit lowering maneuvers, and descent orbit.
 
 ## Features
 
-### Two Applications
+### Application Architecture
 
-This project includes **two separate applications**:
+This project uses a **unified landing page** that routes to **three specialized applications**:
 
-1. **Main Orbit Visualization** (`index.html`) - Interactive 3D visualization with three operating modes
-2. **Mission Design Wizard** (`src/wizard/demo.html`) - Guided multi-step mission planning workflow
+1. **Landing Page** (`index.html`) - Main entry point for all users
+2. **Chandrayaan Mission Designer** (`wizard.html`) - Guided backwards mission design workflow (Featured app)
+3. **Explorer** (`explorer.html`) - Free-form orbital exploration (Explore mode)
+4. **Legacy Designer** (`designer.html`) - Timeline-based mission planning and playback (Plan + Game modes)
 
-### Three Operating Modes (Main Application)
+### Three Operating Modes (Explorer & Legacy Designer)
 
-#### Explore Mode
+#### Explore Mode (Explorer App - `explorer.html`)
 - **Manual control** of all orbital parameters
 - Moon position controlled manually (Gamed mode)
 - All parameters adjustable via GUI controls
 - No timeline constraints
+- No mode tabs (dedicated Explore-only experience)
 - Ideal for learning orbital mechanics and experimentation
 
-#### Plan Mode
+#### Plan Mode (Legacy Designer App - `designer.html`)
 - **Mission planning** with launch event creation
 - Real lunar ephemeris from astronomy-engine library
 - Define launch parameters with realistic constraints:
@@ -46,7 +54,7 @@ This project includes **two separate applications**:
 - Spacecraft parameters update in real-time based on selected timeline
 - Save/delete launch events with draft state tracking
 
-#### Game Mode
+#### Game Mode (Legacy Designer App - `designer.html`)
 - **Playback mode** for viewing planned missions
 - Real lunar ephemeris displays actual Moon position
 - All controls visible but disabled (read-only), including lunar and chandrayaan parameters
@@ -54,9 +62,9 @@ This project includes **two separate applications**:
 - Spacecraft visualized based on saved launch event
 - Capture detection with toast notification when spacecraft reaches Moon
 
-### Mission Design Wizard (Separate Application)
+### Chandrayaan Mission Designer (`wizard.html`)
 
-The wizard implements a **backwards mission design methodology** - starting from the landing site and working backwards to determine orbital parameters.
+The Mission Designer implements a **backwards mission design methodology** - starting from the landing site and working backwards to determine orbital parameters. This is the **featured application** shown first on the landing page.
 
 #### Educational Philosophy
 
@@ -112,10 +120,11 @@ This goal-oriented approach helps students understand **why** specific orbital p
 - Auto-clear after 30 days
 - Version-aware state migration
 
-**Relationship to Main Application:**
-- Currently a **standalone proof-of-concept**
+**Relationship to Other Applications:**
+- **Standalone application** with its own entry point
 - Demonstrates backwards mission design feasibility
-- Future integration planned with main app's Plan mode
+- Different educational approach from Explorer/Designer apps
+- Future integration planned with Legacy Designer's Plan mode
 
 ### Timeline System
 
@@ -255,12 +264,19 @@ Celestial Z = Three.js +Y
 This handles Three.js's Y-up convention while maintaining celestial semantics.
 
 ### Code Organization
-- `main.ts`: Core visualization logic, orbital calculations, GUI setup, event-driven state management
-- `src/events.ts`: Event bus for coordinating state updates between components
+- `landing.ts`: Landing page routing (minimal functionality)
+- `explorer.ts`: Explorer app - Explore mode only (~4,849 lines)
+- `designer.ts`: Legacy Designer app - Plan + Game modes (~4,867 lines)
+- `main.ts`: Original three-mode app (kept for reference)
+- `src/events.ts`: Event bus for coordinating state updates
 - `src/launchEventSetters.ts`: Explicit setter functions for launch event parameters
 - `src/types.ts`: TypeScript type definitions for type safety
-- `index.html`: Layout, timeline controls, legend panel
-- `style.css`: UI styling, responsive design
+- `src/wizard/`: Complete wizard implementation (separate architecture)
+- `index.html`: Landing page with three app cards
+- `explorer.html`: Explorer app layout
+- `designer.html`: Legacy Designer layout with timeline controls
+- `wizard.html`: Mission Designer layout
+- `style.css`: UI styling for visualization apps
 - `ARCHITECTURE.md`: Event bus architecture documentation
 - `CLAUDE.md`: Developer documentation with implementation details
 - `TESTING.md`: Testing strategy and CI/CD setup guide
@@ -269,10 +285,18 @@ This handles Three.js's Y-up convention while maintaining celestial semantics.
 
 ```
 cy3-orbit/
-├── index.html                    # Main orbit visualization application
+├── index.html                    # Landing page (unified entry point)
+├── explorer.html                 # Explorer app (Explore mode)
+├── designer.html                 # Legacy Designer app (Plan + Game modes)
+├── wizard.html                   # Chandrayaan Mission Designer
+├── index-old.html                # Original three-mode app (backup)
 ├── src/
-│   ├── main.ts                   # Three.js visualization and orbital mechanics
-│   ├── style.css                 # Main application styling
+│   ├── landing.ts                # Landing page entry point
+│   ├── landing.css               # Landing page styling
+│   ├── explorer.ts               # Explorer app entry
+│   ├── designer.ts               # Designer app entry
+│   ├── main.ts                   # Original three-mode app (reference)
+│   ├── style.css                 # Visualization app styling
 │   ├── constants.ts              # Application-wide constants
 │   ├── events.ts                 # Event bus for state management
 │   ├── launchEventSetters.ts    # Launch event update functions
@@ -281,10 +305,10 @@ cy3-orbit/
 │   ├── types.ts                  # TypeScript type definitions
 │   ├── ui/
 │   │   └── dialog.ts             # UI dialog components
-│   └── wizard/                   # Mission Design Wizard (separate app)
-│       ├── demo.html             # Wizard entry point
+│   └── wizard/                   # Chandrayaan Mission Designer (separate app)
+│       ├── wizard-entry.ts       # Wizard app entry point
 │       ├── wizard.css            # Wizard styling
-│       ├── WizardController.ts   # Main wizard controller
+│       ├── WizardController.ts   # Main wizard controller/state machine
 │       ├── steps/                # Four wizard steps
 │       │   ├── LandingSiteStep.ts
 │       │   ├── LandingWindowStep.ts

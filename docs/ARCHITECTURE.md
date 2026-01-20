@@ -2,7 +2,13 @@
 
 ## Overview
 
-The Chandrayaan-3 Orbit Visualization uses an **event bus architecture** for state management. This architecture provides explicit, predictable state updates without the complexity of reactive proxies.
+The Chandrayaan-3 Orbit Visualization project consists of a **unified landing page** that routes to **three specialized applications**:
+
+1. **Chandrayaan Mission Designer** (wizard.html) - Guided mission planning
+2. **Explorer** (explorer.html) - Free-form orbital exploration
+3. **Legacy Designer** (designer.html) - Timeline-based mission design
+
+All three visualization apps share a common **event bus architecture** for state management, providing explicit, predictable state updates without the complexity of reactive proxies.
 
 ---
 
@@ -54,7 +60,7 @@ This approach provides:
            ↓
 ┌─────────────────────┐
 │  Event Handlers     │
-│  (main.ts)          │
+│  (explorer/designer)│
 │  ┌────────────────┐ │
 │  │ Update GUI     │ │
 │  │ Update orbit   │ │
@@ -71,24 +77,60 @@ This approach provides:
 
 ---
 
-## File Structure
+## Application Structure
+
+### HTML Entry Points
+
+```
+index.html               # Unified landing page (main entry point)
+├── wizard.html         # Chandrayaan Mission Designer
+├── explorer.html       # Explorer app
+└── designer.html       # Legacy Designer app
+```
+
+### File Structure
 
 ```
 src/
-├── main.ts                 # Application entry, event handlers, Three.js scene
+├── landing.ts              # Landing page entry point
+├── landing.css             # Landing page styling
+├── explorer.ts             # Explorer app entry (Explore mode only)
+├── designer.ts             # Designer app entry (Plan + Game modes)
+├── main.ts                 # Original three-mode app (reference/backup)
 ├── events.ts               # Event bus implementation
 ├── launchEventSetters.ts   # State update functions with event emission
 ├── launchEventComputed.ts  # Computed value functions
 ├── optimization.ts         # Orbital optimization algorithms
 ├── constants.ts            # Physical and rendering constants
 ├── types.ts                # TypeScript type definitions
-├── style.css               # Application styles
+├── style.css               # Visualization app styles
 ├── types/                  # Type declarations
 │   ├── astronomy-engine.d.ts
 │   └── lil-gui.d.ts
-└── ui/
-    └── dialog.ts           # Modal dialog components
+├── ui/
+│   └── dialog.ts           # Modal dialog components
+└── wizard/                 # Mission Design Wizard
+    ├── wizard-entry.ts     # Wizard app entry point
+    ├── wizard.css          # Wizard-specific styling
+    ├── WizardController.ts # State machine
+    ├── steps/              # Wizard step implementations
+    ├── components/         # Wizard UI components
+    ├── calculations/       # Wizard-specific calculations
+    └── data/               # Static data (landing sites)
 ```
+
+### Application Sharing
+
+**Shared Code** (used by all visualization apps):
+- `events.ts`, `constants.ts`, `types.ts`
+- `launchEventSetters.ts`, `launchEventComputed.ts`
+- `optimization.ts`, `ui/dialog.ts`
+
+**App-Specific Code**:
+- `landing.ts` - Minimal routing logic
+- `explorer.ts` - Explore mode only (~4,849 lines)
+- `designer.ts` - Plan/Game modes (~4,867 lines)
+- `wizard/` - Complete wizard implementation (separate architecture)
 
 ---
 
@@ -225,9 +267,9 @@ export function setLaunchEventLOIDate(
 
 ## Event Handler Organization
 
-### main.ts
+### explorer.ts / designer.ts
 
-Event handlers are registered at initialization:
+Event handlers are registered at initialization in both visualization apps:
 
 ```typescript
 function setupEventHandlers(): void {
@@ -661,10 +703,11 @@ class WizardStep {
 **Current Status**: Wizard is **standalone proof-of-concept**
 
 **Why Separate?**
-- Different educational philosophy (backwards vs. forward)
-- Different state management needs (persistent vs. ephemeral)
-- Different workflows (linear vs. free-form)
-- Allows independent development and testing
+- Different educational philosophy (backwards design vs. forward simulation)
+- Different state management needs (persistent with localStorage vs. ephemeral)
+- Different workflows (linear step-by-step vs. free-form exploration)
+- Different UI paradigms (guided wizard vs. parameter sliders)
+- Allows independent development, testing, and optimization
 
 **Future Integration Plans**:
 1. Export wizard results to main app's Plan mode
@@ -700,16 +743,17 @@ function importFromWizard(): void {
 }
 ```
 
-### Comparison: Main App vs. Wizard
+### Comparison: Visualization Apps vs. Wizard
 
-| Aspect | Main App | Wizard |
-|--------|----------|--------|
+| Aspect | Explorer/Designer Apps | Mission Design Wizard |
+|--------|------------------------|----------------------|
 | **Architecture** | Event bus | State machine |
 | **State Management** | Explicit setters + events | Direct state updates |
 | **Persistence** | None (ephemeral) | localStorage (persistent) |
 | **Workflow** | Non-linear, exploratory | Linear, step-by-step |
 | **Goal** | Understanding geometry | Planning missions |
-| **Entry Point** | `index.html` | `src/wizard/demo.html` |
+| **Entry Point** | `explorer.html`, `designer.html` | `wizard.html` |
+| **Entry Script** | `explorer.ts`, `designer.ts` | `wizard/wizard-entry.ts` |
 | **State Type** | `LaunchEvent` + GUI params | `WizardState` |
 | **Update Pattern** | Setter → Event → Handler | Direct state mutation → Save |
 

@@ -65,12 +65,15 @@ This mapping handles Three.js's Y-up convention while maintaining proper celesti
 
 ## Application Architecture
 
-The project consists of a **unified landing page** that routes to **three separate applications**:
+The project uses a **unified landing page** that serves as a single entry point to **three specialized applications**:
 
-1. **Landing Page** (`index.html`) - Entry point with three app cards
-2. **Chandrayaan Mission Designer** (`wizard.html`) - Backwards mission design wizard
-3. **Explorer** (`explorer.html`) - Interactive orbital visualization (Explore mode only)
-4. **Legacy Designer** (`designer.html`) - Mission planning with timeline (Plan + Game modes)
+**Entry Point:**
+- **Landing Page** (`index.html`) - Unified front with three app cards for navigation
+
+**Three Specialized Applications:**
+1. **Chandrayaan Mission Designer** (`wizard.html`) - Featured app with backwards mission design methodology
+2. **Explorer** (`explorer.html`) - Interactive orbital visualization (Explore mode only)
+3. **Legacy Designer** (`designer.html`) - Mission planning with timeline (Plan + Game modes)
 
 ## File Structure
 
@@ -276,16 +279,18 @@ All distance measurements use **center-to-center distances** and are calculated 
 
 ## Unified Landing Page Architecture
 
-The project now uses a **unified landing page architecture** that routes users to three specialized applications:
+The project uses a **unified landing page** as the **single entry point** to all functionality. Users access a modern landing page that routes them to one of three specialized applications based on their needs.
 
 ### Landing Page (`index.html` + `src/landing.ts`)
 
-The landing page serves as the entry point to the application suite:
+The landing page serves as the unified front to the application suite:
 
-- **Three Large Cards**: Each card represents one of the three applications
+- **Single Entry Point**: All users start here - one URL, one interface
+- **Three Large Cards**: Each card routes to a specialized application
 - **Modern Design**: Gradient backgrounds, hover effects, smooth animations
 - **Responsive**: Works on desktop, tablet, and mobile devices
-- **Minimal JavaScript**: Only tracks card clicks for future analytics
+- **Minimal JavaScript**: Lightweight routing with analytics tracking
+- **Fast Load**: No heavy dependencies (no Three.js, no orbital calculations)
 
 ### Application Entry Points
 
@@ -317,11 +322,28 @@ Each application is a separate HTML file with its own TypeScript entry point:
 ### URL Structure
 
 ```
-/                    → Landing page
-/explorer.html       → Explorer app
-/designer.html       → Legacy Designer app
-/wizard.html         → Mission Design Wizard
+/                    → Landing page (MAIN ENTRY POINT)
+                       ├─→ /wizard.html         → Chandrayaan Mission Designer
+                       ├─→ /explorer.html       → Explorer
+                       └─→ /designer.html       → Legacy Designer
 ```
+
+**Note**: While users can technically navigate directly to any HTML file, the intended user flow is:
+1. Start at landing page (`/`)
+2. Choose an app from the three cards
+3. Work within the selected app
+4. Use browser back button to return to landing page
+
+### Benefits of Unified Architecture
+
+This architecture provides several advantages:
+
+1. **Clear User Journey**: New users see all options upfront and choose based on their needs
+2. **Focused Experience**: Each app contains only relevant features (no unused mode tabs)
+3. **Easier Maintenance**: Changes to one app don't affect others
+4. **Better Performance**: Each app loads only what it needs
+5. **Educational Clarity**: Different learning paths (guided wizard vs. free exploration vs. mission planning)
+6. **Future Scalability**: Easy to add new specialized apps without cluttering existing ones
 
 ### Code Architecture
 
@@ -344,6 +366,12 @@ Each application is a separate HTML file with its own TypeScript entry point:
 - Previously at `src/wizard/demo.html`
 - Now integrated as first-class app at root level
 - Full wizard functionality preserved
+
+**Original Three-Mode App** (`main.ts` + `index-old.html`):
+- Kept for reference and backward compatibility
+- Contains all three modes (Explore, Plan, Game) in one application
+- Not linked from landing page (direct URL access only)
+- Useful for comparing code between split apps and original monolithic version
 
 ### Build Configuration
 
@@ -457,12 +485,12 @@ WizardController (state machine)
 - Populate launch event parameters from wizard state
 - Unified state management between applications
 
-### Key Differences from Main App
+### Key Differences from Visualization Apps
 
-| Feature | Main App (index.html) | Wizard (demo.html) |
-|---------|----------------------|-------------------|
+| Feature | Explorer/Designer Apps | Mission Design Wizard |
+|---------|------------------------|----------------------|
 | Approach | Forward simulation | Backwards design |
-| Entry Point | Three operating modes | Single guided workflow |
+| Entry Point | Manual parameter control | Single guided workflow |
 | State | Launch events + GUI state | WizardState object |
 | Persistence | None (ephemeral) | localStorage (persistent) |
 | Education Focus | Interactive exploration | Step-by-step methodology |

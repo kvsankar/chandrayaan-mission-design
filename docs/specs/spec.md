@@ -8,24 +8,33 @@
 
 ## 1. Project Overview
 
-The Chandrayaan-3 Orbit Visualization is an interactive web-based application that simulates and visualizes the orbital mechanics of India's Chandrayaan-3 lunar mission. The project consists of **two separate applications**:
+The Chandrayaan-3 Orbit Visualization is an interactive web-based application that simulates and visualizes the orbital mechanics of India's Chandrayaan-3 lunar mission. The project uses a **unified landing page** that routes to **three specialized applications**:
 
-1. **Main Orbit Visualization** (`index.html`): Three distinct modes for exploring, planning, and viewing orbital trajectories in a 3D celestial coordinate system
-2. **Mission Design Wizard** (`src/wizard/demo.html`): Guided multi-step workflow for backwards mission design
+1. **Landing Page** (`index.html`): Main entry point with three app cards for navigation
+2. **Chandrayaan Mission Designer** (`wizard.html`): Guided multi-step workflow for backwards mission design (Featured app)
+3. **Explorer** (`explorer.html`): Free-form orbital exploration with manual controls (Explore mode only)
+4. **Legacy Designer** (`designer.html`): Timeline-based mission planning and playback (Plan + Game modes)
 
 ### 1.1 Purpose
 
-**Main Application:**
-- Educational tool for understanding orbital mechanics
-- Mission planning interface for defining launch parameters
-- Visualization platform for playback of planned missions
-- Interactive demonstration of Trans-Lunar Injection (TLI) and Lunar Orbit Insertion (LOI)
-
-**Mission Design Wizard:**
+**Chandrayaan Mission Designer** (wizard.html):
 - Goal-oriented mission planning starting from landing site selection
 - Demonstrates backwards design methodology (destination → orbital parameters)
 - Calculates optimal Sun illumination windows for landing
 - Determines required orbital geometry (RAAN) from landing constraints
+- Featured app for new users
+
+**Explorer** (explorer.html):
+- Educational tool for understanding orbital mechanics
+- Free-form experimentation with orbital parameters
+- Manual Moon controls and orbital parameter adjustments
+- No timeline or mission planning features
+
+**Legacy Designer** (designer.html):
+- Mission planning interface for defining launch parameters
+- Visualization platform for playback of planned missions
+- Interactive demonstration of Trans-Lunar Injection (TLI) and Lunar Orbit Insertion (LOI)
+- Timeline-based mission design with real ephemeris
 
 ### 1.2 Core Technologies
 
@@ -41,10 +50,15 @@ The Chandrayaan-3 Orbit Visualization is an interactive web-based application th
 
 ## 2. Application Modes
 
-The application operates in three distinct modes, each with specific capabilities and constraints.
+The visualization apps (Explorer and Legacy Designer) implement three distinct modes with specific capabilities and constraints. These modes are now distributed across separate applications:
 
-### 2.1 Explore Mode
+- **Explore Mode**: Implemented in Explorer app (`explorer.html`) only
+- **Plan Mode**: Implemented in Legacy Designer app (`designer.html`)
+- **Game Mode**: Implemented in Legacy Designer app (`designer.html`)
 
+### 2.1 Explore Mode (Explorer App)
+
+**Application:** `explorer.html`
 **Purpose:** Free exploration and experimentation with orbital parameters
 
 **Characteristics:**
@@ -61,8 +75,9 @@ The application operates in three distinct modes, each with specific capabilitie
 - Understanding the relationship between orbital elements
 - Educational demonstrations
 
-### 2.2 Plan Mode
+### 2.2 Plan Mode (Legacy Designer App)
 
+**Application:** `designer.html`
 **Purpose:** Mission planning with realistic constraints and real lunar ephemeris
 
 **Characteristics:**
@@ -88,8 +103,9 @@ The application operates in three distinct modes, each with specific capabilitie
 - Bidirectional sync between date picker and timeline slider
 - Auto-hide on focus loss (ESC, click outside, blur)
 
-### 2.3 Game Mode
+### 2.3 Game Mode (Legacy Designer App)
 
+**Application:** `designer.html`
 **Purpose:** Playback and visualization of planned missions
 
 **Characteristics:**
