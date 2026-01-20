@@ -34,11 +34,37 @@
   },
   "helpContent": {
     "0": {
+      "title": "Mission Window Selection",
+      "sections": [
+        {
+          "heading": "Overview",
+          "content": "Select a time range for mission planning. This exploration window determines the period during which you'll search for viable landing opportunities."
+        },
+        {
+          "heading": "Why Start Here?",
+          "content": "By defining your mission timeframe first, you can:\n• Focus on realistic launch windows\n• Account for seasonal constraints\n• Plan around orbital mechanics constraints\n• Set boundaries for your mission search"
+        },
+        {
+          "heading": "Lunar Days Explained",
+          "content": "Each lunar day is approximately 14 Earth days long. During a lunar day, the Sun illuminates different regions of the Moon as it rotates, creating viable landing windows at different locations."
+        },
+        {
+          "heading": "Next Steps",
+          "content": "After selecting your exploration window, you'll choose a specific landing site and find when it has optimal Sun illumination within your timeframe."
+        }
+      ],
+      "tips": [
+        "Longer exploration windows provide more landing opportunities",
+        "Each lunar day represents ~14 Earth days",
+        "Consider launch vehicle availability in your timeframe"
+      ]
+    },
+    "1": {
       "title": "Landing Site Selection",
       "sections": [
         {
           "heading": "Overview",
-          "content": "Select the target landing site for your mission. This is the first step in backwards mission design - starting from where you want to land."
+          "content": "Select the target landing site for your mission. This is backwards mission design - starting from where you want to land."
         },
         {
           "heading": "How to Select a Site",
@@ -59,7 +85,7 @@
         "Site coordinates are displayed when you select a location"
       ]
     },
-    "1": {
+    "2": {
       "title": "Landing Window Selection",
       "sections": [
         {
@@ -83,28 +109,6 @@
         "Longer landing windows provide more flexibility",
         "Some sites have multiple windows per lunar day",
         "Window timing affects required orbital parameters"
-      ]
-    },
-    "2": {
-      "title": "Mission Window Selection",
-      "sections": [
-        {
-          "heading": "Overview",
-          "content": "Choose your mission timeframe based on the landing window you selected. This determines when to launch from Earth."
-        },
-        {
-          "heading": "Mission Constraints",
-          "content": "Your mission window must account for:\n• Transfer time from Earth to Moon (~5 days)\n• Orbital phasing requirements\n• Launch vehicle availability\n• Ground station coverage"
-        },
-        {
-          "heading": "Selecting a Window",
-          "content": "Review the available mission windows and select one that:\n• Provides adequate transfer time\n• Aligns with your landing window\n• Meets operational constraints\n\nThe tool shows viable windows based on your landing time."
-        }
-      ],
-      "tips": [
-        "Earlier windows may require more aggressive trajectories",
-        "Allow margin for potential launch delays",
-        "Consider ground station visibility for launch"
       ]
     },
     "3": {
