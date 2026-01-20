@@ -13,7 +13,6 @@ import * as THREE from 'three';
 import { TrackballControls } from 'three/addons/controls/TrackballControls.js';
 import type { PresetSite } from './SiteMarkers.js';
 import { getSubSolarPoint } from '../calculations/sunElevation.js';
-import moonTexture from '../../assets/textures/moon_lroc_color.jpg?url';
 
 const MOON_RADIUS = 50;  // Visual size in scene units
 const DEG_TO_RAD = Math.PI / 180;
@@ -129,7 +128,6 @@ export class MoonGlobeView {
         const geometry = new THREE.SphereGeometry(MOON_RADIUS, 128, 128);
 
         const textureLoader = new THREE.TextureLoader();
-        textureLoader.setCrossOrigin('anonymous');  // Enable CORS
 
         // Create material with realistic Moon appearance
         const material = new THREE.MeshStandardMaterial({
@@ -141,7 +139,7 @@ export class MoonGlobeView {
         // Load NASA LROC Moon texture (local copy from NASA SVS CGI Moon Kit)
         // Source: https://svs.gsfc.nasa.gov/4720/
         textureLoader.load(
-            moonTexture,
+            '/textures/moon_lroc_color.jpg',
             (texture) => {
                 texture.colorSpace = THREE.SRGBColorSpace;
 
