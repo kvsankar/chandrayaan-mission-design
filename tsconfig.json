@@ -44,6 +44,7 @@
   "include": [
     "src/**/*.ts",
     "src/**/*.js",
+    "src/**/*.json",
     "src/types/**/*.d.ts"
   ],
   "exclude": [
