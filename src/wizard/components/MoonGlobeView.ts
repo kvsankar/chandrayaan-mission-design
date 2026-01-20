@@ -13,7 +13,7 @@ import * as THREE from 'three';
 import { TrackballControls } from 'three/addons/controls/TrackballControls.js';
 import type { PresetSite } from './SiteMarkers.js';
 import { getSubSolarPoint } from '../calculations/sunElevation.js';
-import moonTexture from '/textures/moon_lroc_color.jpg?url';
+import moonTexture from '../../../public/textures/moon_lroc_color.jpg?url';
 
 const MOON_RADIUS = 50;  // Visual size in scene units
 const DEG_TO_RAD = Math.PI / 180;
