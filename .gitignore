@@ -2,6 +2,7 @@
 *.png
 !chandrayaan-mission-design.png
 *.jpg
+!public/textures/*.jpg
 *.jpeg
 *.gif
 
