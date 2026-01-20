@@ -129,6 +129,7 @@ export class MoonGlobeView {
         const geometry = new THREE.SphereGeometry(MOON_RADIUS, 128, 128);
 
         const textureLoader = new THREE.TextureLoader();
+        textureLoader.setCrossOrigin('anonymous');  // Enable CORS
 
         // Create material with realistic Moon appearance
         const material = new THREE.MeshStandardMaterial({

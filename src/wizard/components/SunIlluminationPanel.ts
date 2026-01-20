@@ -464,6 +464,7 @@ export class SunIlluminationPanel {
         });
 
         const textureLoader = new THREE.TextureLoader();
+        textureLoader.setCrossOrigin('anonymous');  // Enable CORS
         textureLoader.load(
             moonTexture,
             (texture) => {
