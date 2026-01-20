@@ -22,6 +22,13 @@ interface LandingConfig {
         title: string;
         subtitle: string;
     };
+    disclaimer?: {
+        show: boolean;
+        title: string;
+        message: string;
+        learnMoreText?: string;
+        learnMoreUrl?: string;
+    };
     apps: AppConfig[];
     footer: {
         text: string;
@@ -39,6 +46,7 @@ console.log('Chandrayaan-3 Mission Tools - Landing Page Loaded');
 // Populate page content from configuration
 document.addEventListener('DOMContentLoaded', () => {
     populateHero();
+    populateDisclaimer();
     populateAppCards();
     populateFooter();
     setupAnalytics();
@@ -53,6 +61,51 @@ function populateHero(): void {
 
     // Update page title as well
     document.title = config.hero.title;
+}
+
+function populateDisclaimer(): void {
+    const container = document.querySelector('.disclaimer');
+    if (!container) return;
+
+    // Check if disclaimer should be shown
+    if (!config.disclaimer || !config.disclaimer.show) {
+        container.remove();
+        return;
+    }
+
+    // Create disclaimer content
+    const disclaimer = config.disclaimer;
+
+    // Icon
+    const icon = document.createElement('div');
+    icon.className = 'disclaimer-icon';
+    icon.textContent = '⚠️';
+    container.appendChild(icon);
+
+    // Content wrapper
+    const content = document.createElement('div');
+    content.className = 'disclaimer-content';
+
+    // Title
+    const title = document.createElement('h3');
+    title.textContent = disclaimer.title;
+    content.appendChild(title);
+
+    // Message
+    const message = document.createElement('p');
+    message.textContent = disclaimer.message;
+    content.appendChild(message);
+
+    // Learn more link (if provided)
+    if (disclaimer.learnMoreText && disclaimer.learnMoreUrl) {
+        const learnMore = document.createElement('a');
+        learnMore.href = disclaimer.learnMoreUrl;
+        learnMore.className = 'disclaimer-link';
+        learnMore.textContent = disclaimer.learnMoreText;
+        content.appendChild(learnMore);
+    }
+
+    container.appendChild(content);
 }
 
 function populateAppCards(): void {

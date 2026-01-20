@@ -3,6 +3,13 @@
     "title": "Chandrayaan Mission Tools",
     "subtitle": "Interactive visualization and mission design tools for lunar orbital mechanics"
   },
+  "disclaimer": {
+    "show": true,
+    "title": "Educational Tool",
+    "message": "These are educational visualization tools designed to teach foundational orbital mechanics concepts. They use simplified Keplerian models and are not suitable for professional mission planning. Real missions require high-fidelity tools that account for multi-body gravitational effects, perturbations, atmospheric drag, and realistic propulsion modeling.",
+    "learnMoreText": "Read full disclaimer",
+    "learnMoreUrl": "https://github.com/kvsankar/chandrayaan-mission-design#%EF%B8%8F-educational-tool-disclaimer"
+  },
   "apps": [
     {
       "id": "wizard",
@@ -51,7 +58,7 @@
     }
   ],
   "footer": {
-    "text": "Educational tools for understanding Chandrayaan-3 orbital mechanics",
+    "text": "Educational tools for understanding Chandrayaan orbital mechanics",
     "github": {
       "text": "View on GitHub",
       "url": "https://github.com/yourusername/cy3-orbit"

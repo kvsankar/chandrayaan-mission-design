@@ -52,6 +52,57 @@ body {
     line-height: 1.4;
 }
 
+/* Disclaimer Section */
+.disclaimer {
+    background: rgba(255, 193, 7, 0.1);
+    border: 1px solid rgba(255, 193, 7, 0.3);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 30px auto 15px auto;
+    max-width: 900px;
+    display: flex;
+    align-items: flex-start;
+    gap: 15px;
+    animation: fadeInUp 0.8s ease-out 0.4s both;
+}
+
+.disclaimer-icon {
+    font-size: 24px;
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.disclaimer-content {
+    flex: 1;
+}
+
+.disclaimer-content h3 {
+    font-size: 15px;
+    font-weight: bold;
+    color: #ffd54f;
+    margin: 0 0 8px 0;
+}
+
+.disclaimer-content p {
+    font-size: 13px;
+    line-height: 1.5;
+    color: #ddd;
+    margin: 0 0 8px 0;
+}
+
+.disclaimer-link {
+    font-size: 12px;
+    color: #ffd54f;
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.2s;
+}
+
+.disclaimer-link:hover {
+    color: #ffeb3b;
+    text-decoration: underline;
+}
+
 /* App Cards Grid */
 .app-cards {
     display: grid;
@@ -289,6 +340,28 @@ body {
 
     .hero .subtitle {
         font-size: 14px;
+    }
+
+    .disclaimer {
+        padding: 14px 16px;
+        margin: 20px auto 10px auto;
+        gap: 12px;
+    }
+
+    .disclaimer-icon {
+        font-size: 20px;
+    }
+
+    .disclaimer-content h3 {
+        font-size: 14px;
+    }
+
+    .disclaimer-content p {
+        font-size: 12px;
+    }
+
+    .disclaimer-link {
+        font-size: 11px;
     }
 
     .app-cards {
