@@ -17,6 +17,27 @@ The project features a unified landing page that routes to three specialized app
 
 Future enhancements will add support for ascent orbit, earth-bound orbit raising maneuvers, lunar capture, lunar orbit lowering maneuvers, and descent orbit.
 
+## ⚠️ Educational Tool Disclaimer
+
+**This is an educational visualization tool, not a professional mission design system.**
+
+The Mission Designer and orbital visualization tools are designed to teach foundational physics principles and orbital mechanics concepts. They are **not suitable for real mission planning** and have significant simplifications:
+
+- **Simplified Orbital Model**: Uses a two-body Keplerian model (spacecraft + Earth or spacecraft + Moon)
+- **No Realistic Orbit Insertions**: Does not model actual orbital insertion maneuvers, thrust profiles, or fuel consumption
+- **Limited Gravitational Influences**: Does not account for:
+  - Multi-body gravitational effects (Sun, Earth, Moon interactions)
+  - Earth's oblateness (J2 perturbations)
+  - Solar radiation pressure
+  - Atmospheric drag
+  - Lunar mascons
+- **Idealized Transfers**: Assumes instantaneous velocity changes at TLI and LOI
+- **No Station-Keeping**: Does not model orbit maintenance or correction maneuvers
+
+**Purpose**: This tool helps students and enthusiasts understand **why** certain orbital parameters are chosen and visualize the geometric relationships between orbits. It demonstrates concepts like RAAN, argument of periapsis, true anomaly, and the constraints imposed by landing site illumination requirements.
+
+For actual mission planning, professional tools like GMAT (General Mission Analysis Tool), STK (Systems Tool Kit), or Copernicus would be required.
+
 ## Features
 
 ### Application Architecture

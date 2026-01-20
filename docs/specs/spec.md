@@ -70,6 +70,47 @@ The Chandrayaan-3 Orbit Visualization is an interactive web-based application th
 
 **Note:** The original three-mode application (`main.ts` + `index-old.html`) is preserved for reference and backward compatibility but is not linked from the landing page. It contains all three modes (Explore, Plan, Game) in one application and is useful for comparing the split architecture with the original monolithic version.
 
+### 1.0 Educational Tool Disclaimer
+
+**⚠️ IMPORTANT: This is an educational visualization tool, not a professional mission design system.**
+
+The Chandrayaan-3 Orbit Visualization and Mission Designer are designed to teach foundational physics principles and orbital mechanics concepts. They are **not suitable for real mission planning** and incorporate significant simplifications:
+
+**Simplified Physics Model:**
+- Uses a two-body Keplerian model (spacecraft + Earth or spacecraft + Moon)
+- No realistic orbital insertion maneuvers (assumes instantaneous velocity changes)
+- Does not model thrust profiles, fuel consumption, or propulsion systems
+- No station-keeping or orbit maintenance maneuvers
+
+**Missing Gravitational Influences:**
+- Multi-body gravitational effects (Sun-Earth-Moon three-body problem)
+- Earth's oblateness (J2, J3, J4 perturbations)
+- Solar radiation pressure
+- Atmospheric drag (even in highly elliptical Earth orbits)
+- Lunar mascons and gravitational anomalies
+
+**Idealized Transfers:**
+- TLI (Trans-Lunar Injection) modeled as instantaneous velocity change at perigee
+- LOI (Lunar Orbit Insertion) not explicitly modeled
+- No mid-course corrections or trajectory adjustments
+- Capture detection based on simple distance threshold
+
+**Educational Purpose:**
+This tool helps students and enthusiasts understand:
+- **Why** certain orbital parameters (RAAN, AOP, inclination) are chosen
+- Geometric relationships between Earth, Moon, and spacecraft orbits
+- Constraints imposed by landing site illumination requirements
+- Backwards mission design methodology
+- Visualization of osculating orbital elements
+
+**For Professional Mission Planning:**
+Real mission design requires professional tools like GMAT (General Mission Analysis Tool), STK (Systems Tool Kit), or Copernicus, which include:
+- High-fidelity force models
+- Numerical integration of equations of motion
+- Optimization algorithms for trajectory design
+- Propulsion system modeling
+- Navigation and guidance algorithms
+
 ### 1.1 Purpose
 
 **Chandrayaan Mission Designer** (wizard.html):
@@ -1322,26 +1363,92 @@ The following features were discussed but not implemented in the current version
 
 ## 19. Known Limitations
 
-1. **Simplified Physics:**
-   - No perturbations (Earth oblateness, solar gravity, etc.)
-   - No atmospheric drag
-   - No thrust/propulsion modeling
-   - Point-mass gravity model
+**See also: Section 1.0 - Educational Tool Disclaimer for comprehensive overview of limitations.**
 
-2. **Performance:**
+### 19.1 Physics and Orbital Mechanics Simplifications
+
+1. **Simplified Physics Model:**
+   - Two-body Keplerian model (Earth-spacecraft or Moon-spacecraft)
+   - Point-mass gravity approximation for both Earth and Moon
+   - No multi-body gravitational effects (Sun-Earth-Moon three-body problem)
+   - No perturbations:
+     - Earth oblateness (J2, J3, J4 harmonics)
+     - Lunar mascons and gravitational anomalies
+     - Solar radiation pressure
+     - Third-body perturbations from Sun
+   - No atmospheric drag (important for highly elliptical Earth orbits)
+   - No relativistic effects
+
+2. **Idealized Maneuvers:**
+   - TLI (Trans-Lunar Injection) modeled as instantaneous velocity change
+   - No realistic thrust profiles or burn durations
+   - No fuel consumption modeling or propulsion system characteristics
+   - LOI (Lunar Orbit Insertion) not explicitly modeled
+   - No mid-course corrections or trajectory control maneuvers
+   - No station-keeping or orbit maintenance
+
+3. **Simplified Capture Detection:**
+   - Based on simple distance threshold (default: 5,000 km)
+   - Does not model sphere of influence transitions
+   - No orbital energy or velocity considerations
+   - No bound/unbound orbit determination
+
+4. **Osculating Elements:**
+   - Orbital elements treated as fixed (not time-varying due to perturbations)
+   - No numerical integration of equations of motion
+   - Keplerian elements assumed constant between maneuvers
+
+### 19.2 Performance Limitations
+
+1. **Computational:**
    - Large timeline scrubbing may lag on low-end devices
    - Real-time ephemeris calculations add computational overhead
    - Many simultaneous visualizations (all toggles on) may reduce FPS
+   - No GPU acceleration for orbital calculations
 
-3. **Accuracy:**
-   - Simplified orbital mechanics (two-body problem)
-   - No relativistic effects
-   - Lunar ephemeris limited to astronomy-engine precision
+2. **Rendering:**
+   - Maximum 512 segments for orbit paths (trade-off between smoothness and performance)
+   - Large zoom ranges may cause marker visibility issues
 
-4. **UI/UX:**
+### 19.3 Accuracy Limitations
+
+1. **Lunar Ephemeris:**
+   - Limited to astronomy-engine precision (typically ~1 km position accuracy)
+   - No custom ephemeris data import
+   - Fixed lunar orbital element model (18.3°-28.6° inclination range)
+
+2. **Timeline:**
+   - 90-day maximum timeline duration (arbitrary limit)
+   - Fixed time step for animation (no adaptive stepping)
+
+### 19.4 UI/UX Limitations
+
+1. **User Interface:**
    - No undo/redo for parameter changes
    - Limited mobile touch gesture support
    - No keyboard shortcuts for common actions
+   - No parameter bookmarking or presets (except wizard state persistence)
+
+2. **Visualization:**
+   - Fixed camera controls (no predefined viewpoints beyond manual positioning)
+   - No animation export or recording capability
+   - Limited customization of visual appearance
+
+3. **Integration:**
+   - Wizard results cannot be directly exported to Legacy Designer (planned future enhancement)
+   - No mission data export to standard formats (GMAT scripts, STK scenarios, etc.)
+
+### 19.5 What This Tool Is NOT
+
+This tool is **not suitable for**:
+- Actual mission planning or operational trajectory design
+- High-fidelity mission analysis requiring numerical integration
+- Fuel budget calculations or propulsion system sizing
+- Navigation and guidance algorithm development
+- Mission risk assessment or failure mode analysis
+- Regulatory compliance or safety certification
+
+**For professional use:** See GMAT, STK, Copernicus, or similar mission analysis tools.
 
 ---
 
