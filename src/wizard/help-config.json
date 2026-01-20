@@ -1,0 +1,137 @@
+{
+  "walkthrough": {
+    "enabled": true,
+    "showOnFirstVisit": true,
+    "steps": [
+      {
+        "element": ".wizard-step[data-step='0']",
+        "popover": {
+          "title": "Welcome to Mission Designer!",
+          "description": "This wizard guides you through designing a lunar mission using backwards planning - starting from your landing site. Let's begin!",
+          "side": "bottom",
+          "align": "start"
+        }
+      },
+      {
+        "element": "#moon-globe-container",
+        "popover": {
+          "title": "Step 1: Select Landing Site",
+          "description": "Choose your landing site on the Moon. Click on any pre-defined marker or explore the 3D globe to select a custom location.",
+          "side": "right",
+          "align": "start"
+        }
+      },
+      {
+        "element": ".wizard-navigation",
+        "popover": {
+          "title": "Navigation Controls",
+          "description": "Use Next/Previous buttons to move through steps. You can also replay this walkthrough anytime using the help button (?).",
+          "side": "top",
+          "align": "center"
+        }
+      }
+    ]
+  },
+  "helpContent": {
+    "0": {
+      "title": "Landing Site Selection",
+      "sections": [
+        {
+          "heading": "Overview",
+          "content": "Select the target landing site for your mission. This is the first step in backwards mission design - starting from where you want to land."
+        },
+        {
+          "heading": "How to Select a Site",
+          "content": "Click on any highlighted marker on the 3D Moon globe to select a pre-defined landing site. You can also rotate the globe to explore different locations."
+        },
+        {
+          "heading": "Pre-defined Sites",
+          "content": "We've included several interesting lunar locations:\n• Shackleton Crater (South Pole)\n• Malapert Massif\n• Apollo 17 Landing Site\n• And more...\n\nEach site has unique characteristics for mission planning."
+        },
+        {
+          "heading": "Next Steps",
+          "content": "After selecting a site, you'll analyze Sun illumination windows to find optimal landing times with proper lighting conditions."
+        }
+      ],
+      "tips": [
+        "South pole sites (like Shackleton) offer permanently shadowed regions",
+        "Use mouse to rotate the globe and explore",
+        "Site coordinates are displayed when you select a location"
+      ]
+    },
+    "1": {
+      "title": "Landing Window Selection",
+      "sections": [
+        {
+          "heading": "Overview",
+          "content": "Find optimal landing windows based on Sun elevation at your selected site. Proper illumination is critical for safe landing and rover operations."
+        },
+        {
+          "heading": "Sun Elevation Requirements",
+          "content": "For a safe landing, the Sun should be:\n• At least 6° above the horizon (minimum illumination)\n• No more than 9° above horizon (avoid excessive heat)\n\nThe tool automatically calculates these windows over time."
+        },
+        {
+          "heading": "Reading the Chart",
+          "content": "The Sun illumination chart shows:\n• Green zones: Viable landing windows (6-9° elevation)\n• Time axis: When these windows occur\n• Duration: How long each window lasts\n\nClick on a green zone to select that landing window."
+        },
+        {
+          "heading": "Why This Matters",
+          "content": "Landing window selection determines:\n• When your spacecraft must arrive at the Moon\n• Required orbital geometry for approach\n• Mission timeline constraints"
+        }
+      ],
+      "tips": [
+        "Longer landing windows provide more flexibility",
+        "Some sites have multiple windows per lunar day",
+        "Window timing affects required orbital parameters"
+      ]
+    },
+    "2": {
+      "title": "Mission Window Selection",
+      "sections": [
+        {
+          "heading": "Overview",
+          "content": "Choose your mission timeframe based on the landing window you selected. This determines when to launch from Earth."
+        },
+        {
+          "heading": "Mission Constraints",
+          "content": "Your mission window must account for:\n• Transfer time from Earth to Moon (~5 days)\n• Orbital phasing requirements\n• Launch vehicle availability\n• Ground station coverage"
+        },
+        {
+          "heading": "Selecting a Window",
+          "content": "Review the available mission windows and select one that:\n• Provides adequate transfer time\n• Aligns with your landing window\n• Meets operational constraints\n\nThe tool shows viable windows based on your landing time."
+        }
+      ],
+      "tips": [
+        "Earlier windows may require more aggressive trajectories",
+        "Allow margin for potential launch delays",
+        "Consider ground station visibility for launch"
+      ]
+    },
+    "3": {
+      "title": "LOI Date Optimization",
+      "sections": [
+        {
+          "heading": "Overview",
+          "content": "Calculate the optimal Lunar Orbit Insertion (LOI) date and required orbital parameters to achieve your landing window."
+        },
+        {
+          "heading": "What Gets Calculated",
+          "content": "The optimization determines:\n• Required RAAN (Right Ascension of Ascending Node)\n• Optimal LOI date and time\n• Complete orbital timeline from launch to landing\n• Trajectory visualization"
+        },
+        {
+          "heading": "Understanding the Results",
+          "content": "The orbit visualization shows:\n• Earth-Moon geometry at LOI\n• Spacecraft transfer orbit\n• Moon's position and orientation\n• Timing of key mission events\n\nYou can scrub through the timeline to see how the geometry evolves."
+        },
+        {
+          "heading": "RAAN Explained",
+          "content": "RAAN defines where your orbit crosses Earth's equatorial plane. The optimizer calculates the exact RAAN needed so your spacecraft arrives at the Moon when your landing site has proper Sun illumination."
+        }
+      ],
+      "tips": [
+        "The timeline shows the complete mission from launch to landing",
+        "Use the playback controls to visualize orbital mechanics",
+        "All parameters are calculated to match your landing constraints"
+      ]
+    }
+  }
+}

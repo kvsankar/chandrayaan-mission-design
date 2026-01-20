@@ -11,6 +11,8 @@ import { MissionWindowStep, MissionWindowState } from './steps/MissionWindowStep
 import { LandingSiteStep, LandingSiteStepState } from './steps/LandingSiteStep.js';
 import { LandingWindowStep, LandingWindowStepState } from './steps/LandingWindowStep.js';
 import { LOIDateStep, LOIDateStepState } from './steps/LOIDateStep.js';
+import { HelpPanel } from './components/HelpPanel.js';
+import { WalkthroughManager } from './components/WalkthroughManager.js';
 import * as Astronomy from 'astronomy-engine';
 import {
     LunarDaySegment,
@@ -79,6 +81,8 @@ export class WizardController {
     private container: HTMLElement;
     private contentContainer: HTMLElement | null = null;
     private currentStepInstance: MissionWindowStep | LandingSiteStep | LandingWindowStep | LOIDateStep | null = null;
+    private helpPanel: HelpPanel | null = null;
+    private walkthroughManager: WalkthroughManager | null = null;
 
     private state: WizardState = {
         currentStep: 1,
@@ -100,8 +104,18 @@ export class WizardController {
         this.onCancel = options.onCancel;
 
         this.render();
+        this.initializeHelpSystem();
         this.showStep(1);
         this.updatePageTitle();
+    }
+
+    private initializeHelpSystem(): void {
+        // Initialize help panel
+        this.helpPanel = new HelpPanel(this.container);
+
+        // Initialize walkthrough manager
+        this.walkthroughManager = new WalkthroughManager();
+        this.walkthroughManager.init();
     }
 
     private render(): void {
@@ -236,6 +250,9 @@ export class WizardController {
         this.updateStepsList();
         this.updateNavButtons();
         this.updatePageTitle();
+
+        // Update help panel for current step (convert to 0-indexed)
+        this.helpPanel?.setStep(stepNum - 1);
 
         switch (stepNum) {
             case 1:

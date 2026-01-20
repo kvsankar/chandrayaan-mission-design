@@ -48,6 +48,7 @@
   },
   "dependencies": {
     "astronomy-engine": "^2.1.19",
+    "driver.js": "^1.4.0",
     "lil-gui": "^0.18.2",
     "three": "^0.152.2"
   }
